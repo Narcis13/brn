@@ -9,6 +9,7 @@ import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntim
 import { loadRuntimeRunHandle } from "./supercodex/runtime/runs.js";
 import { RUNTIME_IDS } from "./supercodex/runtime/types.js";
 import { dispatchNextAction, formatNextActionShow, synthesizeNextAction } from "./supercodex/synth/next-action.js";
+import { formatTaskVerificationState, generateSliceUat, getTaskVerificationState } from "./supercodex/verify/index.js";
 import { findPlaceholderFiles, syncManagedTemplates } from "./supercodex/vault.js";
 import {
   acquireLock,
@@ -63,6 +64,8 @@ function usage(): string {
     "  supercodex runtime cancel --run-id <run_id>",
     "  supercodex plan sync",
     "  supercodex plan validate [--unit <unit_id>]",
+    "  supercodex verify show --unit <unit_id> [--json]",
+    "  supercodex uat generate --unit <slice_unit_id>",
     "  supercodex next-action show [--json]",
     "  supercodex next-action dispatch",
   ].join("\n");
@@ -410,6 +413,39 @@ function handlePlan(args: string[], root: string, writeOut: (text: string) => vo
   throw new Error(`Unknown plan subcommand: ${subcommand ?? "<missing>"}`);
 }
 
+function handleVerify(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "show") {
+    const unitId = requireOption(args, "--unit");
+    const result = getTaskVerificationState(root, unitId);
+    if (args.includes("--json")) {
+      writeJson(writeOut, result);
+    } else {
+      writeOut(`${formatTaskVerificationState(result)}\n`);
+    }
+    return 0;
+  }
+
+  throw new Error(`Unknown verify subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+function handleUat(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "generate") {
+    const unitId = requireOption(args, "--unit");
+    const ref = generateSliceUat(root, unitId);
+    writeJson(writeOut, {
+      unit_id: unitId,
+      ref,
+    });
+    return 0;
+  }
+
+  throw new Error(`Unknown uat subcommand: ${subcommand ?? "<missing>"}`);
+}
+
 async function handleNextAction(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
   const subcommand = args[0];
 
@@ -453,6 +489,10 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return await handleRuntime(rest, cwd, writeOut);
       case "plan":
         return handlePlan(rest, cwd, writeOut);
+      case "verify":
+        return handleVerify(rest, cwd, writeOut);
+      case "uat":
+        return handleUat(rest, cwd, writeOut);
       case "next-action":
         return await handleNextAction(rest, cwd, writeOut);
       default:

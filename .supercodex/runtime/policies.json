@@ -6,9 +6,9 @@
   "tdd_mode": "strict_tdd",
   "planning_style": "vertical_slices",
   "review_style": [
-    "security",
+    "correctness",
     "maintainability",
-    "correctness"
+    "security"
   ],
   "roadmap_reassessment": "after_each_slice",
   "memory_audit": "every_slice",

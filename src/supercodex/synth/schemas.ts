@@ -25,6 +25,7 @@ const nextActionDecisionSchema: Schema = {
     "retry_count",
     "selected_run_id",
     "context_profile",
+    "reviewer_pass",
   ],
   properties: {
     version: { type: "integer", minimum: 1 },
@@ -41,6 +42,7 @@ const nextActionDecisionSchema: Schema = {
     retry_count: { type: "integer", minimum: 0 },
     selected_run_id: { type: ["string", "null"] },
     context_profile: { enum: [...contextProfiles] },
+    reviewer_pass: { type: ["string", "null"] },
   },
 };
 
@@ -126,6 +128,7 @@ const canonicalRunRecordSchema: Schema = {
     "assumptions",
     "verification_evidence",
     "followups",
+    "reviewer_pass",
   ],
   properties: {
     version: { type: "integer", minimum: 1 },
@@ -173,6 +176,7 @@ const canonicalRunRecordSchema: Schema = {
       type: "array",
       items: { type: "string", minLength: 1 },
     },
+    reviewer_pass: { type: ["string", "null"] },
   },
 };
 

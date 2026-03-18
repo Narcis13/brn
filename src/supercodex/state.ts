@@ -23,6 +23,8 @@ import { isModernMilestone, parseUnitId, validatePlanningUnit } from "./planning
 import { loadDispatchTemplate, loadRuntimeRegistry } from "./runtime/registry.js";
 import { runtimeSchemaFileEntries } from "./runtime/schemas.js";
 import { synthSchemaFileEntries } from "./synth/schemas.js";
+import { verifySchemaFileEntries } from "./verify/schemas.js";
+import { verificationDoctorIssues } from "./verify/index.js";
 import type {
   CurrentState,
   LockRecord,
@@ -38,10 +40,10 @@ const TRANSITION_RULES: Record<Phase, Phase[]> = {
   map: ["research", "plan"],
   research: ["map", "plan"],
   plan: ["clarify", "map", "research", "dispatch"],
-  dispatch: ["plan", "implement"],
-  implement: ["verify"],
-  verify: ["implement", "review"],
-  review: ["implement", "integrate", "complete_task"],
+  dispatch: ["plan", "implement", "verify", "review", "complete_task", "complete_slice"],
+  implement: ["dispatch", "verify"],
+  verify: ["dispatch", "implement", "review"],
+  review: ["dispatch", "implement", "integrate", "complete_task"],
   integrate: ["complete_task", "complete_slice"],
   complete_task: ["reassess", "dispatch", "complete_slice"],
   complete_slice: ["reassess", "complete"],
@@ -115,7 +117,7 @@ export function loadLocks(root: string): LockRecord[] {
 }
 
 export function writeSchemaFiles(root: string): void {
-  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries, ...synthSchemaFileEntries]) {
+  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries, ...synthSchemaFileEntries, ...verifySchemaFileEntries]) {
     writeJsonFile(resolveRepoPath(root, `.supercodex/schemas/${fileName}`), schema);
   }
 }
@@ -327,6 +329,16 @@ export interface DoctorResult {
   issues: string[];
 }
 
+function usesPhaseFiveVerification(unitId: string): boolean {
+  const parsed = parseUnitId(unitId);
+  if (!parsed.milestone_id) {
+    return false;
+  }
+
+  const match = /^M(\d{3})$/.exec(parsed.milestone_id);
+  return !!match && Number.parseInt(match[1], 10) >= 5;
+}
+
 export function runDoctor(root: string, placeholderFiles: string[]): DoctorResult {
   const issues: string[] = [];
 
@@ -369,6 +381,11 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
       if (!validation.ok) {
         issues.push(...validation.issues);
       }
+
+      const activeTaskUnitId = `${current.active_milestone}/${current.active_slice}/${current.active_task}`;
+      if (usesPhaseFiveVerification(activeTaskUnitId) && ["verify", "review", "complete_task", "complete_slice"].includes(current.phase)) {
+        issues.push(...verificationDoctorIssues(root, activeTaskUnitId));
+      }
     } else if (current.active_slice && current.active_milestone && isModernMilestone(current.active_milestone)) {
       const validation = validatePlanningUnit(root, `${current.active_milestone}/${current.active_slice}`);
       if (!validation.ok) {
@@ -387,6 +404,12 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
       issues.push(
         `queue_head mismatch: current=${String(current.queue_head)} expected=${String(nextEligible?.unit_id ?? null)}`,
       );
+    }
+
+    for (const item of queue.items) {
+      if (item.unit_type === "task" && item.status === "done" && usesPhaseFiveVerification(item.unit_id)) {
+        issues.push(...verificationDoctorIssues(root, item.unit_id));
+      }
     }
 
     const transitions = loadTransitions(root);

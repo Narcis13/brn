@@ -13,6 +13,7 @@ import type {
   QueueItemDraft,
   QueueMergeResult,
   TaskTddMode,
+  VerificationPlanBuckets,
 } from "./types.js";
 import { TASK_TDD_MODES } from "./types.js";
 
@@ -37,6 +38,53 @@ const TASK_SECTION_ORDER = [
   "Status",
   "Summary",
 ] as const;
+
+function emptyVerificationPlanBuckets(): VerificationPlanBuckets {
+  return {
+    static: [],
+    focused_tests: [],
+    behavioral: [],
+    slice_regression: [],
+    milestone_regression: [],
+    human_uat: [],
+  };
+}
+
+function classifyVerificationStep(step: string): keyof VerificationPlanBuckets {
+  const normalized = step.trim().toLowerCase();
+
+  if (/(human|manual|uat)/.test(normalized)) {
+    return "human_uat";
+  }
+
+  if (/milestone/.test(normalized)) {
+    return "milestone_regression";
+  }
+
+  if (/slice/.test(normalized)) {
+    return "slice_regression";
+  }
+
+  if (/(pnpm|npm|npx|vitest|tsx)\b/.test(normalized) || /\btest(s)?\b/.test(normalized)) {
+    return "focused_tests";
+  }
+
+  if (/(inspect|browser|curl|http|response|api|cli|run\b|smoke)/.test(normalized)) {
+    return "behavioral";
+  }
+
+  return "static";
+}
+
+function bucketVerificationPlan(steps: string[]): VerificationPlanBuckets {
+  const buckets = emptyVerificationPlanBuckets();
+
+  for (const step of steps) {
+    buckets[classifyVerificationStep(step)].push(step);
+  }
+
+  return buckets;
+}
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
@@ -230,8 +278,10 @@ export function loadTaskArtifact(root: string, milestoneId: string, sliceId: str
   const whyNow = readScalarSection(sections, "Why Now");
   const acceptanceCriteria = readBulletSection(sections, "Acceptance Criteria");
   const tddMode = readScalarSection(sections, "TDD Mode");
+  const tddJustification = readScalarSection(sections, "TDD Justification");
   const likelyFiles = readBulletSection(sections, "Likely Files");
   const verificationPlan = readBulletSection(sections, "Verification Plan");
+  const reviewerPasses = readBulletSection(sections, "Reviewer Passes");
   const dependencyLines = readBulletSection(sections, "Dependencies");
   const safetyClass = readScalarSection(sections, "Safety Class");
   const status = readScalarSection(sections, "Status");
@@ -248,6 +298,14 @@ export function loadTaskArtifact(root: string, milestoneId: string, sliceId: str
   }
   if (!TASK_TDD_MODES.includes(tddMode as TaskTddMode)) {
     issues.push(`Task ${milestoneId}/${sliceId}/${taskId} has unsupported TDD mode: ${tddMode || "<missing>"}.`);
+  }
+  const usesPhaseFiveContract = (milestoneNumber(milestoneId) ?? 0) >= 5;
+  if (
+    usesPhaseFiveContract &&
+    (tddMode === "brownfield_tdd" || tddMode === "verification_first") &&
+    !tddJustification
+  ) {
+    issues.push(`Task ${milestoneId}/${sliceId}/${taskId} must explain why ${tddMode} is required.`);
   }
   if (likelyFiles.length === 0) {
     issues.push(`Task ${milestoneId}/${sliceId}/${taskId} must list likely files.`);
@@ -282,8 +340,11 @@ export function loadTaskArtifact(root: string, milestoneId: string, sliceId: str
     why_now: whyNow,
     acceptance_criteria: acceptanceCriteria,
     tdd_mode: tddMode as TaskTddMode,
+    tdd_justification: tddJustification || null,
     likely_files: likelyFiles,
     verification_plan: verificationPlan,
+    verification_ladder: bucketVerificationPlan(verificationPlan),
+    reviewer_passes: reviewerPasses,
     dependencies,
     safety_class: safetyClass,
     status,

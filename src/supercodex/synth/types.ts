@@ -16,6 +16,7 @@ export interface NextActionDecision {
   retry_count: number;
   selected_run_id: string | null;
   context_profile: CurrentState["context_profile"];
+  reviewer_pass: string | null;
 }
 
 export interface ContextManifestLayers {
@@ -72,6 +73,7 @@ export interface CanonicalRunRecord {
   assumptions: string[];
   verification_evidence: string[];
   followups: string[];
+  reviewer_pass: string | null;
 }
 
 export interface NextActionShowResult {

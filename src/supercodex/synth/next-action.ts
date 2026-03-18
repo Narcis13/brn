@@ -17,10 +17,19 @@ import {
   computeNextEligibleItem,
   loadCurrentState,
   loadQueueState,
+  markQueueItemDone,
   reconcileState,
   saveCurrentState,
   transitionState,
 } from "../state.js";
+import {
+  generateSliceUat,
+  getTaskVerificationPaths,
+  getTaskVerificationState,
+  refreshSliceSummary,
+  reviewReportRef,
+  writeTaskCompletionArtifacts,
+} from "../verify/index.js";
 import {
   getCanonicalRunPaths,
   loadLatestCanonicalRunForUnit,
@@ -47,6 +56,13 @@ interface RuntimeRoutingConfig {
   version: number;
   default_policy_ref: string;
   task_class_overrides: Record<string, { preferred_runtime?: RuntimeId; preferred_role?: string }>;
+}
+
+interface ExecutionTarget {
+  decision_unit_type: UnitType;
+  packet_unit_type: string;
+  role: string;
+  reviewer_pass: string | null;
 }
 
 const MAX_RETRIES_BY_UNIT_TYPE: Partial<Record<UnitType, number>> = {
@@ -160,6 +176,16 @@ function isPathPresent(root: string, ref: string): boolean {
   return !!readTextIfExists(resolveRepoPath(root, ref));
 }
 
+function matchesActiveTask(current: CurrentState, item: QueueItem): boolean {
+  const parsed = parseUnitId(item.unit_id);
+  return (
+    parsed.kind === "task" &&
+    current.active_milestone === parsed.milestone_id &&
+    current.active_slice === parsed.slice_id &&
+    current.active_task === parsed.task_id
+  );
+}
+
 function resolveUnitArtifacts(root: string, item: QueueItem): { unit: string[]; milestone: string[] } {
   const parsed = parseUnitId(item.unit_id);
   const milestoneId = item.milestone_id ?? parsed.milestone_id;
@@ -255,6 +281,43 @@ function defaultRoleForItem(root: string, current: CurrentState, item: QueueItem
   }
 }
 
+function resolveExecutionTarget(root: string, current: CurrentState, item: QueueItem): ExecutionTarget {
+  if (item.unit_type !== "task" || !matchesActiveTask(current, item)) {
+    return {
+      decision_unit_type: item.unit_type,
+      packet_unit_type: item.unit_type,
+      role: defaultRoleForItem(root, current, item),
+      reviewer_pass: null,
+    };
+  }
+
+  const verificationState = getTaskVerificationState(root, item.unit_id);
+  if (current.phase === "review" || (current.phase === "recover" && verificationState.status === "review")) {
+    return {
+      decision_unit_type: "review",
+      packet_unit_type: "review",
+      role: "reviewers",
+      reviewer_pass: verificationState.next_reviewer,
+    };
+  }
+
+  if (current.phase === "verify" || (current.phase === "recover" && verificationState.status === "verify")) {
+    return {
+      decision_unit_type: "verification",
+      packet_unit_type: "verification",
+      role: "verifier",
+      reviewer_pass: null,
+    };
+  }
+
+  return {
+    decision_unit_type: "task",
+    packet_unit_type: "task",
+    role: "implementer",
+    reviewer_pass: null,
+  };
+}
+
 function chooseRuntime(
   registry: RuntimeRegistry,
   preferredRuntime: RuntimeId | undefined,
@@ -296,6 +359,7 @@ function buildContextManifest(
   root: string,
   current: CurrentState,
   item: QueueItem,
+  decision: NextActionDecision,
   latestRun: CanonicalRunRecord | null,
 ): ContextManifest {
   const resolved = resolveUnitArtifacts(root, item);
@@ -325,6 +389,27 @@ function buildContextManifest(
     );
   }
 
+  if (item.unit_type === "task") {
+    const verificationState = getTaskVerificationState(root, item.unit_id);
+    if (verificationState.implementation_run_id) {
+      supportingRefs.push(
+        getCanonicalRunPaths(verificationState.implementation_run_id).record_ref,
+        getCanonicalRunPaths(verificationState.implementation_run_id).normalized_ref,
+      );
+    }
+
+    if (decision.unit_type === "verification") {
+      supportingRefs.push(getTaskVerificationPaths(item.unit_id).verification_ref);
+    }
+
+    if (decision.unit_type === "review") {
+      supportingRefs.push(getTaskVerificationPaths(item.unit_id).verification_ref);
+      if (decision.reviewer_pass) {
+        supportingRefs.push(reviewReportRef(item.unit_id, decision.reviewer_pass));
+      }
+    }
+  }
+
   const retryRefs =
     latestRun === null
       ? []
@@ -345,14 +430,14 @@ function buildContextManifest(
       system: systemRefs.filter((ref) => isPathPresent(root, ref)),
       unit: resolved.unit,
       milestone: resolved.milestone,
-      supporting: supportingRefs.filter((ref) => isPathPresent(root, ref)),
+      supporting: unique(supportingRefs).filter((ref) => isPathPresent(root, ref)),
       retry: retryRefs.filter((ref) => isPathPresent(root, ref)),
     },
     refs: unique([
       ...systemRefs.filter((ref) => isPathPresent(root, ref)),
       ...resolved.unit,
       ...resolved.milestone,
-      ...supportingRefs.filter((ref) => isPathPresent(root, ref)),
+      ...unique(supportingRefs).filter((ref) => isPathPresent(root, ref)),
       ...retryRefs.filter((ref) => isPathPresent(root, ref)),
     ]),
   };
@@ -361,7 +446,8 @@ function buildContextManifest(
   return manifest;
 }
 
-function buildDispatchPacket(root: string, item: QueueItem, role: string, manifest: ContextManifest): DispatchPacket {
+function buildDispatchPacket(root: string, item: QueueItem, decision: NextActionDecision, manifest: ContextManifest): DispatchPacket {
+  const role = decision.role ?? "implementer";
   const resolved = resolveUnitArtifacts(root, item);
   const parsed = parseUnitId(item.unit_id);
   const texts = manifest.refs.map((ref) => readMarkdown(root, ref));
@@ -380,6 +466,16 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
   const reviewText = reviewRef ? readMarkdown(root, reviewRef) : "";
   const boundaryText = milestoneTexts.join("\n");
   const planningRole = role === "strategist" || role === "slice-planner" || role === "task-framer";
+  const verificationState = parsed.kind === "task" ? getTaskVerificationState(root, item.unit_id) : null;
+  const verificationPaths = parsed.kind === "task" ? getTaskVerificationPaths(item.unit_id) : null;
+  const implementationRefs =
+    verificationState?.implementation_run_id
+      ? [
+          getCanonicalRunPaths(verificationState.implementation_run_id).record_ref,
+          getCanonicalRunPaths(verificationState.implementation_run_id).normalized_ref,
+        ]
+      : [];
+  const requiredReviewers = verificationState?.required_reviewers ?? [];
 
   let taskArtifact: ReturnType<typeof loadTaskArtifact> | null = null;
   if (parsed.kind === "task" && parsed.milestone_id && parsed.slice_id && parsed.task_id) {
@@ -390,7 +486,7 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
     }
   }
 
-  const acceptanceCriteria = (
+  let acceptanceCriteria = (
     taskArtifact
       ? taskArtifact.acceptance_criteria
       : unique([
@@ -399,9 +495,9 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
         ])
   ).slice(0, 8);
 
-  const filesInScope = unique(
+  let filesInScope = unique(
     taskArtifact
-      ? [...taskArtifact.likely_files, ...resolved.unit, ...resolved.milestone]
+      ? [...taskArtifact.likely_files, ...resolved.unit, ...resolved.milestone, ...implementationRefs]
       : [
           ...texts.flatMap(extractCodeRefs),
           ...resolved.unit,
@@ -410,12 +506,12 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
         ],
   );
 
-  const tests = unique(
+  let tests = unique(
     taskArtifact
       ? taskArtifact.verification_plan.filter((entry) => /^(pnpm|npm|npx|vitest|tsx)\b/.test(entry))
       : texts.flatMap(extractCommands),
   );
-  const verificationPlan = unique(
+  let verificationPlan = unique(
     taskArtifact
       ? taskArtifact.verification_plan
       : [
@@ -426,11 +522,13 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
         ],
   );
 
-  const constraints = unique(
+  let constraints = unique(
     taskArtifact
       ? [
           `Why now: ${taskArtifact.why_now}`,
           `TDD mode: ${taskArtifact.tdd_mode}`,
+          ...(taskArtifact.tdd_justification ? [`TDD justification: ${taskArtifact.tdd_justification}`] : []),
+          ...(requiredReviewers.length > 0 ? [`Reviewer passes: ${requiredReviewers.join(", ")}`] : []),
           "Use disk-backed state and files as ground truth rather than prior chat context.",
           "Do not claim verified completion without evidence in the normalized result.",
         ]
@@ -447,7 +545,7 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
       ? "semi_reversible"
       : "reversible";
 
-  const artifactsToUpdate = unique(
+  let artifactsToUpdate = unique(
     taskArtifact
       ? [...expectedArtifactsForUnit(root, item.unit_id), "vault/assumptions.md"]
       : [
@@ -458,12 +556,65 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
         ],
   );
 
+  if (taskArtifact && verificationPaths && decision.unit_type === "verification") {
+    acceptanceCriteria = unique([
+      ...taskArtifact.acceptance_criteria,
+      `Write a machine-readable verification report to ${verificationPaths.verification_ref}.`,
+    ]);
+    filesInScope = unique([...filesInScope, verificationPaths.verification_ref]);
+    tests =
+      taskArtifact.verification_ladder.focused_tests.length > 0
+        ? [...taskArtifact.verification_ladder.focused_tests]
+        : tests;
+    verificationPlan = unique([
+      ...taskArtifact.verification_plan,
+      `Persist the verification verdict to ${verificationPaths.verification_ref}.`,
+    ]);
+    constraints = unique([
+      `TDD mode: ${taskArtifact.tdd_mode}`,
+      ...(taskArtifact.tdd_justification ? [`TDD justification: ${taskArtifact.tdd_justification}`] : []),
+      `Required reviewer passes: ${requiredReviewers.join(", ")}`,
+      "Inspect the latest successful implementation run before deciding whether the task can progress.",
+      `Write machine-readable JSON to ${verificationPaths.verification_ref}.`,
+    ]);
+    artifactsToUpdate = [verificationPaths.verification_ref];
+  }
+
+  if (taskArtifact && verificationPaths && decision.unit_type === "review") {
+    const reviewArtifactRef = reviewReportRef(item.unit_id, decision.reviewer_pass ?? "review");
+    acceptanceCriteria = unique([
+      ...taskArtifact.acceptance_criteria,
+      `Write a ${decision.reviewer_pass ?? "required"} review report to ${reviewArtifactRef}.`,
+    ]);
+    filesInScope = unique([...filesInScope, verificationPaths.verification_ref, reviewArtifactRef]);
+    tests =
+      taskArtifact.verification_ladder.focused_tests.length > 0
+        ? [...taskArtifact.verification_ladder.focused_tests]
+        : tests;
+    verificationPlan = unique([
+      `Inspect ${verificationPaths.verification_ref} before issuing findings.`,
+      ...taskArtifact.verification_plan,
+    ]);
+    constraints = unique([
+      `Reviewer pass: ${decision.reviewer_pass ?? "required"}`,
+      "Keep findings scoped to the requested reviewer persona.",
+      `Write machine-readable JSON to ${reviewArtifactRef}.`,
+      "Do not request another implementation pass unless a concrete finding remains unresolved.",
+    ]);
+    artifactsToUpdate = [reviewArtifactRef];
+  }
+
   const packet: DispatchPacket = {
     version: 1,
     unit_id: item.unit_id,
-    unit_type: item.unit_type,
+    unit_type: decision.unit_type ?? item.unit_type,
     role,
-    objective: taskArtifact?.objective ?? objective,
+    objective:
+      taskArtifact && verificationPaths && decision.unit_type === "verification"
+        ? `Verify ${item.unit_id} against its task contract, TDD mode, and recorded evidence.`
+        : taskArtifact && verificationPaths && decision.unit_type === "review"
+          ? `Review ${item.unit_id} from the ${decision.reviewer_pass ?? "required"} perspective.`
+          : taskArtifact?.objective ?? objective,
     context_refs: manifest.refs,
     acceptance_criteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : [taskArtifact?.objective ?? objective],
     files_in_scope:
@@ -483,6 +634,12 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
       notes: [
         "Return a machine-parseable JSON object.",
         "List blockers and assumptions explicitly instead of burying them in prose.",
+        ...(decision.unit_type === "verification" && verificationPaths
+          ? [`Update ${verificationPaths.verification_ref} before reporting success.`]
+          : []),
+        ...(decision.unit_type === "review" && decision.reviewer_pass
+          ? [`Update ${reviewReportRef(item.unit_id, decision.reviewer_pass)} before reporting success.`]
+          : []),
       ],
     },
     stop_conditions: [
@@ -526,7 +683,8 @@ function nextActionForUnit(
   registry: RuntimeRegistry,
 ): NextActionDecision {
   const routing = loadRoutingConfig(root);
-  const override = routing.task_class_overrides[item.unit_type] ?? {};
+  const executionTarget = resolveExecutionTarget(root, current, item);
+  const override = routing.task_class_overrides[executionTarget.decision_unit_type] ?? {};
   const latestRun = loadLatestCanonicalRunForUnit(root, item.unit_id);
   const retryCount = countRetries(root, item.unit_id);
 
@@ -546,6 +704,7 @@ function nextActionForUnit(
           retry_count: retryCount,
           selected_run_id: current.current_run_id,
           context_profile: current.context_profile,
+          reviewer_pass: executionTarget.reviewer_pass,
         };
       }
     } catch {
@@ -565,10 +724,11 @@ function nextActionForUnit(
       rationale: [
         `Latest attempt ${latestRun.run_id} was interrupted and the runtime supports resume.`,
         "Resume is preferred over creating a fresh attempt when the disk state still matches the same unit.",
-      ],
+        ],
       retry_count: retryCount,
       selected_run_id: latestRun.run_id,
       context_profile: current.context_profile,
+      reviewer_pass: executionTarget.reviewer_pass,
     };
   }
 
@@ -584,20 +744,21 @@ function nextActionForUnit(
       rationale: [
         `Latest attempt ${latestRun.run_id} reported a blocker.`,
         "Human input is required before safe continuation.",
-      ],
+        ],
       retry_count: retryCount,
       selected_run_id: latestRun.run_id,
       context_profile: current.context_profile,
+      reviewer_pass: executionTarget.reviewer_pass,
     };
   }
 
-  const maxRetries = MAX_RETRIES_BY_UNIT_TYPE[item.unit_type] ?? 1;
+  const maxRetries = MAX_RETRIES_BY_UNIT_TYPE[executionTarget.decision_unit_type] ?? 1;
   if (latestRun?.status === "failed" && retryCount >= maxRetries) {
     return {
       version: 1,
       action: "escalate",
       unit_id: item.unit_id,
-      unit_type: item.unit_type,
+      unit_type: executionTarget.decision_unit_type,
       phase: current.phase,
       role: null,
       runtime: null,
@@ -608,10 +769,11 @@ function nextActionForUnit(
       retry_count: retryCount,
       selected_run_id: latestRun.run_id,
       context_profile: current.context_profile,
+      reviewer_pass: executionTarget.reviewer_pass,
     };
   }
 
-  const role = override.preferred_role ?? defaultRoleForItem(root, current, item);
+  const role = override.preferred_role ?? executionTarget.role;
   const preferredRuntime = latestRun?.status === "failed" ? latestRun.runtime : override.preferred_runtime;
   const runtime = chooseRuntime(registry, preferredRuntime, role);
 
@@ -619,7 +781,7 @@ function nextActionForUnit(
     version: 1,
     action: latestRun?.status === "failed" ? "retry" : "dispatch",
     unit_id: item.unit_id,
-    unit_type: item.unit_type,
+    unit_type: executionTarget.decision_unit_type,
     phase: current.phase,
     role,
     runtime,
@@ -635,6 +797,7 @@ function nextActionForUnit(
     retry_count: retryCount,
     selected_run_id: latestRun?.run_id ?? null,
     context_profile: current.context_profile,
+    reviewer_pass: executionTarget.reviewer_pass,
   };
 
   validateNextActionDecision(decision);
@@ -660,6 +823,7 @@ export function synthesizeNextAction(root: string): NextActionShowResult {
         retry_count: 0,
         selected_run_id: current.current_run_id,
         context_profile: current.context_profile,
+        reviewer_pass: null,
       },
       context_manifest: null,
       packet: null,
@@ -681,6 +845,7 @@ export function synthesizeNextAction(root: string): NextActionShowResult {
         retry_count: 0,
         selected_run_id: current.current_run_id,
         context_profile: current.context_profile,
+        reviewer_pass: null,
       },
       context_manifest: null,
       packet: null,
@@ -700,8 +865,8 @@ export function synthesizeNextAction(root: string): NextActionShowResult {
   }
 
   const latestRun = loadLatestCanonicalRunForUnit(root, item.unit_id);
-  const manifest = buildContextManifest(root, current, item, latestRun);
-  const packet = buildDispatchPacket(root, item, decision.role, manifest);
+  const manifest = buildContextManifest(root, current, item, decision, latestRun);
+  const packet = buildDispatchPacket(root, item, decision, manifest);
   return {
     decision,
     context_manifest: manifest,
@@ -775,6 +940,45 @@ function updateMetrics(root: string, action: NextActionDecision["action"], resul
   saveCurrentState(root, nextState);
 }
 
+function completeTaskAndRefreshArtifacts(root: string, unitId: string): void {
+  const parsed = parseUnitId(unitId);
+  if (parsed.kind !== "task" || !parsed.milestone_id || !parsed.slice_id) {
+    throw new Error(`Task completion requires a task unit id, received ${unitId}.`);
+  }
+
+  transitionState(root, "complete_task", `Verified and reviewed ${unitId}.`, unitId, "next-action");
+  writeTaskCompletionArtifacts(root, unitId);
+  markQueueItemDone(root, unitId);
+
+  const afterQueue = loadCurrentState(root);
+  saveCurrentState(root, {
+    ...afterQueue,
+    last_verified_commit: afterQueue.git.head_commit,
+    metrics: {
+      ...afterQueue.metrics,
+      completed_tasks: afterQueue.metrics.completed_tasks + 1,
+    },
+  });
+
+  const queue = loadQueueState(root);
+  const remainingSliceTasks = queue.items.some((item) =>
+    item.unit_type === "task" &&
+    item.unit_id !== unitId &&
+    item.milestone_id === parsed.milestone_id &&
+    item.slice_id === parsed.slice_id &&
+    item.status !== "done",
+  );
+
+  if (!remainingSliceTasks) {
+    transitionState(root, "complete_slice", `All tasks in ${parsed.milestone_id}/${parsed.slice_id} are complete.`, unitId, "next-action");
+    refreshSliceSummary(root, unitId);
+    generateSliceUat(root, `${parsed.milestone_id}/${parsed.slice_id}`);
+  }
+
+  transitionState(root, "reassess", `Completion artifacts refreshed for ${unitId}.`, unitId, "next-action");
+  transitionState(root, "plan", `Ready to continue after completing ${unitId}.`, unitId, "next-action");
+}
+
 function updateStateAfterResult(root: string, runId: string, decision: NextActionDecision, result: NormalizedResult): void {
   const unitId = decision.unit_id;
   if (!unitId) {
@@ -805,11 +1009,46 @@ function updateStateAfterResult(root: string, runId: string, decision: NextActio
       } else {
         transitionState(root, "plan", `Run ${runId} completed planning for ${unitId}.`, unitId, "next-action");
       }
-    } else {
-      const current = loadCurrentState(root);
-      if (current.phase !== "implement") {
-        transitionState(root, "implement", `Run ${runId} completed and awaits verification.`, unitId, "next-action");
+    } else if (decision.unit_type === "task") {
+      transitionState(root, "verify", `Run ${runId} completed implementation for ${unitId}.`, unitId, "next-action");
+    } else if (decision.unit_type === "verification") {
+      const verificationState = getTaskVerificationState(root, unitId);
+      if (!verificationState.verification) {
+        transitionState(root, "recover", `Run ${runId} reported verification success without verification.json for ${unitId}.`, unitId, "next-action");
+      } else if (verificationState.verification.verdict === "blocked") {
+        transitionState(root, "blocked", `Verification for ${unitId} requires a blocker resolution.`, unitId, "next-action");
+      } else if (verificationState.verification.verdict === "pass") {
+        transitionState(root, "review", `Verification passed for ${unitId}.`, unitId, "next-action");
+      } else {
+        transitionState(root, "implement", `Verification requested implementation changes for ${unitId}.`, unitId, "next-action");
       }
+    } else if (decision.unit_type === "review") {
+      const verificationState = getTaskVerificationState(root, unitId);
+      const matchingReview = decision.reviewer_pass
+        ? verificationState.reviews
+            .filter((review) => review.persona === decision.reviewer_pass)
+            .at(-1) ?? null
+        : null;
+
+      if (!matchingReview) {
+        transitionState(
+          root,
+          "recover",
+          `Run ${runId} reported review success without ${decision.reviewer_pass ?? "review"} report for ${unitId}.`,
+          unitId,
+          "next-action",
+        );
+      } else if (matchingReview.verdict === "blocked") {
+        transitionState(root, "blocked", `Review ${matchingReview.persona} blocked ${unitId}.`, unitId, "next-action");
+      } else if (matchingReview.verdict === "changes_requested") {
+        transitionState(root, "implement", `Review ${matchingReview.persona} requested changes for ${unitId}.`, unitId, "next-action");
+      } else if (verificationState.pending_reviewers.length > 0) {
+        transitionState(root, "review", `Continue reviewer passes for ${unitId}.`, unitId, "next-action");
+      } else {
+        completeTaskAndRefreshArtifacts(root, unitId);
+      }
+    } else {
+      transitionState(root, "implement", `Run ${runId} completed and awaits verification.`, unitId, "next-action");
     }
   } else if (result.status === "blocked") {
     transitionState(root, "blocked", `Run ${runId} reported a blocker.`, unitId, "next-action");
@@ -896,6 +1135,7 @@ function createRunningRecord(
     assumptions: [],
     verification_evidence: [],
     followups: [],
+    reviewer_pass: decision.reviewer_pass,
   };
   saveCanonicalRunRecord(root, record);
   return record;
@@ -966,6 +1206,7 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
     assumptions: [...dispatched.result.assumptions],
     verification_evidence: [...dispatched.result.verification_evidence],
     followups: [...dispatched.result.followups],
+    reviewer_pass: preview.decision.reviewer_pass,
   };
   saveCanonicalRunRecord(root, record);
   updateStateAfterResult(root, runId, preview.decision, dispatched.result);
@@ -989,6 +1230,7 @@ export function formatNextActionShow(result: NextActionShowResult): string {
     `Unit: ${result.decision.unit_id ?? "none"}`,
     `Runtime: ${result.decision.runtime ?? "none"}`,
     `Role: ${result.decision.role ?? "none"}`,
+    ...(result.decision.reviewer_pass ? [`Reviewer: ${result.decision.reviewer_pass}`] : []),
     "",
     "Rationale:",
     ...result.decision.rationale.map((entry) => `- ${entry}`),

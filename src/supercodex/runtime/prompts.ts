@@ -4,6 +4,7 @@ export function renderDispatchPrompt(packet: DispatchPacket): string {
   return [
     "You are executing one SUPER_CODEX dispatch packet.",
     "Follow the packet exactly and return JSON only.",
+    "Update any listed artifacts before you report success.",
     "Return a JSON object with these fields:",
     '- `status`: "success" | "failed" | "blocked" | "interrupted"',
     "- `summary`: concise result summary",
