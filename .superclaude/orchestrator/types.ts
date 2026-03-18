@@ -190,6 +190,124 @@ export interface SessionReport {
   totalCost: number;
 }
 
+// ─── Sub-Agent System ───────────────────────────────────────────
+
+export type AgentRole =
+  | "architect"
+  | "implementer"
+  | "tester"
+  | "reviewer"
+  | "researcher"
+  | "doctor"
+  | "scribe"
+  | "evolver";
+
+export type ReviewPersona =
+  | "correctness"
+  | "architecture"
+  | "typescript"
+  | "performance"
+  | "security"
+  | "testability";
+
+export type ReviewSeverity = "MUST-FIX" | "SHOULD-FIX" | "CONSIDER";
+
+export interface ReviewIssue {
+  persona: ReviewPersona;
+  severity: ReviewSeverity;
+  description: string;
+  file: string | null;
+  line: number | null;
+  suggestion: string | null;
+}
+
+export interface ReviewResult {
+  persona: ReviewPersona;
+  issues: ReviewIssue[];
+  summary: string;
+}
+
+export interface AgentDefinition {
+  role: AgentRole;
+  skillPath: string;
+  vaultAccess: string[];
+  description: string;
+}
+
+export interface AgentInvocation {
+  agent: AgentRole;
+  prompt: string;
+  scopeGuard: string[];
+  tokenBudget: number;
+}
+
+export interface AgentOutput {
+  agent: AgentRole;
+  success: boolean;
+  content: string;
+  issues: ReviewIssue[];
+}
+
+export const AGENT_DEFINITIONS: Record<AgentRole, AgentDefinition> = {
+  architect: {
+    role: "architect",
+    skillPath: ".superclaude/skills/architect/SKILL.md",
+    vaultAccess: ["architecture/", "decisions/", "contracts/", "patterns/"],
+    description: "System design, interface contracts, boundary maps",
+  },
+  implementer: {
+    role: "implementer",
+    skillPath: ".superclaude/skills/implementer/SKILL.md",
+    vaultAccess: ["patterns/", "testing/", "contracts/"],
+    description: "TDD code writing — the main workhorse",
+  },
+  tester: {
+    role: "tester",
+    skillPath: ".superclaude/skills/tester/SKILL.md",
+    vaultAccess: ["testing/", "patterns/"],
+    description: "Test strategy, test writing, coverage analysis, UAT generation",
+  },
+  reviewer: {
+    role: "reviewer",
+    skillPath: ".superclaude/skills/reviewer/SKILL.md",
+    vaultAccess: ["patterns/", "architecture/", "decisions/", "learnings/"],
+    description: "Code review from 6 personas: correctness, architecture, typescript, performance, security, testability",
+  },
+  researcher: {
+    role: "researcher",
+    skillPath: ".superclaude/skills/researcher/SKILL.md",
+    vaultAccess: ["architecture/"],
+    description: "Codebase scouting, library docs, web research",
+  },
+  doctor: {
+    role: "doctor",
+    skillPath: ".superclaude/skills/doctor/SKILL.md",
+    vaultAccess: ["learnings/", "patterns/", "architecture/"],
+    description: "Debugging, error diagnosis, failure analysis",
+  },
+  scribe: {
+    role: "scribe",
+    skillPath: ".superclaude/skills/scribe/SKILL.md",
+    vaultAccess: ["architecture/", "patterns/", "decisions/", "learnings/", "playbooks/", "contracts/", "testing/"],
+    description: "Documentation, summaries, changelogs, ADRs",
+  },
+  evolver: {
+    role: "evolver",
+    skillPath: ".superclaude/skills/evolver/SKILL.md",
+    vaultAccess: ["architecture/", "patterns/", "decisions/", "learnings/", "playbooks/", "contracts/", "testing/"],
+    description: "System self-improvement — the meta-agent",
+  },
+};
+
+export const REVIEW_PERSONAS: ReviewPersona[] = [
+  "correctness",
+  "architecture",
+  "typescript",
+  "performance",
+  "security",
+  "testability",
+];
+
 // ─── Orchestrator Config ─────────────────────────────────────────
 
 export interface OrchestratorConfig {

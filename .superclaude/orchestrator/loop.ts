@@ -13,7 +13,10 @@ import { parseArgs, getProjectRoot } from "./config.ts";
 import { readState, writeState, determineNextAction, advanceTDDPhase } from "./state.ts";
 import { assembleContext } from "./context.ts";
 import { buildPrompt } from "./prompt-builder.ts";
-import type { OrchestratorConfig, ProjectState } from "./types.ts";
+import { enforceTDDPhase } from "./tdd.ts";
+import { verifyMustHaves } from "./verify.ts";
+import type { OrchestratorConfig, ProjectState, TDDSequence, TaskPlan } from "./types.ts";
+import { PATHS } from "./types.ts";
 
 // ─── Main ────────────────────────────────────────────────────────
 
@@ -82,11 +85,41 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       break;
     }
 
-    // 7. Update state
+    // 7. TDD enforcement (only during EXECUTE_TASK)
+    if (state.phase === "EXECUTE_TASK" && state.tddSubPhase) {
+      const tddResult = await runTDDEnforcement(projectRoot, state);
+      if (tddResult !== null && !tddResult.passed) {
+        console.log(`  TDD FAIL: ${tddResult.message}`);
+        // Don't advance state — retry this phase
+        continue;
+      }
+      if (tddResult !== null) {
+        console.log(`  TDD OK: ${tddResult.message}`);
+      }
+    }
+
+    // 8. Static verification (during VERIFY sub-phase)
+    if (state.phase === "EXECUTE_TASK" && state.tddSubPhase === "VERIFY") {
+      const verifyResult = await runStaticVerification(projectRoot, state);
+      if (verifyResult !== null && !verifyResult.passed) {
+        const failures = verifyResult.checks.filter((c) => !c.passed);
+        console.log(`  VERIFY FAIL: ${failures.length} check(s) failed`);
+        for (const f of failures) {
+          console.log(`    ✗ ${f.name}: ${f.message}`);
+        }
+        // Don't advance state — the agent needs to fix issues
+        continue;
+      }
+      if (verifyResult !== null) {
+        console.log(`  VERIFY OK: all ${verifyResult.checks.length} static checks passed`);
+      }
+    }
+
+    // 9. Update state
     const newState = computeNextState(state, nextAction);
     await writeState(projectRoot, newState);
 
-    // 8. Estimate cost (rough)
+    // 10. Estimate cost (rough)
     const promptTokens = Math.ceil(prompt.length / 4);
     const outputTokens = Math.ceil((result.output?.length ?? 0) / 4);
     const stepCost = (promptTokens * 3 + outputTokens * 15) / 1_000_000; // Rough Opus pricing
@@ -164,6 +197,70 @@ function computeNextState(
   }
 
   return next;
+}
+
+// ─── TDD & Verification Helpers ─────────────────────────────────
+
+async function loadTaskPlan(
+  projectRoot: string,
+  state: ProjectState
+): Promise<TaskPlan | null> {
+  const { currentMilestone: m, currentSlice: s, currentTask: t } = state;
+  if (!m || !s || !t) return null;
+
+  const planPath = `${projectRoot}/${PATHS.taskPath(m, s, t)}/PLAN.md`;
+  const file = Bun.file(planPath);
+  if (!(await file.exists())) return null;
+
+  // Return a minimal TaskPlan with TDD sequence extracted from the plan
+  // In a full implementation, this would parse the PLAN.md frontmatter and body
+  return {
+    task: t,
+    slice: s,
+    milestone: m,
+    status: "in_progress",
+    goal: "",
+    steps: [],
+    mustHaves: { truths: [], artifacts: [], keyLinks: [] },
+    mustNotHaves: [],
+    tddSequence: { testFiles: [], testCases: [], implementationFiles: [] },
+  };
+}
+
+async function runTDDEnforcement(
+  projectRoot: string,
+  state: ProjectState
+): Promise<{ passed: boolean; message: string } | null> {
+  if (!state.tddSubPhase) return null;
+
+  const taskPlan = await loadTaskPlan(projectRoot, state);
+  if (!taskPlan) return null;
+
+  // If TDD sequence is empty (no test files specified), skip enforcement
+  if (taskPlan.tddSequence.testFiles.length === 0) return null;
+
+  const result = await enforceTDDPhase(
+    state.tddSubPhase,
+    projectRoot,
+    taskPlan.tddSequence
+  );
+
+  return { passed: result.passed, message: result.message };
+}
+
+async function runStaticVerification(
+  projectRoot: string,
+  state: ProjectState
+): Promise<{ passed: boolean; checks: Array<{ passed: boolean; name: string; message: string }> } | null> {
+  const taskPlan = await loadTaskPlan(projectRoot, state);
+  if (!taskPlan) return null;
+
+  // If no artifacts defined, skip verification
+  if (taskPlan.mustHaves.artifacts.length === 0 && taskPlan.mustHaves.keyLinks.length === 0) {
+    return null;
+  }
+
+  return await verifyMustHaves(projectRoot, taskPlan.mustHaves);
 }
 
 // ─── Status Display ──────────────────────────────────────────────
