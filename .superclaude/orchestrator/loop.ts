@@ -12,7 +12,7 @@
  */
 
 import { parseArgs, getProjectRoot } from "./config.ts";
-import { readState, writeState, determineNextAction, advanceTDDPhase } from "./state.ts";
+import { readState, writeState, determineNextAction, determineNextActionEnhanced, advanceTDDPhase } from "./state.ts";
 import { assembleContext } from "./context.ts";
 import { buildPrompt } from "./prompt-builder.ts";
 import { enforceTDDPhase } from "./tdd.ts";
@@ -50,6 +50,9 @@ import {
   endSession,
   writeSessionReport,
 } from "./session.ts";
+import { computePressure, formatPressureStatus, shouldSkipRefactor } from "./budget-pressure.ts";
+import { processDiscussOutput, processResearchOutput, processReassessOutput } from "./phase-handlers.ts";
+import { assembleDashboard, renderDashboard, writeDashboard } from "./dashboard.ts";
 import type { OrchestratorConfig, ProjectState, TaskPlan } from "./types.ts";
 import { PATHS } from "./types.ts";
 
@@ -112,8 +115,17 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     const currentState = await readState(projectRoot);
     console.log(`[${iterations}] Phase: ${currentState.phase} | TDD: ${currentState.tddSubPhase ?? "n/a"} | M:${currentState.currentMilestone ?? "-"} S:${currentState.currentSlice ?? "-"} T:${currentState.currentTask ?? "-"}`);
 
-    // 2. Determine next action
-    const nextAction = await determineNextAction(projectRoot, currentState);
+    // 2. Determine next action (with budget pressure awareness)
+    const pressure = computePressure({
+      currentCost: costTracker.totalCost,
+      budgetCeiling: config.budgetCeiling,
+    });
+    const nextAction = await determineNextActionEnhanced(projectRoot, currentState, pressure);
+
+    // Log budget pressure tier changes
+    if (iterations === 1 || iterations % 10 === 0) {
+      console.log(`  ${formatPressureStatus(pressure)}`);
+    }
 
     if (nextAction.phase === "IDLE" && nextAction.description.includes("waiting")) {
       console.log("[SUPER_CLAUDE] No more work to do. Stopping.");
@@ -299,14 +311,29 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       session.tasksCompleted.push(`${currentState.currentSlice}/${currentState.currentTask}: ${nextAction.description}`);
     }
 
-    // 14. Update state
-    const newState = computeNextState(currentState, nextAction);
+    // 14. Process phase-specific output (DISCUSS, RESEARCH, REASSESS)
+    if (result.output) {
+      if (currentState.phase === "DISCUSS" && currentState.currentMilestone) {
+        const discussResult = await processDiscussOutput(projectRoot, currentState.currentMilestone, result.output);
+        console.log(`  Discuss: ${discussResult.grayAreasCount} gray areas, ${discussResult.decisionsCount} decisions`);
+      } else if (currentState.phase === "RESEARCH" && currentState.currentMilestone) {
+        const researchResult = await processResearchOutput(projectRoot, currentState.currentMilestone, result.output);
+        console.log(`  Research: ${researchResult.dontHandRollCount} don't-hand-roll, ${researchResult.pitfallsCount} pitfalls`);
+      } else if (currentState.phase === "REASSESS" && currentState.currentMilestone) {
+        const reassessResult = await processReassessOutput(projectRoot, currentState.currentMilestone, result.output);
+        console.log(`  Reassess: ${reassessResult.changes.length} changes proposed, roadmap ${reassessResult.roadmapUpdated ? "updated" : "unchanged"}`);
+      }
+    }
+
+    // 15. Update state
+    const skipRefactor = shouldSkipRefactor(pressure);
+    const newState = computeNextState(currentState, nextAction, skipRefactor);
     await writeState(projectRoot, newState);
 
-    // 15. Release lock
+    // 16. Release lock
     await releaseLock(projectRoot);
 
-    // 16. Track cost
+    // 17. Track cost
     const promptTokens = Math.ceil(prompt.length / 4);
     const outputTokens = Math.ceil((result.output?.length ?? 0) / 4);
     const stepCost = estimateCost(promptTokens, outputTokens);
@@ -333,9 +360,19 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   await writeSessionReport(projectRoot, finalSession);
   await writeCostTracker(projectRoot, costTracker);
 
+  // Generate and write dashboard
+  try {
+    const dashboardData = await assembleDashboard(projectRoot, costTracker, config.budgetCeiling);
+    await writeDashboard(projectRoot, dashboardData);
+    console.log(renderDashboard(dashboardData));
+  } catch {
+    // Dashboard generation is best-effort
+  }
+
   console.log(`[SUPER_CLAUDE] Loop complete. ${iterations} iterations, ~$${costTracker.totalCost.toFixed(2)} total.`);
   console.log(`  Session report: .superclaude/history/session-${sessionId}.md`);
   console.log(`  Cost tracker: .superclaude/history/metrics/cost-tracker-${sessionId}.md`);
+  console.log(`  Dashboard: .superclaude/state/DASHBOARD.md`);
 }
 
 // ─── Single Step ─────────────────────────────────────────────────
@@ -396,13 +433,20 @@ async function invokeClaudeHeadless(
 
 function computeNextState(
   current: ProjectState,
-  action: { phase: string; tddSubPhase: string | null }
+  action: { phase: string; tddSubPhase: string | null },
+  skipRefactor: boolean = false
 ): ProjectState {
   const next = { ...current, lastUpdated: new Date().toISOString() };
 
   // If we're in EXECUTE_TASK, advance TDD sub-phase
   if (current.phase === "EXECUTE_TASK" && current.tddSubPhase) {
-    const nextTDD = advanceTDDPhase(current.tddSubPhase);
+    let nextTDD = advanceTDDPhase(current.tddSubPhase);
+
+    // Skip REFACTOR if budget pressure says so
+    if (nextTDD === "REFACTOR" && skipRefactor) {
+      nextTDD = advanceTDDPhase("REFACTOR"); // Jump to VERIFY
+    }
+
     if (nextTDD === null) {
       // Task complete → move to next task or COMPLETE_SLICE
       next.tddSubPhase = null;
@@ -410,6 +454,10 @@ function computeNextState(
     } else {
       next.tddSubPhase = nextTDD;
     }
+  } else if (action.phase !== current.phase) {
+    // Phase transition from enhanced state machine
+    next.phase = action.phase as ProjectState["phase"];
+    next.tddSubPhase = action.tddSubPhase as ProjectState["tddSubPhase"];
   }
 
   return next;
@@ -478,15 +526,22 @@ async function runStaticVerification(
 // ─── Status Display ──────────────────────────────────────────────
 
 async function printStatus(projectRoot: string) {
-  const state = await readState(projectRoot);
-  console.log("\n--- Current State ---");
-  console.log(`Phase:     ${state.phase}`);
-  console.log(`TDD:       ${state.tddSubPhase ?? "n/a"}`);
-  console.log(`Milestone: ${state.currentMilestone ?? "none"}`);
-  console.log(`Slice:     ${state.currentSlice ?? "none"}`);
-  console.log(`Task:      ${state.currentTask ?? "none"}`);
-  console.log(`Updated:   ${state.lastUpdated}`);
-  console.log("--------------------\n");
+  try {
+    const config = parseArgs([]);
+    const dashboardData = await assembleDashboard(projectRoot, null, config.budgetCeiling);
+    console.log(renderDashboard(dashboardData));
+  } catch {
+    // Fallback to basic status
+    const state = await readState(projectRoot);
+    console.log("\n--- Current State ---");
+    console.log(`Phase:     ${state.phase}`);
+    console.log(`TDD:       ${state.tddSubPhase ?? "n/a"}`);
+    console.log(`Milestone: ${state.currentMilestone ?? "none"}`);
+    console.log(`Slice:     ${state.currentSlice ?? "none"}`);
+    console.log(`Task:      ${state.currentTask ?? "none"}`);
+    console.log(`Updated:   ${state.lastUpdated}`);
+    console.log("--------------------\n");
+  }
 }
 
 // ─── Entry Point ─────────────────────────────────────────────────

@@ -4,6 +4,15 @@
  */
 
 import { PATHS, type Phase, type ProjectState, type TDDSubPhase } from "./types.ts";
+import {
+  findNextMilestone,
+  findNextSlice,
+  findNextTask,
+  isSliceComplete,
+  isMilestoneComplete,
+} from "./milestone-manager.ts";
+import { isDiscussNeeded, isResearchNeeded, isPhaseArtifactComplete } from "./phase-handlers.ts";
+import { shouldSkipPhase, type PressurePolicy } from "./budget-pressure.ts";
 
 const STATE_PATH = PATHS.stateFile;
 
@@ -126,6 +135,184 @@ export async function determineNextAction(
     default:
       return { phase: "IDLE", tddSubPhase: null, description: "Unknown state — reset to IDLE" };
   }
+}
+
+/**
+ * Enhanced next action that integrates multi-milestone support and budget pressure.
+ * Falls through phases intelligently: IDLE → DISCUSS → RESEARCH → PLAN → EXECUTE → COMPLETE.
+ */
+export async function determineNextActionEnhanced(
+  projectRoot: string,
+  state: ProjectState,
+  pressure: PressurePolicy | null
+): Promise<NextAction> {
+  switch (state.phase) {
+    case "IDLE":
+      return await handleIdleEnhanced(projectRoot, state, pressure);
+
+    case "DISCUSS":
+      // Check if discuss has produced its artifact
+      if (state.currentMilestone) {
+        const complete = await isPhaseArtifactComplete(projectRoot, "DISCUSS", state.currentMilestone);
+        if (complete) {
+          // Move to RESEARCH or skip it
+          if (pressure && shouldSkipPhase("RESEARCH", pressure)) {
+            return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "Skip research (budget pressure) — plan milestone" };
+          }
+          return { phase: "RESEARCH", tddSubPhase: null, description: "Discuss complete — start research" };
+        }
+      }
+      return { phase: "DISCUSS", tddSubPhase: null, description: "Continue discuss phase" };
+
+    case "RESEARCH":
+      if (state.currentMilestone) {
+        const complete = await isPhaseArtifactComplete(projectRoot, "RESEARCH", state.currentMilestone);
+        if (complete) {
+          return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "Research complete — plan milestone" };
+        }
+      }
+      return { phase: "RESEARCH", tddSubPhase: null, description: "Continue research phase" };
+
+    case "PLAN_MILESTONE":
+      if (state.currentMilestone) {
+        const complete = await isPhaseArtifactComplete(projectRoot, "PLAN_MILESTONE", state.currentMilestone);
+        if (complete) {
+          // Find first slice to plan
+          const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+          if (nextSlice) {
+            return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Milestone planned — plan slice ${nextSlice}` };
+          }
+        }
+      }
+      return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "Plan milestone" };
+
+    case "PLAN_SLICE":
+      return { phase: "PLAN_SLICE", tddSubPhase: null, description: "Plan slice" };
+
+    case "EXECUTE_TASK":
+      return handleExecuteTask(state);
+
+    case "COMPLETE_SLICE":
+      return await handleCompleteSliceEnhanced(projectRoot, state, pressure);
+
+    case "REASSESS":
+      return await handleReassessEnhanced(projectRoot, state);
+
+    case "COMPLETE_MILESTONE":
+      return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "Complete milestone" };
+
+    default:
+      return { phase: "IDLE", tddSubPhase: null, description: "Unknown state — reset to IDLE" };
+  }
+}
+
+async function handleIdleEnhanced(
+  projectRoot: string,
+  state: ProjectState,
+  pressure: PressurePolicy | null
+): Promise<NextAction> {
+  // If a milestone is set, navigate into it
+  if (state.currentMilestone) {
+    // Check if milestone is fully complete
+    const milestoneComplete = await isMilestoneComplete(projectRoot, state.currentMilestone);
+    if (milestoneComplete) {
+      return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: `Milestone ${state.currentMilestone} complete — finalize` };
+    }
+
+    // Check if discuss is needed
+    if (await isDiscussNeeded(projectRoot, state.currentMilestone)) {
+      if (pressure && shouldSkipPhase("DISCUSS", pressure)) {
+        // Skip discuss due to budget pressure
+      } else {
+        return { phase: "DISCUSS", tddSubPhase: null, description: "No context — start discuss phase" };
+      }
+    }
+
+    // Check if research is needed
+    if (await isResearchNeeded(projectRoot, state.currentMilestone)) {
+      if (pressure && shouldSkipPhase("RESEARCH", pressure)) {
+        // Skip research due to budget pressure
+      } else {
+        return { phase: "RESEARCH", tddSubPhase: null, description: "No research — start research phase" };
+      }
+    }
+
+    // Check for roadmap
+    const roadmapPath = `${projectRoot}/${PATHS.milestonePath(state.currentMilestone)}/ROADMAP.md`;
+    const roadmapFile = Bun.file(roadmapPath);
+    if (await roadmapFile.exists()) {
+      const content = await roadmapFile.text();
+      if (content.includes("_To be planned during PLAN_MILESTONE phase._")) {
+        return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "No roadmap — plan milestone" };
+      }
+    } else {
+      return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "No roadmap — plan milestone" };
+    }
+
+    // Find next slice to work on
+    const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+    if (nextSlice) {
+      // Find next task in this slice
+      const nextTask = await findNextTask(projectRoot, state.currentMilestone, nextSlice);
+      if (nextTask) {
+        return {
+          phase: "EXECUTE_TASK",
+          tddSubPhase: "RED",
+          description: `Execute ${nextSlice}/${nextTask}`,
+        };
+      }
+      // Slice has no pending tasks — might need planning
+      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Plan slice ${nextSlice}` };
+    }
+  }
+
+  // No milestone set — try to find one
+  const nextMilestone = await findNextMilestone(projectRoot);
+  if (nextMilestone) {
+    return { phase: "IDLE", tddSubPhase: null, description: `Found milestone ${nextMilestone} — set it as current to begin` };
+  }
+
+  return { phase: "IDLE", tddSubPhase: null, description: "No work to do — waiting for instructions" };
+}
+
+async function handleCompleteSliceEnhanced(
+  projectRoot: string,
+  state: ProjectState,
+  pressure: PressurePolicy | null
+): Promise<NextAction> {
+  if (!state.currentMilestone) {
+    return { phase: "IDLE", tddSubPhase: null, description: "No milestone — return to IDLE" };
+  }
+
+  // After slice completion, reassess (unless budget pressure says skip)
+  if (pressure && shouldSkipPhase("REASSESS", pressure)) {
+    // Skip reassess — go directly to next slice
+    const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+    if (nextSlice) {
+      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Skip reassess — plan next slice ${nextSlice}` };
+    }
+    return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "All slices done — complete milestone" };
+  }
+
+  return { phase: "REASSESS", tddSubPhase: null, description: "Slice complete — reassess roadmap" };
+}
+
+async function handleReassessEnhanced(
+  projectRoot: string,
+  state: ProjectState
+): Promise<NextAction> {
+  if (!state.currentMilestone) {
+    return { phase: "IDLE", tddSubPhase: null, description: "No milestone — return to IDLE" };
+  }
+
+  // After reassess, find next slice
+  const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+  if (nextSlice) {
+    return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Reassess complete — plan next slice ${nextSlice}` };
+  }
+
+  // All slices done
+  return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "All slices complete — finalize milestone" };
 }
 
 async function handleIdle(projectRoot: string, state: ProjectState): Promise<NextAction> {
