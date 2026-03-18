@@ -308,6 +308,119 @@ export const REVIEW_PERSONAS: ReviewPersona[] = [
   "testability",
 ];
 
+// ─── Postmortem Protocol ─────────────────────────────────────────
+
+export type PostmortemFrequency = "rare" | "occasional" | "frequent";
+export type PostmortemImpact = "minor" | "moderate" | "severe";
+export type PostmortemEffort = "trivial" | "moderate" | "significant";
+export type PostmortemRecommendation = "fix-now" | "fix-soon" | "defer";
+
+export interface PostmortemFailure {
+  what: string;
+  when: string;       // task/slice/phase identifier
+  impact: string;
+}
+
+export interface PostmortemRootCause {
+  contextPresent: string[];
+  contextMissing: string[];
+  unclearDoc: string | null;
+  ambiguousSkill: string | null;
+  missingTest: string | null;
+  missingVerification: string | null;
+}
+
+export interface PostmortemFix {
+  type: "vault-doc" | "skill-instruction" | "test-pattern" | "verification-check";
+  target: string;      // file path or identifier
+  description: string;
+  before: string | null;
+  after: string | null;
+  reason: string;
+}
+
+export interface PostmortemSeverity {
+  frequency: PostmortemFrequency;
+  impact: PostmortemImpact;
+  effort: PostmortemEffort;
+  recommendation: PostmortemRecommendation;
+}
+
+export interface PostmortemReport {
+  id: string;                // e.g. "PM-001"
+  timestamp: string;         // ISO
+  session: string;           // session that triggered it
+  failure: PostmortemFailure;
+  rootCause: PostmortemRootCause;
+  proposedFixes: PostmortemFix[];
+  severity: PostmortemSeverity;
+  status: "proposed" | "approved" | "applied" | "rejected";
+}
+
+// ─── Metrics & Trend Analysis ───────────────────────────────────
+
+export interface SessionMetrics {
+  session: string;
+  timestamp: string;
+  tasksAttempted: number;
+  tasksCompleted: number;
+  tasksFailed: number;
+  testsWritten: number;
+  testsPassing: number;
+  testsFailing: number;
+  reviewIssues: Record<ReviewSeverity, number>;
+  postmortemsGenerated: number;
+  tokenUsage: Record<string, number>;  // phase → tokens
+  costPerPhase: Record<string, number>;
+  totalCost: number;
+  timePerTask: Record<string, number>; // task → ms
+}
+
+export type TrendDirection = "improving" | "stable" | "degrading";
+
+export interface TrendPoint {
+  session: string;
+  value: number;
+}
+
+export interface TrendAnalysis {
+  metric: string;
+  direction: TrendDirection;
+  current: number;
+  previous: number;
+  percentChange: number;
+  dataPoints: TrendPoint[];
+}
+
+export interface MetricsSummary {
+  sessions: number;
+  latestSession: string;
+  trends: TrendAnalysis[];
+  compoundingScore: number;  // 0-100, are things getting better?
+}
+
+// ─── Evolver Proposals ──────────────────────────────────────────
+
+export type ProposalStatus = "pending" | "approved" | "applied" | "rejected";
+
+export interface EvolverProposal {
+  id: string;                // e.g. "EVO-001"
+  postmortemId: string;      // linked postmortem
+  timestamp: string;
+  fix: PostmortemFix;
+  status: ProposalStatus;
+  reviewNotes: string | null;
+  appliedAt: string | null;
+}
+
+export interface EvolverResult {
+  proposalsGenerated: number;
+  proposalsApplied: number;
+  vaultDocsUpdated: string[];
+  skillsUpdated: string[];
+  newLearnings: string[];
+}
+
 // ─── Orchestrator Config ─────────────────────────────────────────
 
 export interface OrchestratorConfig {
