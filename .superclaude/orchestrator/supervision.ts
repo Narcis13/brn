@@ -37,7 +37,16 @@ export const DEFAULT_TIMEOUTS: TimeoutConfig = {
 
 /**
  * Check which timeout tier has been exceeded.
- * Returns: "none" | "soft" | "idle" | "hard"
+ * Returns: "none" | "idle" | "soft" | "hard"
+ *
+ * Tiers are checked from most severe to least severe, producing distinct ranges:
+ *   - [0, idle)     → "none"
+ *   - [idle, soft)  → "idle"
+ *   - [soft, hard)  → "soft"
+ *   - [hard, ∞)     → "hard"
+ *
+ * GAP-12 note: The check order hard → soft → idle is correct because
+ * hard > soft > idle in the default config. Each tier is reachable.
  */
 export function checkTimeout(
   elapsedMs: number,

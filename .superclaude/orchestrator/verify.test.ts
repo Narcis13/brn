@@ -6,6 +6,9 @@ import {
   verifyImportLink,
   detectStubs,
   verifyMustHaves,
+  runTypeCheck,
+  runLinter,
+  runCommandVerification,
 } from "./verify.ts";
 import type { MustHaves } from "./types.ts";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -353,5 +356,42 @@ export function login() { return generateToken(); }
     const result = await verifyMustHaves(TEST_ROOT, mustHaves);
     expect(result.passed).toBe(false);
     expect(result.checks.some((c) => !c.passed && c.name.includes("stub"))).toBe(true);
+  });
+});
+
+// ─── Command-Tier Verification (GAP-10) ─────────────────────────
+
+describe("runTypeCheck", () => {
+  test("returns a VerificationCheck with type 'command'", async () => {
+    // Runs on the actual project root — should have a tsconfig.json
+    const result = await runTypeCheck(TEST_ROOT);
+    expect(result.type).toBe("command");
+    expect(result.name).toBe("typecheck:tsc");
+    // May pass or fail depending on project state — just check structure
+    expect(typeof result.passed).toBe("boolean");
+    expect(typeof result.message).toBe("string");
+  });
+});
+
+describe("runLinter", () => {
+  test("returns a VerificationCheck with type 'command'", async () => {
+    const result = await runLinter(TEST_ROOT);
+    expect(result.type).toBe("command");
+    expect(result.name).toMatch(/^lint:/);
+    expect(typeof result.passed).toBe("boolean");
+    expect(typeof result.message).toBe("string");
+  });
+});
+
+describe("runCommandVerification", () => {
+  test("returns array with typecheck and lint results", async () => {
+    const results = await runCommandVerification(TEST_ROOT);
+    expect(results.length).toBe(2);
+    expect(results[0]!.name).toBe("typecheck:tsc");
+    expect(results[1]!.name).toMatch(/^lint:/);
+    // Both should be command-tier checks
+    for (const r of results) {
+      expect(r.type).toBe("command");
+    }
   });
 });

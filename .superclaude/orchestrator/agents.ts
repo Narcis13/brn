@@ -111,13 +111,36 @@ export async function getVaultDocsForAgent(
   return docs;
 }
 
+// ─── SKILL.md Loading ────────────────────────────────────────────
+
+export async function loadSkillContent(
+  projectRoot: string,
+  role: AgentRole
+): Promise<string | null> {
+  const definition = AGENT_DEFINITIONS[role];
+  const skillPath = `${projectRoot}/${definition.skillPath}`;
+  try {
+    const file = Bun.file(skillPath);
+    if (await file.exists()) {
+      const content = await file.text();
+      // Strip YAML frontmatter — the prompt already has a role header
+      const stripped = content.replace(/^---\n[\s\S]*?\n---\n*/, "");
+      return stripped.trim();
+    }
+  } catch {
+    // SKILL.md not found — fall through to null
+  }
+  return null;
+}
+
 // ─── Agent Prompt Building ──────────────────────────────────────
 
-export function buildAgentPrompt(
+export async function buildAgentPrompt(
   role: AgentRole,
   context: ContextPayload,
-  additionalInstructions: string[]
-): string {
+  additionalInstructions: string[],
+  projectRoot?: string
+): Promise<string> {
   const definition = AGENT_DEFINITIONS[role];
   const scopeGuard = SCOPE_GUARDS[role];
 
@@ -127,6 +150,16 @@ export function buildAgentPrompt(
   sections.push(`# ${capitalize(role)} Agent`);
   sections.push(`**Role:** ${definition.description}`);
   sections.push("");
+
+  // Inject SKILL.md content (detailed agent instructions)
+  if (projectRoot) {
+    const skillContent = await loadSkillContent(projectRoot, role);
+    if (skillContent) {
+      sections.push(`## Skill Instructions`);
+      sections.push(skillContent);
+      sections.push("");
+    }
+  }
 
   // Task context
   if (context.taskPlan) {
@@ -230,6 +263,201 @@ export function parseAgentOutput(agent: AgentRole, raw: string): AgentOutput {
     content: body,
     issues: [],
   };
+}
+
+// ─── Agent-Specific Output Parsers (GAP-19) ────────────────────
+
+export interface DoctorDiagnosis {
+  symptom: string;
+  rootCause: string;
+  evidence: string;
+  fix: { files: string[]; change: string; verification: string } | null;
+  prevention: string | null;
+}
+
+/**
+ * Parse Doctor agent output into structured diagnosis.
+ * Extracts sections: Diagnosis (symptom, root cause, evidence), Fix, Prevention.
+ */
+export function parseDoctorOutput(raw: string): DoctorDiagnosis {
+  const result: DoctorDiagnosis = {
+    symptom: "",
+    rootCause: "",
+    evidence: "",
+    fix: null,
+    prevention: null,
+  };
+
+  if (!raw) return result;
+
+  // Parse **Symptom:** or **Error:** lines (colon may be inside or outside bold)
+  const symptomMatch = raw.match(/\*\*(?:Symptom|Error):?\*\*:?\s*(.+)/i);
+  if (symptomMatch?.[1]) result.symptom = symptomMatch[1].trim();
+
+  // Parse **Root cause:** line
+  const rootCauseMatch = raw.match(/\*\*Root cause:?\*\*:?\s*(.+)/i);
+  if (rootCauseMatch?.[1]) result.rootCause = rootCauseMatch[1].trim();
+
+  // Parse **Evidence:** line
+  const evidenceMatch = raw.match(/\*\*Evidence:?\*\*:?\s*(.+)/i);
+  if (evidenceMatch?.[1]) result.evidence = evidenceMatch[1].trim();
+
+  // Parse fix section
+  const fixFileMatch = raw.match(/\*\*File\(?s?\)?:?\*\*:?\s*(.+)/i);
+  const fixChangeMatch = raw.match(/\*\*Change:?\*\*:?\s*(.+)/i);
+  const fixVerifyMatch = raw.match(/\*\*Verification:?\*\*:?\s*(.+)/i);
+
+  if (fixFileMatch?.[1] || fixChangeMatch?.[1]) {
+    result.fix = {
+      files: fixFileMatch?.[1]?.split(",").map(f => f.trim()).filter(Boolean) ?? [],
+      change: fixChangeMatch?.[1]?.trim() ?? "",
+      verification: fixVerifyMatch?.[1]?.trim() ?? "",
+    };
+  }
+
+  // Parse **System fix:** or prevention section
+  const preventionMatch = raw.match(/\*\*(?:System fix|Prevention):?\*\*:?\s*(.+)/i);
+  if (preventionMatch?.[1]) result.prevention = preventionMatch[1].trim();
+
+  return result;
+}
+
+export interface ArchitectDesign {
+  slices: Array<{ id: string; name: string; demoSentence: string; risk: string }>;
+  boundaryItems: string[];
+}
+
+/**
+ * Parse Architect agent output into structured design.
+ * Extracts slice definitions and boundary map items.
+ */
+export function parseArchitectOutput(raw: string): ArchitectDesign {
+  const result: ArchitectDesign = {
+    slices: [],
+    boundaryItems: [],
+  };
+
+  if (!raw) return result;
+
+  // Parse ### S01: Name patterns
+  const slicePattern = /###\s+(S\d+):\s*(.+)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = slicePattern.exec(raw)) !== null) {
+    const id = match[1]!;
+    const name = match[2]!.trim();
+
+    // Look for **Demo:** line after this heading (colon may be inside or outside bold)
+    const afterSlice = raw.slice(match.index + match[0].length);
+    const demoMatch = afterSlice.match(/\*\*Demo:?\*\*:?\s*(.+)/i);
+    const riskMatch = afterSlice.match(/\*\*Risk:?\*\*:?\s*(\w+)/i);
+
+    result.slices.push({
+      id,
+      name,
+      demoSentence: demoMatch?.[1]?.trim() ?? "",
+      risk: riskMatch?.[1]?.trim().toLowerCase() ?? "medium",
+    });
+  }
+
+  // Parse **Produces:** and **Consumes:** items (colon may be inside or outside bold)
+  const boundaryPattern = /\*\*(?:Produces|Consumes(?:\s+from\s+\w+)?):?\*\*:?\s*\n((?:\s*-\s+.+\n?)+)/gi;
+  while ((match = boundaryPattern.exec(raw)) !== null) {
+    const items = match[1]!.split("\n")
+      .map(line => line.replace(/^\s*-\s+/, "").trim())
+      .filter(Boolean);
+    result.boundaryItems.push(...items);
+  }
+
+  return result;
+}
+
+export interface ResearchFindings {
+  dontHandRoll: Array<{ library: string; reason: string }>;
+  pitfalls: Array<{ name: string; description: string }>;
+  codeLocations: Array<{ path: string; description: string }>;
+  patterns: string[];
+}
+
+/**
+ * Parse Researcher agent output into structured findings.
+ * Extracts don't-hand-roll libraries, pitfalls, code locations, patterns.
+ */
+export function parseResearcherOutput(raw: string): ResearchFindings {
+  const result: ResearchFindings = {
+    dontHandRoll: [],
+    pitfalls: [],
+    codeLocations: [],
+    patterns: [],
+  };
+
+  if (!raw) return result;
+
+  // Parse don't hand-roll: **[Library]**: reason
+  const dhrSection = extractNamedSection(raw, "Don't Hand-Roll");
+  if (dhrSection) {
+    const itemPattern = /\*\*([^*]+)\*\*:\s*(.+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = itemPattern.exec(dhrSection)) !== null) {
+      result.dontHandRoll.push({
+        library: match[1]!.trim(),
+        reason: match[2]!.trim(),
+      });
+    }
+  }
+
+  // Parse pitfalls: **[Pitfall]**: description
+  const pitfallSection = extractNamedSection(raw, "Common Pitfalls");
+  if (pitfallSection) {
+    const itemPattern = /\*\*([^*]+)\*\*:\s*(.+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = itemPattern.exec(pitfallSection)) !== null) {
+      result.pitfalls.push({
+        name: match[1]!.trim(),
+        description: match[2]!.trim(),
+      });
+    }
+  }
+
+  // Parse code locations: `path`: description
+  const codeSection = extractNamedSection(raw, "Relevant Code Locations");
+  if (codeSection) {
+    const itemPattern = /`([^`]+)`:\s*(.+)/g;
+    let match: RegExpExecArray | null;
+    while ((match = itemPattern.exec(codeSection)) !== null) {
+      result.codeLocations.push({
+        path: match[1]!.trim(),
+        description: match[2]!.trim(),
+      });
+    }
+  }
+
+  // Parse patterns: **[pattern]**: description
+  const patternSection = extractNamedSection(raw, "Patterns to Follow");
+  if (patternSection) {
+    const items = patternSection.split("\n")
+      .map(line => line.replace(/^\s*-\s+/, "").trim())
+      .filter(line => line.length > 0);
+    result.patterns = items;
+  }
+
+  return result;
+}
+
+/**
+ * Extract a named section (## heading) from markdown.
+ * Returns content between the heading and the next ## heading or end.
+ */
+function extractNamedSection(text: string, heading: string): string | null {
+  const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`^##\\s+${escapedHeading}\\s*$`, "mi");
+  const match = pattern.exec(text);
+  if (!match) return null;
+
+  const start = match.index + match[0].length;
+  const rest = text.slice(start);
+  const nextHeading = rest.match(/^##\s+/m);
+  return nextHeading ? rest.slice(0, nextHeading.index).trim() : rest.trim();
 }
 
 // ─── Review Prompt Building ─────────────────────────────────────

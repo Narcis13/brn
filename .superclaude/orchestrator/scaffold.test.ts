@@ -4,6 +4,8 @@ import {
   scaffoldSlice,
   scaffoldTask,
   initializeProject,
+  writeReviewFeedback,
+  clearReviewFeedback,
 } from "./scaffold.ts";
 import { rmSync, mkdirSync } from "node:fs";
 
@@ -60,6 +62,48 @@ test("scaffoldTask creates PLAN.md with goal", async () => {
   expect(planText).toContain("[RED]");
   expect(planText).toContain("[GREEN]");
   expect(planText).toContain("[REFACTOR]");
+});
+
+test("writeReviewFeedback creates REVIEW_FEEDBACK.md with issues", async () => {
+  await scaffoldMilestone(TEST_ROOT, "M001", "Test");
+  await scaffoldSlice(TEST_ROOT, "M001", "S01", "Demo");
+  await scaffoldTask(TEST_ROOT, "M001", "S01", "T01", "Do work");
+
+  const issues = [
+    "[correctness] MUST-FIX: Missing null check (src/auth.ts:15)",
+    "[security] MUST-FIX: Password logged in plaintext (src/login.ts:20)",
+  ];
+  await writeReviewFeedback(TEST_ROOT, "M001", "S01", "T01", issues, 1);
+
+  const feedbackFile = Bun.file(
+    `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/REVIEW_FEEDBACK.md`
+  );
+  expect(await feedbackFile.exists()).toBe(true);
+
+  const content = await feedbackFile.text();
+  expect(content).toContain("review_attempt: 1");
+  expect(content).toContain("Missing null check");
+  expect(content).toContain("Password logged in plaintext");
+  expect(content).toContain("MUST-FIX");
+});
+
+test("clearReviewFeedback removes REVIEW_FEEDBACK.md", async () => {
+  await scaffoldMilestone(TEST_ROOT, "M001", "Test");
+  await scaffoldSlice(TEST_ROOT, "M001", "S01", "Demo");
+  await scaffoldTask(TEST_ROOT, "M001", "S01", "T01", "Do work");
+
+  await writeReviewFeedback(TEST_ROOT, "M001", "S01", "T01", ["issue"], 1);
+
+  const path = `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/REVIEW_FEEDBACK.md`;
+  expect(await Bun.file(path).exists()).toBe(true);
+
+  await clearReviewFeedback(TEST_ROOT, "M001", "S01", "T01");
+  expect(await Bun.file(path).exists()).toBe(false);
+});
+
+test("clearReviewFeedback does not throw when file doesn't exist", async () => {
+  // Should not throw
+  await clearReviewFeedback(TEST_ROOT, "M001", "S01", "T99");
 });
 
 test("initializeProject creates PROJECT.md, DECISIONS.md, and vault INDEX.md", async () => {

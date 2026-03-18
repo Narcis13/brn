@@ -58,6 +58,12 @@ After each phase, briefly report what you did:
 - **Notes:** [any relevant observations]
 ```
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[patterns/typescript]]` — TypeScript conventions, Bun idioms, strict mode rules
+- `[[testing/strategy]]` — TDD cycle, test layers, file conventions
+- `[[contracts/M*-S*-S*]]` — Interface contracts for current slice boundaries
+
 ## Technology
 - Runtime: Bun
 - Language: TypeScript (strict mode)

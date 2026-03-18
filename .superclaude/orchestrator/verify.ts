@@ -268,6 +268,108 @@ export async function verifyMustHaves(
   };
 }
 
+// ─── Command-Tier Verification (GAP-10) ──────────────────────────
+
+/**
+ * Run tsc --noEmit and return a VerificationCheck.
+ * Per spec §11.2: Command tier — "Tests pass, build succeeds, lint clean, types check."
+ * GAP-10 fix: Previously only static checks were run; tsc/linter were left to the LLM.
+ */
+export async function runTypeCheck(projectRoot: string): Promise<VerificationCheck> {
+  try {
+    const result = await Bun.$`cd ${projectRoot} && bunx tsc --noEmit 2>&1`.quiet().text();
+    return {
+      name: "typecheck:tsc",
+      type: "command",
+      passed: true,
+      message: "TypeScript type-check passed",
+    };
+  } catch (err) {
+    const output = err instanceof Error && "stdout" in err
+      ? String((err as { stdout: unknown }).stdout)
+      : String(err);
+    // Truncate output to avoid huge messages
+    const truncated = output.length > 500 ? output.slice(0, 500) + "..." : output;
+    return {
+      name: "typecheck:tsc",
+      type: "command",
+      passed: false,
+      message: `TypeScript errors: ${truncated}`,
+    };
+  }
+}
+
+/**
+ * Run linter (biome or eslint) and return a VerificationCheck.
+ */
+export async function runLinter(projectRoot: string): Promise<VerificationCheck> {
+  // Try biome first (preferred), fall back to eslint
+  try {
+    await Bun.$`cd ${projectRoot} && bunx biome check . 2>&1`.quiet().text();
+    return {
+      name: "lint:biome",
+      type: "command",
+      passed: true,
+      message: "Linter check passed (biome)",
+    };
+  } catch (biomeErr) {
+    // Check if biome is simply not installed vs actual lint errors
+    const biomeOutput = biomeErr instanceof Error ? biomeErr.message : String(biomeErr);
+    if (biomeOutput.includes("not found") || biomeOutput.includes("ENOENT")) {
+      // Try eslint as fallback
+      try {
+        await Bun.$`cd ${projectRoot} && bunx eslint . 2>&1`.quiet().text();
+        return {
+          name: "lint:eslint",
+          type: "command",
+          passed: true,
+          message: "Linter check passed (eslint)",
+        };
+      } catch (eslintErr) {
+        const eslintOutput = eslintErr instanceof Error ? eslintErr.message : String(eslintErr);
+        if (eslintOutput.includes("not found") || eslintOutput.includes("ENOENT")) {
+          // No linter available — pass with note
+          return {
+            name: "lint:none",
+            type: "command",
+            passed: true,
+            message: "No linter configured (biome/eslint not found) — skipped",
+          };
+        }
+        const truncated = eslintOutput.length > 500 ? eslintOutput.slice(0, 500) + "..." : eslintOutput;
+        return {
+          name: "lint:eslint",
+          type: "command",
+          passed: false,
+          message: `ESLint errors: ${truncated}`,
+        };
+      }
+    }
+
+    const truncated = biomeOutput.length > 500 ? biomeOutput.slice(0, 500) + "..." : biomeOutput;
+    return {
+      name: "lint:biome",
+      type: "command",
+      passed: false,
+      message: `Biome errors: ${truncated}`,
+    };
+  }
+}
+
+/**
+ * Run all command-tier verification checks.
+ * Returns results for tsc and linter.
+ */
+export async function runCommandVerification(
+  projectRoot: string
+): Promise<VerificationCheck[]> {
+  const [typeCheck, lint] = await Promise.all([
+    runTypeCheck(projectRoot),
+    runLinter(projectRoot),
+  ]);
+  return [typeCheck, lint];
+}
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 interface ParsedKeyLink {

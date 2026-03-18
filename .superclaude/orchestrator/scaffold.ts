@@ -172,6 +172,53 @@ ${data.watchOutFor.map((w) => `- ${w}`).join("\n")}
   await Bun.write(`${base}/CONTINUE.md`, content);
 }
 
+// ─── Write Review Feedback ──────────────────────────────────────
+
+export async function writeReviewFeedback(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string,
+  taskId: string,
+  issues: string[],
+  attempt: number
+): Promise<void> {
+  const base = `${projectRoot}/${PATHS.taskPath(milestoneId, sliceId, taskId)}`;
+
+  const content = `---
+task: ${taskId}
+review_attempt: ${attempt}
+timestamp: ${new Date().toISOString()}
+---
+
+## MUST-FIX Issues From Review
+
+The following issues were found by the reviewer quality gate and MUST be fixed:
+
+${issues.map((issue) => `- ${issue}`).join("\n")}
+
+## Instructions
+
+Fix ALL issues listed above. Do not add new features — only address the reviewer findings.
+After fixing, ensure all tests still pass.
+`;
+
+  await Bun.write(`${base}/REVIEW_FEEDBACK.md`, content);
+}
+
+export async function clearReviewFeedback(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string,
+  taskId: string
+): Promise<void> {
+  const path = `${projectRoot}/${PATHS.taskPath(milestoneId, sliceId, taskId)}/REVIEW_FEEDBACK.md`;
+  try {
+    await Bun.$`rm -f ${path}`.quiet();
+  } catch {
+    // File may not exist
+  }
+}
+
 // ─── Vault Index ────────────────────────────────────────────────
 
 export async function initializeVault(projectRoot: string): Promise<void> {

@@ -112,6 +112,12 @@ status: diagnosed | inconclusive
 - Propose specific fixes with reasoning
 - If the issue is systemic, flag it for the Evolver agent
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[learnings/L*]]` — Past lessons learned and postmortem findings
+- `[[patterns/typescript]]` — TypeScript conventions to check violations
+- `[[architecture/overview]]` — System architecture for understanding dependencies
+
 ## Technology
 - Runtime: Bun
 - Test runner: `bun test`

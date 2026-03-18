@@ -8,6 +8,7 @@ import {
   createCheckpoint,
   rollbackToCheckpoint,
   squashMergeToMain,
+  tagRelease,
   isCleanWorkingTree,
   getCurrentBranch,
   getCheckpointRef,
@@ -183,4 +184,25 @@ test("squashMergeToMain squashes milestone branch into single main commit", asyn
 test("getCurrentBranch returns correct branch name", async () => {
   const branch = await getCurrentBranch(TEST_ROOT);
   expect(branch).toBe("main");
+});
+
+// ─── tagRelease (GAP-14) ──────────────────────────────────────────
+
+test("tagRelease creates an annotated tag for the milestone", async () => {
+  const tagName = await tagRelease(TEST_ROOT, "M001", "First milestone release");
+  expect(tagName).toBe("release/M001");
+
+  // Verify tag exists
+  const tags = await Bun.$`git -C ${TEST_ROOT} tag --list release/M001`.text();
+  expect(tags.trim()).toBe("release/M001");
+});
+
+test("tagRelease replaces existing tag on re-tag", async () => {
+  await tagRelease(TEST_ROOT, "M001", "First");
+  // Tag again — should not throw
+  const tagName = await tagRelease(TEST_ROOT, "M001", "Updated");
+  expect(tagName).toBe("release/M001");
+
+  const tags = await Bun.$`git -C ${TEST_ROOT} tag --list release/M001`.text();
+  expect(tags.trim()).toBe("release/M001");
 });

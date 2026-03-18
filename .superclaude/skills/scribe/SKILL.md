@@ -127,6 +127,16 @@ related: [[other-doc]]
 - Decision records must include reasoning, not just the decision
 - UAT scripts must have specific, copy-pasteable commands
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[architecture/overview]]` — System architecture for summary context
+- `[[patterns/typescript]]` — TypeScript conventions for code references
+- `[[decisions/ADR-*]]` — Existing ADRs to link related decisions
+- `[[learnings/L*]]` — Past learnings to reference in summaries
+- `[[playbooks/*]]` — Existing playbooks to avoid duplication
+- `[[contracts/M*-S*-S*]]` — Interface contracts for interface sections
+- `[[testing/strategy]]` — Testing strategy for UAT alignment
+
 ## Technology
 - Format: Markdown with YAML frontmatter
 - Links: Obsidian-compatible wiki-style `[[links]]`

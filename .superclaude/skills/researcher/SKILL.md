@@ -74,6 +74,10 @@ scope: [What was researched]
 - Flag libraries to use (don't hand-roll) and common pitfalls
 - If research reveals a scope gap, flag it — don't fill it
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[architecture/overview]]` — System architecture to understand existing design
+
 ## Technology
 - Runtime: Bun
 - Language: TypeScript

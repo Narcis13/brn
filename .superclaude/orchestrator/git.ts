@@ -145,6 +145,30 @@ export async function squashMergeToMain(
   await Bun.$`git -C ${projectRoot} commit -m ${message}`.quiet();
 }
 
+// ─── Release Tagging (§6.8 — COMPLETE_MILESTONE) ──────────────────
+
+/**
+ * Tag the current HEAD as a release for the given milestone.
+ * Per spec §6.8: "Tag the release" on milestone completion.
+ * GAP-14 fix: Previously no git tags were created for milestones.
+ */
+export async function tagRelease(
+  projectRoot: string,
+  milestoneId: string,
+  description: string = ""
+): Promise<string> {
+  const tagName = `release/${milestoneId}`;
+  const message = description || `Release ${milestoneId}`;
+
+  // Delete existing tag if present (re-tagging)
+  await Bun.$`git -C ${projectRoot} tag -d ${tagName}`
+    .quiet()
+    .catch(() => {});
+
+  await Bun.$`git -C ${projectRoot} tag -a ${tagName} -m ${message}`.quiet();
+  return tagName;
+}
+
 // ─── Utilities ──────────────────────────────────────────────────
 
 /**

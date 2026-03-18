@@ -4,6 +4,7 @@ import {
   estimateTokens,
   trimToTokenBudget,
   loadCodeFilesForTask,
+  getScaledBudget,
 } from "./context.ts";
 import type { ProjectState } from "./types.ts";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -27,6 +28,35 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(TEST_ROOT, { recursive: true, force: true });
+});
+
+// ─── getScaledBudget (GAP-11) ───────────────────────────────────
+
+describe("getScaledBudget", () => {
+  test("returns base budget at multiplier 1.0", () => {
+    const budget = getScaledBudget(1.0);
+    expect(budget.total).toBe(80_000);
+    expect(budget.codeFiles).toBe(40_000);
+    expect(budget.vaultDocs).toBe(10_000);
+  });
+
+  test("scales budget down at multiplier 0.5", () => {
+    const budget = getScaledBudget(0.5);
+    expect(budget.total).toBe(40_000);
+    expect(budget.codeFiles).toBe(20_000);
+    expect(budget.vaultDocs).toBe(5_000);
+  });
+
+  test("returns base budget at multiplier > 1.0", () => {
+    const budget = getScaledBudget(1.5);
+    expect(budget.total).toBe(80_000);
+  });
+
+  test("scales to 65% for ORANGE tier", () => {
+    const budget = getScaledBudget(0.65);
+    expect(budget.total).toBe(52_000);
+    expect(budget.codeFiles).toBe(26_000);
+  });
 });
 
 // ─── estimateTokens ─────────────────────────────────────────────
@@ -199,6 +229,31 @@ Implement auth token generation`
     expect(ctx.taskPlan).toContain("Fix the auth helper");
   });
 
+  test("EXECUTE_TASK loads REVIEW_FEEDBACK.md when present", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/PLAN.md`,
+      "---\ntask: T01\n---\n\n## Goal\nDo work"
+    );
+
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/REVIEW_FEEDBACK.md`,
+      "---\ntask: T01\nreview_attempt: 1\n---\n\n## MUST-FIX Issues From Review\n\n- [correctness] MUST-FIX: Missing null check (src/auth.ts:15)"
+    );
+
+    const state: ProjectState = {
+      phase: "EXECUTE_TASK",
+      tddSubPhase: "GREEN",
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const ctx = await assembleContext(TEST_ROOT, state);
+    expect(ctx.taskPlan).toContain("Missing null check");
+    expect(ctx.taskPlan).toContain("Review Feedback");
+  });
+
   test("EXECUTE_TASK loads vault docs referenced by wiki links", async () => {
     writeFileSync(
       `${TEST_ROOT}/.superclaude/vault/patterns/typescript.md`,
@@ -272,6 +327,39 @@ Implement auth token generation`
 
     const ctx = await assembleContext(TEST_ROOT, state);
     expect(ctx.upstreamSummaries.length).toBeGreaterThan(0);
+  });
+
+  test("assembleContext respects budget multiplier (GAP-11)", async () => {
+    // Create a vault doc that would normally fit at full budget
+    const mediumDoc = "x".repeat(36_000); // ~9k tokens — fits in 10k vault budget
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/vault/patterns/medium.md`,
+      mediumDoc
+    );
+
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/PLAN.md`,
+      "---\ntask: T01\n---\n\n## Goal\nFollow [[patterns/medium]] conventions"
+    );
+
+    const state: ProjectState = {
+      phase: "EXECUTE_TASK",
+      tddSubPhase: "RED",
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // With full budget (1.0), the doc should be included
+    const ctxFull = await assembleContext(TEST_ROOT, state, 1.0);
+    const fullVaultTokens = ctxFull.vaultDocs.reduce((acc, d) => acc + estimateTokens(d), 0);
+
+    // With half budget (0.5), vault budget is 5k — the 9k doc should be dropped
+    const ctxHalf = await assembleContext(TEST_ROOT, state, 0.5);
+    const halfVaultTokens = ctxHalf.vaultDocs.reduce((acc, d) => acc + estimateTokens(d), 0);
+
+    expect(halfVaultTokens).toBeLessThanOrEqual(fullVaultTokens);
   });
 
   test("context respects token budget — drops vault docs first", async () => {

@@ -2,8 +2,12 @@ import { test, expect, beforeEach, afterEach, describe } from "bun:test";
 import {
   buildAgentPrompt,
   buildScopeGuard,
+  loadSkillContent,
   parseAgentOutput,
   parseReviewOutput,
+  parseDoctorOutput,
+  parseArchitectOutput,
+  parseResearcherOutput,
   getAgentDefinition,
   getVaultDocsForAgent,
   buildReviewPrompt,
@@ -16,7 +20,13 @@ const TEST_ROOT = "/tmp/superclaude-test-agents";
 
 beforeEach(() => {
   mkdirSync(`${TEST_ROOT}/.superclaude/skills/architect`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/implementer`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/tester`, { recursive: true });
   mkdirSync(`${TEST_ROOT}/.superclaude/skills/reviewer`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/researcher`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/doctor`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/scribe`, { recursive: true });
+  mkdirSync(`${TEST_ROOT}/.superclaude/skills/evolver`, { recursive: true });
   mkdirSync(`${TEST_ROOT}/.superclaude/vault/patterns`, { recursive: true });
   mkdirSync(`${TEST_ROOT}/.superclaude/vault/architecture`, { recursive: true });
   mkdirSync(`${TEST_ROOT}/.superclaude/vault/decisions`, { recursive: true });
@@ -133,10 +143,45 @@ describe("getVaultDocsForAgent", () => {
   });
 });
 
+// ─── loadSkillContent ─────────────────────────────────────────
+
+describe("loadSkillContent", () => {
+  test("loads and strips frontmatter from SKILL.md", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/skills/architect/SKILL.md`,
+      "---\nname: architect\ndescription: System design agent\n---\n\n# Architect Agent\n\nYou design interfaces."
+    );
+
+    const content = await loadSkillContent(TEST_ROOT, "architect");
+    expect(content).not.toBeNull();
+    expect(content).toContain("# Architect Agent");
+    expect(content).toContain("You design interfaces");
+    // Frontmatter should be stripped
+    expect(content).not.toContain("---");
+    expect(content).not.toContain("name: architect");
+  });
+
+  test("returns null when SKILL.md does not exist", async () => {
+    const content = await loadSkillContent("/tmp/nonexistent-root", "architect");
+    expect(content).toBeNull();
+  });
+
+  test("handles SKILL.md with no frontmatter", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/skills/reviewer/SKILL.md`,
+      "# Reviewer Agent\n\nReview code from multiple perspectives."
+    );
+
+    const content = await loadSkillContent(TEST_ROOT, "reviewer");
+    expect(content).not.toBeNull();
+    expect(content).toContain("# Reviewer Agent");
+  });
+});
+
 // ─── buildAgentPrompt ──────────────────────────────────────────
 
 describe("buildAgentPrompt", () => {
-  test("includes agent role header", () => {
+  test("includes agent role header", async () => {
     const ctx: ContextPayload = {
       taskPlan: "Plan the auth slice",
       codeFiles: {},
@@ -145,12 +190,12 @@ describe("buildAgentPrompt", () => {
       boundaryContracts: [],
     };
 
-    const prompt = buildAgentPrompt("architect", ctx, []);
+    const prompt = await buildAgentPrompt("architect", ctx, []);
     expect(prompt).toContain("Architect");
     expect(prompt).toContain("System design");
   });
 
-  test("includes task context", () => {
+  test("includes task context", async () => {
     const ctx: ContextPayload = {
       taskPlan: "Implement JWT generation",
       codeFiles: { "src/auth.ts": "export function gen() {}" },
@@ -159,13 +204,13 @@ describe("buildAgentPrompt", () => {
       boundaryContracts: [],
     };
 
-    const prompt = buildAgentPrompt("implementer", ctx, []);
+    const prompt = await buildAgentPrompt("implementer", ctx, []);
     expect(prompt).toContain("Implement JWT generation");
     expect(prompt).toContain("src/auth.ts");
     expect(prompt).toContain("T01 completed types");
   });
 
-  test("includes scope guard", () => {
+  test("includes scope guard", async () => {
     const ctx: ContextPayload = {
       taskPlan: "Review auth code",
       codeFiles: {},
@@ -174,12 +219,12 @@ describe("buildAgentPrompt", () => {
       boundaryContracts: [],
     };
 
-    const prompt = buildAgentPrompt("reviewer", ctx, []);
+    const prompt = await buildAgentPrompt("reviewer", ctx, []);
     expect(prompt).toContain("Scope Guard");
     expect(prompt).toContain("DO NOT");
   });
 
-  test("includes vault docs when provided", () => {
+  test("includes vault docs when provided", async () => {
     const ctx: ContextPayload = {
       taskPlan: "Scout codebase",
       codeFiles: {},
@@ -188,11 +233,11 @@ describe("buildAgentPrompt", () => {
       boundaryContracts: [],
     };
 
-    const prompt = buildAgentPrompt("researcher", ctx, []);
+    const prompt = await buildAgentPrompt("researcher", ctx, []);
     expect(prompt).toContain("Two-layer system");
   });
 
-  test("includes additional instructions when provided", () => {
+  test("includes additional instructions when provided", async () => {
     const ctx: ContextPayload = {
       taskPlan: "Debug test failure",
       codeFiles: {},
@@ -201,8 +246,66 @@ describe("buildAgentPrompt", () => {
       boundaryContracts: [],
     };
 
-    const prompt = buildAgentPrompt("doctor", ctx, ["Focus on auth.test.ts failure"]);
+    const prompt = await buildAgentPrompt("doctor", ctx, ["Focus on auth.test.ts failure"]);
     expect(prompt).toContain("Focus on auth.test.ts failure");
+  });
+
+  test("injects SKILL.md content when projectRoot is provided", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/skills/implementer/SKILL.md`,
+      "---\nname: implementer\ndescription: TDD agent\n---\n\n# Implementer Agent\n\nYou write code following strict TDD.\n\n## Principles\n1. Tests come first."
+    );
+
+    const ctx: ContextPayload = {
+      taskPlan: "Write auth tests",
+      codeFiles: {},
+      upstreamSummaries: [],
+      vaultDocs: [],
+      boundaryContracts: [],
+    };
+
+    const prompt = await buildAgentPrompt("implementer", ctx, [], TEST_ROOT);
+    expect(prompt).toContain("Skill Instructions");
+    expect(prompt).toContain("Tests come first");
+    expect(prompt).toContain("strict TDD");
+    // Frontmatter should not leak into prompt
+    expect(prompt).not.toContain("name: implementer");
+  });
+
+  test("works without projectRoot (no SKILL.md injection)", async () => {
+    const ctx: ContextPayload = {
+      taskPlan: "Do something",
+      codeFiles: {},
+      upstreamSummaries: [],
+      vaultDocs: [],
+      boundaryContracts: [],
+    };
+
+    const prompt = await buildAgentPrompt("architect", ctx, []);
+    expect(prompt).not.toContain("Skill Instructions");
+    expect(prompt).toContain("Architect Agent");
+  });
+
+  test("skill content appears before task context in prompt", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/skills/doctor/SKILL.md`,
+      "---\nname: doctor\n---\n\n# Doctor Agent\n\nDiagnose before fixing."
+    );
+
+    const ctx: ContextPayload = {
+      taskPlan: "Debug auth failure",
+      codeFiles: {},
+      upstreamSummaries: [],
+      vaultDocs: [],
+      boundaryContracts: [],
+    };
+
+    const prompt = await buildAgentPrompt("doctor", ctx, [], TEST_ROOT);
+    const skillIdx = prompt.indexOf("Diagnose before fixing");
+    const contextIdx = prompt.indexOf("Debug auth failure");
+    expect(skillIdx).toBeGreaterThan(-1);
+    expect(contextIdx).toBeGreaterThan(-1);
+    expect(skillIdx).toBeLessThan(contextIdx);
   });
 });
 
@@ -423,5 +526,181 @@ describe("buildReviewPrompt", () => {
     expect(REVIEW_PERSONAS).toContain("performance");
     expect(REVIEW_PERSONAS).toContain("security");
     expect(REVIEW_PERSONAS).toContain("testability");
+  });
+});
+
+// ─── parseDoctorOutput (GAP-19) ──────────────────────────────────
+
+describe("parseDoctorOutput", () => {
+  test("parses full diagnosis with all sections", () => {
+    const raw = `---
+agent: doctor
+status: diagnosed
+---
+
+## Diagnosis
+**Symptom:** Tests fail with "Cannot find module './auth'"
+**Root cause:** Missing export in auth.ts — function defined but not exported
+**Evidence:** auth.ts line 15 has \`function generateToken\` but no \`export\`
+
+## Fix
+**File(s):** src/auth.ts
+**Change:** Add \`export\` keyword to generateToken function declaration
+**Verification:** Run \`bun test src/auth.test.ts\` — should pass
+
+## Prevention
+**System fix:** Add export verification to static checks for all must-have artifacts`;
+
+    const result = parseDoctorOutput(raw);
+    expect(result.symptom).toContain("Cannot find module");
+    expect(result.rootCause).toContain("Missing export");
+    expect(result.evidence).toContain("auth.ts line 15");
+    expect(result.fix).not.toBeNull();
+    expect(result.fix!.files).toEqual(["src/auth.ts"]);
+    expect(result.fix!.change).toContain("export");
+    expect(result.fix!.verification).toContain("bun test");
+    expect(result.prevention).toContain("export verification");
+  });
+
+  test("parses diagnosis with missing fix section", () => {
+    const raw = `## Diagnosis
+**Symptom:** Build timeout
+**Root cause:** Infinite loop in recursive function
+**Evidence:** Stack trace shows repeated calls to processNode()`;
+
+    const result = parseDoctorOutput(raw);
+    expect(result.symptom).toContain("Build timeout");
+    expect(result.rootCause).toContain("Infinite loop");
+    expect(result.fix).toBeNull();
+  });
+
+  test("handles empty input", () => {
+    const result = parseDoctorOutput("");
+    expect(result.symptom).toBe("");
+    expect(result.rootCause).toBe("");
+    expect(result.fix).toBeNull();
+    expect(result.prevention).toBeNull();
+  });
+
+  test("parses multiple fix files", () => {
+    const raw = `**Symptom:** Type error across modules
+**Root cause:** Shared type changed without updating consumers
+**Fix**
+**File(s):** src/types.ts, src/auth.ts, src/middleware.ts
+**Change:** Update UserSession type to include refreshToken field`;
+
+    const result = parseDoctorOutput(raw);
+    expect(result.fix).not.toBeNull();
+    expect(result.fix!.files).toHaveLength(3);
+    expect(result.fix!.files).toContain("src/types.ts");
+    expect(result.fix!.files).toContain("src/auth.ts");
+  });
+});
+
+// ─── parseArchitectOutput (GAP-19) ───────────────────────────────
+
+describe("parseArchitectOutput", () => {
+  test("parses slice definitions", () => {
+    const raw = `## Slices
+
+### S01: Authentication
+**Demo:** After this, the user can log in with email and password
+**Risk:** medium
+
+### S02: Dashboard
+**Demo:** After this, the user can see their personal dashboard
+**Risk:** low`;
+
+    const result = parseArchitectOutput(raw);
+    expect(result.slices).toHaveLength(2);
+    expect(result.slices[0]!.id).toBe("S01");
+    expect(result.slices[0]!.name).toBe("Authentication");
+    expect(result.slices[0]!.demoSentence).toContain("log in");
+    expect(result.slices[0]!.risk).toBe("medium");
+    expect(result.slices[1]!.id).toBe("S02");
+    expect(result.slices[1]!.risk).toBe("low");
+  });
+
+  test("parses boundary map items", () => {
+    const raw = `### S01: Auth
+
+**Produces:**
+- \`src/auth.ts\` → generateToken, verifyToken
+- \`src/types/user.ts\` → User, Session
+
+**Consumes from S00:**
+- \`src/config.ts\` → getSecret`;
+
+    const result = parseArchitectOutput(raw);
+    expect(result.boundaryItems.length).toBeGreaterThanOrEqual(3);
+    expect(result.boundaryItems.some(b => b.includes("generateToken"))).toBe(true);
+    expect(result.boundaryItems.some(b => b.includes("getSecret"))).toBe(true);
+  });
+
+  test("handles empty input", () => {
+    const result = parseArchitectOutput("");
+    expect(result.slices).toHaveLength(0);
+    expect(result.boundaryItems).toHaveLength(0);
+  });
+});
+
+// ─── parseResearcherOutput (GAP-19) ──────────────────────────────
+
+describe("parseResearcherOutput", () => {
+  test("parses don't-hand-roll section", () => {
+    const raw = `## Don't Hand-Roll
+- **jose**: JWT validation and signing — handles algorithm confusion attacks and key rotation
+- **zod**: Schema validation — more ergonomic than manual type guards
+
+## Common Pitfalls
+- **JWT Algorithm Confusion**: Attacker sends HS256 token to RS256 endpoint — use explicit algorithm whitelist`;
+
+    const result = parseResearcherOutput(raw);
+    expect(result.dontHandRoll).toHaveLength(2);
+    expect(result.dontHandRoll[0]!.library).toBe("jose");
+    expect(result.dontHandRoll[0]!.reason).toContain("algorithm confusion");
+    expect(result.dontHandRoll[1]!.library).toBe("zod");
+    expect(result.pitfalls).toHaveLength(1);
+    expect(result.pitfalls[0]!.name).toBe("JWT Algorithm Confusion");
+  });
+
+  test("parses code locations section", () => {
+    const raw = `## Relevant Code Locations
+- \`src/lib/auth.ts\`: existing JWT helper, uses HS256
+- \`src/middleware/index.ts\`: Express-style middleware chain`;
+
+    const result = parseResearcherOutput(raw);
+    expect(result.codeLocations).toHaveLength(2);
+    expect(result.codeLocations[0]!.path).toBe("src/lib/auth.ts");
+    expect(result.codeLocations[0]!.description).toContain("JWT helper");
+  });
+
+  test("parses patterns section", () => {
+    const raw = `## Patterns to Follow
+- Use barrel exports (index.ts) for each feature directory
+- Error handling: always throw typed errors extending AppError`;
+
+    const result = parseResearcherOutput(raw);
+    expect(result.patterns).toHaveLength(2);
+    expect(result.patterns[0]).toContain("barrel exports");
+  });
+
+  test("handles empty input", () => {
+    const result = parseResearcherOutput("");
+    expect(result.dontHandRoll).toHaveLength(0);
+    expect(result.pitfalls).toHaveLength(0);
+    expect(result.codeLocations).toHaveLength(0);
+    expect(result.patterns).toHaveLength(0);
+  });
+
+  test("handles missing sections", () => {
+    const raw = `## Don't Hand-Roll
+- **bcrypt**: Password hashing — never roll your own crypto`;
+
+    const result = parseResearcherOutput(raw);
+    expect(result.dontHandRoll).toHaveLength(1);
+    expect(result.pitfalls).toHaveLength(0);
+    expect(result.codeLocations).toHaveLength(0);
+    expect(result.patterns).toHaveLength(0);
   });
 });

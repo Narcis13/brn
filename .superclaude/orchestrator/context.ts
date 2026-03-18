@@ -16,14 +16,44 @@ import { PATHS, type ContextPayload, type ProjectState } from "./types.ts";
 
 // ─── Token Budget Constants ─────────────────────────────────────
 
-const CONTEXT_BUDGET = {
+export interface ContextBudgetValues {
+  taskPlan: number;
+  codeFiles: number;
+  upstreamSummaries: number;
+  vaultDocs: number;
+  boundaryContracts: number;
+  total: number;
+}
+
+const BASE_CONTEXT_BUDGET: ContextBudgetValues = {
   taskPlan: 10_000,
   codeFiles: 40_000,
   upstreamSummaries: 10_000,
   vaultDocs: 10_000,
   boundaryContracts: 5_000,
   total: 80_000,
-} as const;
+};
+
+/**
+ * Apply a budget pressure multiplier to the base context budget.
+ * GAP-11 fix: Previously the multiplier from budget-pressure.ts was never used.
+ *
+ * @param multiplier - 1.0 = full budget, 0.5 = half budget (from PressurePolicy.contextBudgetMultiplier)
+ */
+export function getScaledBudget(multiplier: number): ContextBudgetValues {
+  if (multiplier >= 1.0) return BASE_CONTEXT_BUDGET;
+  return {
+    taskPlan: Math.ceil(BASE_CONTEXT_BUDGET.taskPlan * multiplier),
+    codeFiles: Math.ceil(BASE_CONTEXT_BUDGET.codeFiles * multiplier),
+    upstreamSummaries: Math.ceil(BASE_CONTEXT_BUDGET.upstreamSummaries * multiplier),
+    vaultDocs: Math.ceil(BASE_CONTEXT_BUDGET.vaultDocs * multiplier),
+    boundaryContracts: Math.ceil(BASE_CONTEXT_BUDGET.boundaryContracts * multiplier),
+    total: Math.ceil(BASE_CONTEXT_BUDGET.total * multiplier),
+  };
+}
+
+// For backward compatibility — used internally when no multiplier is provided
+const CONTEXT_BUDGET = BASE_CONTEXT_BUDGET;
 
 // ─── Token Estimation ───────────────────────────────────────────
 
@@ -102,7 +132,8 @@ export async function loadCodeFilesForTask(
 
 export async function assembleContext(
   projectRoot: string,
-  state: ProjectState
+  state: ProjectState,
+  budgetMultiplier: number = 1.0
 ): Promise<ContextPayload> {
   const payload: ContextPayload = {
     taskPlan: "",
@@ -151,6 +182,15 @@ export async function assembleContext(
           payload.taskPlan += "\n\n## Continue From\n" + continueHere;
         }
 
+        // Load review feedback if it exists (reviewer quality gate §8.3)
+        const reviewFeedback = await loadFile(
+          projectRoot,
+          `${PATHS.taskPath(m, s, t)}/REVIEW_FEEDBACK.md`
+        );
+        if (reviewFeedback) {
+          payload.taskPlan += "\n\n## Review Feedback (MUST FIX)\n" + reviewFeedback;
+        }
+
         // Load upstream task summaries from same slice (not current task's)
         payload.upstreamSummaries = await loadUpstreamTaskSummaries(projectRoot, m, s, t);
 
@@ -184,18 +224,22 @@ export async function assembleContext(
       break;
   }
 
-  // Apply token budget enforcement
-  return applyTokenBudget(payload);
+  // Apply token budget enforcement (scaled by pressure multiplier — GAP-11)
+  const budget = getScaledBudget(budgetMultiplier);
+  return applyTokenBudget(payload, budget);
 }
 
 // ─── Token Budget Enforcement ────────────────────────────────────
 
-function applyTokenBudget(payload: ContextPayload): ContextPayload {
+function applyTokenBudget(
+  payload: ContextPayload,
+  budget: ContextBudgetValues = CONTEXT_BUDGET
+): ContextPayload {
   const result = { ...payload };
 
   // Trim task plan (highest priority — truncate if over budget)
-  if (estimateTokens(result.taskPlan) > CONTEXT_BUDGET.taskPlan) {
-    const maxChars = CONTEXT_BUDGET.taskPlan * 4;
+  if (estimateTokens(result.taskPlan) > budget.taskPlan) {
+    const maxChars = budget.taskPlan * 4;
     result.taskPlan = result.taskPlan.slice(0, maxChars);
   }
 
@@ -205,7 +249,7 @@ function applyTokenBudget(payload: ContextPayload): ContextPayload {
   let codeTokens = 0;
   for (const [path, content] of codeEntries) {
     const fileTokens = estimateTokens(content);
-    if (codeTokens + fileTokens <= CONTEXT_BUDGET.codeFiles) {
+    if (codeTokens + fileTokens <= budget.codeFiles) {
       trimmedCode[path] = content;
       codeTokens += fileTokens;
     }
@@ -215,30 +259,30 @@ function applyTokenBudget(payload: ContextPayload): ContextPayload {
   // Trim upstream summaries (drop oldest first — they're in order)
   result.upstreamSummaries = trimToTokenBudget(
     result.upstreamSummaries,
-    CONTEXT_BUDGET.upstreamSummaries
+    budget.upstreamSummaries
   );
 
   // Trim vault docs (lowest priority among content)
-  result.vaultDocs = trimToTokenBudget(result.vaultDocs, CONTEXT_BUDGET.vaultDocs);
+  result.vaultDocs = trimToTokenBudget(result.vaultDocs, budget.vaultDocs);
 
   // Trim boundary contracts
   result.boundaryContracts = trimToTokenBudget(
     result.boundaryContracts,
-    CONTEXT_BUDGET.boundaryContracts
+    budget.boundaryContracts
   );
 
   // Final check: if total exceeds budget, drop vault docs then summaries
   let totalTokens = computeTotalTokens(result);
-  if (totalTokens > CONTEXT_BUDGET.total) {
+  if (totalTokens > budget.total) {
     // Drop vault docs first
-    while (result.vaultDocs.length > 0 && totalTokens > CONTEXT_BUDGET.total) {
+    while (result.vaultDocs.length > 0 && totalTokens > budget.total) {
       result.vaultDocs.pop();
       totalTokens = computeTotalTokens(result);
     }
   }
-  if (totalTokens > CONTEXT_BUDGET.total) {
+  if (totalTokens > budget.total) {
     // Then drop upstream summaries (oldest first = from start)
-    while (result.upstreamSummaries.length > 0 && totalTokens > CONTEXT_BUDGET.total) {
+    while (result.upstreamSummaries.length > 0 && totalTokens > budget.total) {
       result.upstreamSummaries.shift();
       totalTokens = computeTotalTokens(result);
     }

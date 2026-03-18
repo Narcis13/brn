@@ -15,9 +15,19 @@ import { parseArgs, getProjectRoot } from "./config.ts";
 import { readState, writeState, determineNextAction, determineNextActionEnhanced, advanceTDDPhase } from "./state.ts";
 import { assembleContext } from "./context.ts";
 import { buildPrompt } from "./prompt-builder.ts";
+import {
+  buildAgentPrompt,
+  buildReviewPrompt,
+  buildScopeGuard,
+  getAgentDefinition,
+  getVaultDocsForAgent,
+  parseAgentOutput,
+  parseReviewOutput,
+} from "./agents.ts";
 import { enforceTDDPhase } from "./tdd.ts";
 import { verifyMustHaves } from "./verify.ts";
-import { writeContinueHere } from "./scaffold.ts";
+import { parseTaskPlan } from "./plan-parser.ts";
+import { writeContinueHere, writeReviewFeedback, clearReviewFeedback } from "./scaffold.ts";
 import {
   createMilestoneBranch,
   commitTDDPhase,
@@ -26,6 +36,7 @@ import {
   createCheckpoint,
   rollbackToCheckpoint,
   squashMergeToMain,
+  tagRelease,
   stageAll,
   stashChanges,
   isCleanWorkingTree,
@@ -37,6 +48,17 @@ import {
   estimateCost,
   writeCostTracker,
 } from "./cost.ts";
+import {
+  createPostmortem,
+  writePostmortem,
+  nextPostmortemId,
+} from "./postmortem.ts";
+import { runPostmortemAnalysis } from "./evolver.ts";
+import {
+  createSessionMetrics,
+  writeSessionMetrics,
+} from "./metrics.ts";
+import { runCommandVerification } from "./verify.ts";
 import {
   acquireLock,
   releaseLock,
@@ -51,10 +73,13 @@ import {
   writeSessionReport,
 } from "./session.ts";
 import { computePressure, formatPressureStatus, shouldSkipRefactor } from "./budget-pressure.ts";
+import type { PressurePolicy } from "./budget-pressure.ts";
 import { processDiscussOutput, processResearchOutput, processReassessOutput } from "./phase-handlers.ts";
 import { assembleDashboard, renderDashboard, writeDashboard } from "./dashboard.ts";
-import type { OrchestratorConfig, ProjectState, TaskPlan } from "./types.ts";
-import { PATHS } from "./types.ts";
+import { generateTaskSummary, generateSliceSummary, generateMilestoneSummary } from "./summary.ts";
+import type { TaskSummary, SliceSummary } from "./types.ts";
+import type { AgentRole, ContextPayload, OrchestratorConfig, Phase, ProjectState, TaskPlan, TDDSubPhase } from "./types.ts";
+import { PATHS, REVIEW_PERSONAS } from "./types.ts";
 
 // ─── Main ────────────────────────────────────────────────────────
 
@@ -88,6 +113,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   let iterations = 0;
   const maxIterations = 100;
   const dispatchHistory: Array<{ task: string; timestamp: string }> = [];
+  const reviewRetries = new Map<string, number>();
+  const MAX_REVIEW_RETRIES = 2;
+  const greenRetries = new Map<string, number>();
+  const MAX_GREEN_RETRIES = 3;
 
   // Crash recovery: check for stale lock
   if (await isLocked(projectRoot)) {
@@ -99,8 +128,15 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     }
   }
 
-  // Ensure milestone branch exists
+  // Apply --milestone flag to state if provided and no milestone is set (GAP-7)
   const state = await readState(projectRoot);
+  if (config.milestone && !state.currentMilestone) {
+    state.currentMilestone = config.milestone;
+    await writeState(projectRoot, state);
+    console.log(`  Milestone set from CLI: ${config.milestone}`);
+  }
+
+  // Ensure milestone branch exists
   if (state.currentMilestone) {
     await createMilestoneBranch(projectRoot, state.currentMilestone);
   }
@@ -145,8 +181,23 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     if (stuckResult.stuck) {
       console.log(`[SUPER_CLAUDE] STUCK: ${stuckResult.reason}`);
       session.issuesEncountered.push(`Stuck: ${stuckResult.reason}`);
+
+      // Invoke Doctor agent for diagnosis (§8.3)
+      console.log(`  Invoking Doctor agent for diagnosis...`);
+      const doctorContext = await assembleContext(projectRoot, currentState);
+      const diagnosis = await invokeDoctorAgent(
+        projectRoot,
+        currentState,
+        doctorContext,
+        stuckResult.reason ?? "Unknown reason",
+        config.timeouts.hard
+      );
+      if (diagnosis) {
+        console.log(`  Doctor diagnosis: ${diagnosis.slice(0, 200)}`);
+        session.issuesEncountered.push(`Doctor: ${diagnosis.slice(0, 200)}`);
+      }
+
       session.blockedItems.push(`${taskKey}: stuck after multiple dispatches`);
-      // Skip to next task — in a full implementation, invoke Doctor agent first
       break;
     }
     dispatchHistory.push({ task: taskKey, timestamp: new Date().toISOString() });
@@ -183,11 +234,11 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       console.log(`  Checkpoint: ${currentState.currentSlice}/${currentState.currentTask}`);
     }
 
-    // 7. Assemble context
-    const context = await assembleContext(projectRoot, currentState);
+    // 7. Assemble context (with budget pressure multiplier — GAP-11)
+    const context = await assembleContext(projectRoot, currentState, pressure.contextBudgetMultiplier);
 
-    // 8. Generate prompt
-    const prompt = buildPrompt(currentState, context);
+    // 8. Generate prompt (agent-enriched per §8)
+    const prompt = await buildAgentEnrichedPrompt(projectRoot, currentState, context);
 
     // 9. Invoke Claude headless
     console.log(`  Action: ${nextAction.description}`);
@@ -239,20 +290,57 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         }
       }
 
+      // GAP-8: Create postmortem for task failure (§12.3)
+      await createPostmortemForFailure(
+        projectRoot, sessionId, taskKey,
+        result.error ?? "Unknown error",
+        currentState
+      );
+
       await releaseLock(projectRoot);
       stopReason = "error";
       break;
     }
 
-    // 11. TDD enforcement (only during EXECUTE_TASK)
+    // 11. TDD enforcement (only during EXECUTE_TASK) with bounded retry (GAP-20)
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase) {
       const tddResult = await runTDDEnforcement(projectRoot, currentState);
       if (tddResult !== null && !tddResult.passed) {
-        console.log(`  TDD FAIL: ${tddResult.message}`);
-        continue;
+        const retryCount = greenRetries.get(taskKey) ?? 0;
+        console.log(`  TDD FAIL (attempt ${retryCount + 1}/${MAX_GREEN_RETRIES}): ${tddResult.message}`);
+
+        if (retryCount < MAX_GREEN_RETRIES - 1) {
+          greenRetries.set(taskKey, retryCount + 1);
+          continue;
+        }
+
+        // Max retries exhausted — invoke Doctor agent for diagnosis (§10.2)
+        console.log(`  Max GREEN retries exhausted. Invoking Doctor agent...`);
+        session.issuesEncountered.push(`TDD: ${tddResult.message} after ${MAX_GREEN_RETRIES} attempts on ${taskKey}`);
+        const doctorContext = await assembleContext(projectRoot, currentState);
+        const diagnosis = await invokeDoctorAgent(
+          projectRoot,
+          currentState,
+          doctorContext,
+          `TDD ${currentState.tddSubPhase} phase failed after ${MAX_GREEN_RETRIES} attempts: ${tddResult.message}`,
+          config.timeouts.hard
+        );
+        if (diagnosis) {
+          console.log(`  Doctor diagnosis: ${diagnosis.slice(0, 200)}`);
+          session.issuesEncountered.push(`Doctor: ${diagnosis.slice(0, 200)}`);
+          // Give one more attempt after Doctor's diagnosis
+          greenRetries.set(taskKey, 0);
+          continue;
+        }
+
+        // Doctor couldn't help — flag as blocked
+        session.blockedItems.push(`${taskKey}: TDD ${currentState.tddSubPhase} failed after ${MAX_GREEN_RETRIES} attempts + Doctor diagnosis`);
+        break;
       }
       if (tddResult !== null) {
         console.log(`  TDD OK: ${tddResult.message}`);
+        // Reset retry counter on success
+        greenRetries.delete(taskKey);
       }
     }
 
@@ -269,6 +357,72 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       }
       if (verifyResult !== null) {
         console.log(`  VERIFY OK: all ${verifyResult.checks.length} static checks passed`);
+      }
+
+      // 12.3 Command-tier verification: tsc + linter (GAP-10)
+      const cmdChecks = await runCommandVerification(projectRoot);
+      const cmdFailures = cmdChecks.filter((c) => !c.passed);
+      if (cmdFailures.length > 0) {
+        console.log(`  CMD VERIFY FAIL: ${cmdFailures.length} check(s) failed`);
+        for (const f of cmdFailures) {
+          console.log(`    ✗ ${f.name}: ${f.message}`);
+        }
+        session.issuesEncountered.push(`Command verification: ${cmdFailures.map(f => f.name).join(", ")} failed on ${taskKey}`);
+        // Don't block — log the failures but continue (these are informational during early use)
+      } else {
+        console.log(`  CMD VERIFY OK: ${cmdChecks.map(c => c.name).join(", ")} passed`);
+      }
+
+      // 12.5 Reviewer quality gate (§8.3 — run reviewer personas after VERIFY)
+      const reviewResult = await runReviewerQualityGate(
+        projectRoot, currentState, context, pressure, config.timeouts.hard
+      );
+      if (!reviewResult.passed) {
+        const retryCount = reviewRetries.get(taskKey) ?? 0;
+        console.log(`  REVIEW: ${reviewResult.mustFixCount} MUST-FIX issue(s) found (attempt ${retryCount + 1}/${MAX_REVIEW_RETRIES + 1})`);
+        for (const issue of reviewResult.issues) {
+          console.log(`    ✗ ${issue}`);
+        }
+        session.issuesEncountered.push(`Review: ${reviewResult.mustFixCount} MUST-FIX issues on ${taskKey}`);
+
+        if (retryCount < MAX_REVIEW_RETRIES) {
+          // Write review feedback so the implementer knows what to fix
+          if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
+            await writeReviewFeedback(
+              projectRoot,
+              currentState.currentMilestone,
+              currentState.currentSlice,
+              currentState.currentTask,
+              reviewResult.issues,
+              retryCount + 1
+            );
+          }
+
+          // Roll state back to GREEN so the implementer can fix the issues
+          reviewRetries.set(taskKey, retryCount + 1);
+          const rollbackState = { ...currentState, tddSubPhase: "GREEN" as const, lastUpdated: new Date().toISOString() };
+          await writeState(projectRoot, rollbackState);
+          console.log(`  Rolling back to GREEN for fix attempt ${retryCount + 1}/${MAX_REVIEW_RETRIES}`);
+          await releaseLock(projectRoot);
+          continue;
+        } else {
+          // Max retries exhausted — allow advancement but flag for human review
+          console.log(`  WARNING: Max review retries exhausted. Advancing with unresolved MUST-FIX issues.`);
+          session.blockedItems.push(`${taskKey}: ${reviewResult.mustFixCount} unresolved MUST-FIX issues after ${MAX_REVIEW_RETRIES} fix attempts`);
+        }
+      } else {
+        // Review passed — clean up any leftover review feedback
+        if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
+          await clearReviewFeedback(
+            projectRoot,
+            currentState.currentMilestone,
+            currentState.currentSlice,
+            currentState.currentTask
+          );
+        }
+        if (pressure.allowReview && pressure.reviewPersonaCount > 0) {
+          console.log(`  REVIEW OK: ${pressure.reviewPersonaCount} persona(s) passed`);
+        }
       }
     }
 
@@ -289,6 +443,16 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         console.log(`  Committed: feat(${currentState.currentSlice}/${currentState.currentTask}): [${tddLabel}]`);
       }
     } else if (currentState.phase === "COMPLETE_SLICE" && currentState.currentSlice) {
+      // GAP-21: Write slice summary from aggregated task summaries (§7.3)
+      if (currentState.currentMilestone) {
+        await writeSliceSummaryOnComplete(
+          projectRoot,
+          currentState.currentMilestone,
+          currentState.currentSlice,
+          result.output
+        );
+      }
+
       const clean = await isCleanWorkingTree(projectRoot);
       if (!clean) {
         await stageAll(projectRoot);
@@ -297,18 +461,51 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       }
       session.tasksCompleted.push(`${currentState.currentSlice}: Slice complete`);
     } else if (currentState.phase === "COMPLETE_MILESTONE" && currentState.currentMilestone) {
+      // GAP-21: Write milestone summary from aggregated slice summaries (§7.3)
+      await writeMilestoneSummaryOnComplete(
+        projectRoot,
+        currentState.currentMilestone,
+        result.output
+      );
+
       const clean = await isCleanWorkingTree(projectRoot);
       if (!clean) {
         await stageAll(projectRoot);
         await commitMilestoneComplete(projectRoot, currentState.currentMilestone);
         console.log(`  Committed: feat(${currentState.currentMilestone}): milestone complete`);
       }
+      // GAP-14: Tag the release per spec §6.8
+      const tag = await tagRelease(projectRoot, currentState.currentMilestone);
+      console.log(`  Tagged: ${tag}`);
     }
 
     // Track completed tasks
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "VERIFY" &&
         currentState.currentSlice && currentState.currentTask) {
       session.tasksCompleted.push(`${currentState.currentSlice}/${currentState.currentTask}: ${nextAction.description}`);
+
+      // GAP-21: Write task summary deterministically (§7.3 fractal summaries)
+      if (currentState.currentMilestone) {
+        await writeTaskSummaryOnComplete(
+          projectRoot,
+          currentState.currentMilestone,
+          currentState.currentSlice,
+          currentState.currentTask,
+          nextAction.description,
+          result.output
+        );
+      }
+
+      // GAP-13: Clean up CONTINUE.md after successful task completion
+      // Per spec §7.5: "CONTINUE.md is consumed on resume (ephemeral)"
+      if (currentState.currentMilestone) {
+        const continuePath = `${projectRoot}/${PATHS.taskPath(currentState.currentMilestone, currentState.currentSlice, currentState.currentTask)}/CONTINUE.md`;
+        try {
+          await Bun.$`rm -f ${continuePath}`.quiet();
+        } catch {
+          // File may not exist — that's fine
+        }
+      }
     }
 
     // 14. Process phase-specific output (DISCUSS, RESEARCH, REASSESS)
@@ -360,6 +557,26 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   await writeSessionReport(projectRoot, finalSession);
   await writeCostTracker(projectRoot, costTracker);
 
+  // GAP-9: Populate and write session metrics
+  const metrics = createSessionMetrics(sessionId);
+  metrics.tasksAttempted = iterations;
+  metrics.tasksCompleted = finalSession.tasksCompleted.length;
+  metrics.tasksFailed = stopReason === "error" ? 1 : 0;
+  metrics.totalCost = costTracker.totalCost;
+  // Aggregate cost per phase from cost tracker entries
+  for (const entry of costTracker.entries) {
+    const phase = entry.phase;
+    metrics.costPerPhase[phase] = (metrics.costPerPhase[phase] ?? 0) + entry.estimatedCost;
+    metrics.tokenUsage[phase] = (metrics.tokenUsage[phase] ?? 0) + entry.tokensIn + entry.tokensOut;
+  }
+  // Count review issues from session issues
+  for (const issue of finalSession.issuesEncountered) {
+    if (issue.includes("MUST-FIX")) {
+      metrics.reviewIssues["MUST-FIX"] = (metrics.reviewIssues["MUST-FIX"] ?? 0) + 1;
+    }
+  }
+  await writeSessionMetrics(projectRoot, metrics);
+
   // Generate and write dashboard
   try {
     const dashboardData = await assembleDashboard(projectRoot, costTracker, config.budgetCeiling);
@@ -402,26 +619,35 @@ async function invokeClaudeHeadless(
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const result =
-        await Bun.$`claude -p "$(cat ${tmpFile})" --allowedTools "Read,Write,Edit,Bash,Glob,Grep" 2>&1`
-          .text()
-          .catch((err: Error) => `ERROR: ${err.message}`);
+      const proc = Bun.spawn(
+        ["sh", "-c", `claude -p "$(cat ${tmpFile})" --allowedTools "Read,Write,Edit,Bash,Glob,Grep" 2>&1`],
+        { signal: controller.signal, stdout: "pipe", stderr: "pipe" }
+      );
+
+      const output = await new Response(proc.stdout).text();
+      const exitCode = await proc.exited;
 
       clearTimeout(timer);
 
       // Cleanup temp file
       await Bun.$`rm -f ${tmpFile}`.quiet();
 
-      if (result.startsWith("ERROR:")) {
-        return { success: false, output: null, error: result };
+      if (exitCode !== 0) {
+        const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
+        return { success: false, output: null, error: stderr || output || `Exit code ${exitCode}` };
       }
 
-      return { success: true, output: result, error: null };
+      return { success: true, output, error: null };
     } catch (err) {
       clearTimeout(timer);
       await Bun.$`rm -f ${tmpFile}`.quiet();
       const message = err instanceof Error ? err.message : String(err);
-      return { success: false, output: null, error: message };
+      const isTimeout = message.includes("abort") || message.includes("signal");
+      return {
+        success: false,
+        output: null,
+        error: isTimeout ? `Timeout after ${timeoutMs}ms: subprocess killed` : message,
+      };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -429,14 +655,185 @@ async function invokeClaudeHeadless(
   }
 }
 
+// ─── Agent Integration (§8 — Sub-Agent System) ─────────────────
+
+/**
+ * Maps each orchestrator phase to the appropriate sub-agent role.
+ * Returns null for phases that don't need agent-specific framing (e.g., VERIFY is mechanical).
+ */
+export function getAgentRoleForPhase(
+  phase: Phase,
+  tddSubPhase: TDDSubPhase | null
+): AgentRole | null {
+  switch (phase) {
+    case "DISCUSS":
+      return "architect";
+    case "RESEARCH":
+      return "researcher";
+    case "PLAN_MILESTONE":
+    case "PLAN_SLICE":
+      return "architect";
+    case "EXECUTE_TASK":
+      if (tddSubPhase === "RED" || tddSubPhase === "GREEN" || tddSubPhase === "REFACTOR") {
+        return "implementer";
+      }
+      return null; // VERIFY is a mechanical check phase
+    case "COMPLETE_SLICE":
+    case "COMPLETE_MILESTONE":
+      return "scribe";
+    case "REASSESS":
+      return "architect";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Build a prompt enriched with agent-specific context (§8.4).
+ * Wraps the phase-specific prompt from prompt-builder.ts with:
+ *   - Agent role header (beginning — high attention per §7.2)
+ *   - Agent-specific vault docs merged into context
+ *   - Agent scope guard (end — high attention per §7.2)
+ * Falls back to generic buildPrompt() for phases without agent mapping.
+ */
+async function buildAgentEnrichedPrompt(
+  projectRoot: string,
+  state: ProjectState,
+  context: ContextPayload
+): Promise<string> {
+  const role = getAgentRoleForPhase(state.phase, state.tddSubPhase);
+  if (!role) {
+    return buildPrompt(state, context);
+  }
+
+  const definition = getAgentDefinition(role);
+  const scopeGuard = buildScopeGuard(role);
+
+  // Load agent-specific vault docs and merge (deduplicated)
+  const agentVaultDocs = await getVaultDocsForAgent(projectRoot, role);
+  const existingDocs = new Set(context.vaultDocs);
+  const newDocs = agentVaultDocs.filter(d => !existingDocs.has(d));
+  const enrichedContext: ContextPayload = {
+    ...context,
+    vaultDocs: [...context.vaultDocs, ...newDocs],
+  };
+
+  // Build phase-specific prompt content
+  const phaseContent = buildPrompt(state, enrichedContext);
+
+  // Frame with agent identity (beginning — high attention region per §7.2)
+  const roleName = definition.role.charAt(0).toUpperCase() + definition.role.slice(1);
+  const header = `# Agent: ${roleName}\n**Role:** ${definition.description}\n\n`;
+
+  // Append agent scope guard (end — high attention region per §7.2)
+  const footer = `\n\n## Agent Scope Guard\n${scopeGuard.map(g => `- ${g}`).join("\n")}\n`;
+
+  return header + phaseContent + footer;
+}
+
+/**
+ * Run reviewer personas and collect issues (§8.3).
+ * Number of personas is governed by budget pressure tier.
+ */
+async function runReviewerQualityGate(
+  projectRoot: string,
+  state: ProjectState,
+  context: ContextPayload,
+  pressure: PressurePolicy,
+  timeoutMs: number,
+): Promise<{ passed: boolean; mustFixCount: number; issues: string[] }> {
+  if (!pressure.allowReview || pressure.reviewPersonaCount === 0) {
+    return { passed: true, mustFixCount: 0, issues: [] };
+  }
+
+  // Select personas based on budget pressure (GREEN=6, YELLOW=3, ORANGE=1, RED=0)
+  const activePersonas = REVIEW_PERSONAS.slice(0, pressure.reviewPersonaCount);
+  const allIssues: string[] = [];
+  let mustFixCount = 0;
+
+  // Load reviewer-specific vault docs
+  const reviewerVaultDocs = await getVaultDocsForAgent(projectRoot, "reviewer");
+  const existingDocs = new Set(context.vaultDocs);
+  const newDocs = reviewerVaultDocs.filter(d => !existingDocs.has(d));
+  const reviewContext: ContextPayload = {
+    ...context,
+    vaultDocs: [...context.vaultDocs, ...newDocs],
+  };
+
+  for (const persona of activePersonas) {
+    console.log(`    Reviewing: ${persona}...`);
+    const reviewPrompt = buildReviewPrompt(persona, reviewContext);
+    const result = await invokeClaudeHeadless(reviewPrompt, timeoutMs);
+
+    if (result.success && result.output) {
+      const parsed = parseReviewOutput(persona, result.output);
+      for (const issue of parsed.issues) {
+        const location = issue.file ? ` (${issue.file}${issue.line ? `:${issue.line}` : ""})` : "";
+        if (issue.severity === "MUST-FIX") {
+          mustFixCount++;
+          allIssues.push(`[${persona}] MUST-FIX: ${issue.description}${location}`);
+        }
+      }
+    }
+  }
+
+  return { passed: mustFixCount === 0, mustFixCount, issues: allIssues };
+}
+
+/**
+ * Invoke the Doctor agent for stuck diagnosis (§8.3).
+ * Returns the diagnosis content, or null if invocation fails.
+ */
+async function invokeDoctorAgent(
+  projectRoot: string,
+  state: ProjectState,
+  context: ContextPayload,
+  stuckReason: string,
+  timeoutMs: number,
+): Promise<string | null> {
+  // Load doctor-specific vault docs
+  const doctorVaultDocs = await getVaultDocsForAgent(projectRoot, "doctor");
+  const existingDocs = new Set(context.vaultDocs);
+  const newDocs = doctorVaultDocs.filter(d => !existingDocs.has(d));
+  const doctorContext: ContextPayload = {
+    ...context,
+    vaultDocs: [...context.vaultDocs, ...newDocs],
+  };
+
+  const prompt = await buildAgentPrompt("doctor", doctorContext, [
+    `The system is stuck: ${stuckReason}`,
+    `Current phase: ${state.phase}, TDD sub-phase: ${state.tddSubPhase ?? "n/a"}`,
+    `Milestone: ${state.currentMilestone ?? "none"}, Slice: ${state.currentSlice ?? "none"}, Task: ${state.currentTask ?? "none"}`,
+    "Diagnose the root cause and propose a specific fix.",
+  ], projectRoot);
+
+  const result = await invokeClaudeHeadless(prompt, timeoutMs);
+  if (result.success && result.output) {
+    const parsed = parseAgentOutput("doctor", result.output);
+    return parsed.content;
+  }
+  return null;
+}
+
 // ─── State Transitions ──────────────────────────────────────────
 
-function computeNextState(
+export function computeNextState(
   current: ProjectState,
-  action: { phase: string; tddSubPhase: string | null },
+  action: { phase: string; tddSubPhase: string | null; milestone?: string | null; slice?: string | null; task?: string | null },
   skipRefactor: boolean = false
 ): ProjectState {
   const next = { ...current, lastUpdated: new Date().toISOString() };
+
+  // Apply discovered milestone/slice/task IDs from the action (GAP-4 fix)
+  if (action.milestone !== undefined) {
+    next.currentMilestone = action.milestone ?? next.currentMilestone;
+  }
+  if (action.slice !== undefined) {
+    next.currentSlice = action.slice;
+  }
+  if (action.task !== undefined) {
+    next.currentTask = action.task;
+  }
 
   // If we're in EXECUTE_TASK, advance TDD sub-phase
   if (current.phase === "EXECUTE_TASK" && current.tddSubPhase) {
@@ -476,17 +873,8 @@ async function loadTaskPlan(
   const file = Bun.file(planPath);
   if (!(await file.exists())) return null;
 
-  return {
-    task: t,
-    slice: s,
-    milestone: m,
-    status: "in_progress",
-    goal: "",
-    steps: [],
-    mustHaves: { truths: [], artifacts: [], keyLinks: [] },
-    mustNotHaves: [],
-    tddSequence: { testFiles: [], testCases: [], implementationFiles: [] },
-  };
+  const content = await file.text();
+  return parseTaskPlan(content);
 }
 
 async function runTDDEnforcement(
@@ -521,6 +909,199 @@ async function runStaticVerification(
   }
 
   return await verifyMustHaves(projectRoot, taskPlan.mustHaves);
+}
+
+// ─── Postmortem (GAP-8: §12.3) ──────────────────────────────────
+
+/**
+ * Create a postmortem report when a task fails.
+ * Queues an evolver analysis for the next session.
+ */
+async function createPostmortemForFailure(
+  projectRoot: string,
+  sessionId: string,
+  taskKey: string,
+  errorMessage: string,
+  state: ProjectState
+): Promise<void> {
+  try {
+    const pmId = await nextPostmortemId(projectRoot);
+    const pm = createPostmortem({
+      id: pmId,
+      session: sessionId,
+      failure: {
+        what: errorMessage,
+        when: `${state.phase}/${state.tddSubPhase ?? "n/a"} on ${taskKey}`,
+        impact: "Task execution failed — manual intervention may be required",
+      },
+      rootCause: {
+        contextPresent: [],
+        contextMissing: [],
+        unclearDoc: null,
+        ambiguousSkill: null,
+        missingTest: null,
+        missingVerification: null,
+      },
+      proposedFixes: [],
+      severity: {
+        frequency: "rare",
+        impact: "moderate",
+        effort: "moderate",
+        recommendation: "fix-soon",
+      },
+    });
+
+    await writePostmortem(projectRoot, pm);
+    console.log(`  Postmortem created: ${pmId}`);
+
+    // Generate evolver proposals from postmortem
+    const proposals = await runPostmortemAnalysis(projectRoot, pmId);
+    if (proposals.length > 0) {
+      console.log(`  Evolver proposals: ${proposals.length} generated for human review`);
+    }
+  } catch {
+    // Postmortem creation is best-effort — don't fail the loop
+  }
+}
+
+// ─── Summary Writing (GAP-21: §7.3 Fractal Summaries) ──────────
+
+/**
+ * Write a task summary after VERIFY phase completes.
+ * Populates with available data: task ID, description, and files from git.
+ */
+async function writeTaskSummaryOnComplete(
+  projectRoot: string,
+  milestone: string,
+  slice: string,
+  task: string,
+  description: string,
+  llmOutput: string | null
+): Promise<void> {
+  try {
+    // Get modified files from git diff
+    const gitDiff = await Bun.$`git -C ${projectRoot} diff --name-only HEAD~1 2>/dev/null || echo ""`.text();
+    const filesModified = gitDiff.trim().split("\n").filter(Boolean);
+
+    const data: TaskSummary = {
+      task,
+      status: "complete",
+      filesModified,
+      patternsEstablished: [],
+      whatWasBuilt: description,
+      keyDecisions: {},
+      downstreamNotes: [],
+    };
+
+    // Extract patterns from LLM output if available
+    if (llmOutput) {
+      const patternMatch = llmOutput.match(/pattern[s]?\s*(?:established|discovered|used):\s*(.+)/i);
+      if (patternMatch?.[1]) {
+        data.patternsEstablished = patternMatch[1].split(",").map(p => p.trim()).filter(Boolean);
+      }
+    }
+
+    const summaryMd = generateTaskSummary(data);
+    const summaryPath = `${projectRoot}/${PATHS.taskPath(milestone, slice, task)}/SUMMARY.md`;
+    await Bun.write(summaryPath, summaryMd);
+    console.log(`  Summary: ${task} written`);
+  } catch {
+    // Summary writing is best-effort
+  }
+}
+
+/**
+ * Write a slice summary after COMPLETE_SLICE.
+ * Reads task summaries to aggregate into a slice-level summary.
+ */
+async function writeSliceSummaryOnComplete(
+  projectRoot: string,
+  milestone: string,
+  slice: string,
+  llmOutput: string | null
+): Promise<void> {
+  try {
+    const slicePath = `${projectRoot}/${PATHS.slicePath(milestone, slice)}`;
+
+    // Read task summaries
+    const tasksDir = `${slicePath}/tasks`;
+    const taskIds: string[] = [];
+    try {
+      const entries = await Bun.$`ls ${tasksDir} 2>/dev/null`.text();
+      taskIds.push(...entries.trim().split("\n").filter(Boolean).sort());
+    } catch {
+      // No tasks directory
+    }
+
+    const data: SliceSummary = {
+      slice,
+      status: "complete",
+      tasksCompleted: taskIds,
+      demoSentence: llmOutput?.match(/(?:demo|user can)\s*[:\-]?\s*(.+)/i)?.[1]?.trim() ?? "",
+      whatWasBuilt: llmOutput?.slice(0, 500) ?? "",
+      interfacesProduced: [],
+      patternsEstablished: [],
+      knownLimitations: [],
+    };
+
+    const summaryMd = generateSliceSummary(data);
+    await Bun.write(`${slicePath}/SUMMARY.md`, summaryMd);
+    console.log(`  Summary: ${slice} written`);
+  } catch {
+    // Summary writing is best-effort
+  }
+}
+
+/**
+ * Write a milestone summary after COMPLETE_MILESTONE.
+ * Reads slice summaries to aggregate into a milestone-level summary.
+ */
+async function writeMilestoneSummaryOnComplete(
+  projectRoot: string,
+  milestone: string,
+  llmOutput: string | null
+): Promise<void> {
+  try {
+    const milestonePath = `${projectRoot}/${PATHS.milestonePath(milestone)}`;
+
+    // Read slice summaries
+    const slicesDir = `${milestonePath}/slices`;
+    const sliceSummaries: SliceSummary[] = [];
+    try {
+      const sliceDirs = await Bun.$`ls ${slicesDir} 2>/dev/null`.text();
+      for (const sliceId of sliceDirs.trim().split("\n").filter(Boolean).sort()) {
+        const summaryFile = Bun.file(`${slicesDir}/${sliceId}/SUMMARY.md`);
+        if (await summaryFile.exists()) {
+          const content = await summaryFile.text();
+          // Parse basic fields from slice summary frontmatter
+          const statusMatch = content.match(/^status:\s*(.+)$/m);
+          const tasksMatch = content.match(/^tasks_completed:\s*\[(.+)\]$/m);
+          const demoMatch = content.match(/## Demo Sentence\n(.+)/);
+          const builtMatch = content.match(/## What Was Built\n([\s\S]*?)(?=\n##|$)/);
+
+          sliceSummaries.push({
+            slice: sliceId,
+            status: (statusMatch?.[1]?.trim() ?? "complete") as "complete" | "failed",
+            tasksCompleted: tasksMatch?.[1]?.split(",").map(t => t.trim()).filter(Boolean) ?? [],
+            demoSentence: demoMatch?.[1]?.trim() ?? "",
+            whatWasBuilt: builtMatch?.[1]?.trim() ?? "",
+            interfacesProduced: [],
+            patternsEstablished: [],
+            knownLimitations: [],
+          });
+        }
+      }
+    } catch {
+      // No slices directory
+    }
+
+    const description = llmOutput?.slice(0, 200) ?? `Milestone ${milestone}`;
+    const summaryMd = generateMilestoneSummary(milestone, description, sliceSummaries);
+    await Bun.write(`${milestonePath}/SUMMARY.md`, summaryMd);
+    console.log(`  Summary: ${milestone} written`);
+  } catch {
+    // Summary writing is best-effort
+  }
 }
 
 // ─── Status Display ──────────────────────────────────────────────

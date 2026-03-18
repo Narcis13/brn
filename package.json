@@ -3,6 +3,13 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "orchestrate": "bun run .superclaude/orchestrator/loop.ts --mode=auto",
+    "step": "bun run .superclaude/orchestrator/loop.ts --mode=step",
+    "status": "bun run .superclaude/orchestrator/loop.ts --mode=interactive",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

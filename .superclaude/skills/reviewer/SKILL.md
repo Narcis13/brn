@@ -102,6 +102,13 @@ If there are no issues, write `None found.` under `### Issues`.
 - Focus on your assigned persona — do not drift into other review areas
 - If reviewing multiple personas, produce a separate section for each
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[patterns/typescript]]` — TypeScript conventions and strict mode rules
+- `[[architecture/overview]]` — System architecture for architecture persona
+- `[[decisions/ADR-*]]` — Architecture Decision Records for context
+- `[[learnings/L*]]` — Past lessons learned to check for regressions
+
 ## Technology
 - Runtime: Bun
 - Language: TypeScript (strict mode)

@@ -94,6 +94,14 @@ When generating UAT scripts for human verification:
 - Do NOT modify existing implementation to make tests pass
 - If tests reveal a spec gap, flag it — don't fill it yourself
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[testing/strategy]]` — Overall testing strategy, TDD cycle, test layers
+- `[[testing/unit-testing]]` — Unit test patterns for Bun test
+- `[[testing/component-testing]]` — React component test patterns
+- `[[testing/mocking]]` — Mocking strategy and patterns
+- `[[patterns/typescript]]` — TypeScript conventions for test code
+
 ## Technology
 - Runtime: Bun
 - Test runner: `bun test`

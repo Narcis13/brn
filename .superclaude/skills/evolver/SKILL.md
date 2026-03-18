@@ -124,6 +124,16 @@ type: postmortem | pattern | improvement
 - Learnings and playbooks can be written directly
 - Always include reasoning for every proposed change
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[architecture/overview]]` — System architecture for root cause analysis
+- `[[patterns/typescript]]` — TypeScript conventions to check/update
+- `[[decisions/ADR-*]]` — Architecture decisions that may need updating
+- `[[learnings/L*]]` — Past learnings to build on (avoid duplicates)
+- `[[playbooks/*]]` — Existing playbooks to update or extend
+- `[[contracts/M*-S*-S*]]` — Interface contracts that may need fixes
+- `[[testing/strategy]]` — Testing strategy to improve
+
 ## Technology
 - Vault location: `.superclaude/vault/`
 - Format: Markdown with YAML frontmatter

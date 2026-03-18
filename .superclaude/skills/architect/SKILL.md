@@ -80,6 +80,13 @@ status: planned
 - ONLY produce interfaces, contracts, boundary maps, and decompositions
 - If unsure about a requirement, flag it for DISCUSS phase
 
+## Vault Docs
+Consult these vault docs when available in your context:
+- `[[architecture/overview]]` — System architecture and two-layer design
+- `[[decisions/ADR-*]]` — Architecture Decision Records for prior decisions
+- `[[contracts/M*-S*-S*]]` — Interface contracts between slices
+- `[[patterns/typescript]]` — TypeScript conventions and strict mode rules
+
 ## Technology
 - Runtime: Bun
 - Language: TypeScript (strict mode)

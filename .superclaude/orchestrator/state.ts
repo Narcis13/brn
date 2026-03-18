@@ -103,6 +103,12 @@ export interface NextAction {
   phase: Phase;
   tddSubPhase: TDDSubPhase | null;
   description: string;
+  /** Discovered milestone ID — applied to state by computeNextState() */
+  milestone?: string | null;
+  /** Discovered slice ID — applied to state by computeNextState() */
+  slice?: string | null;
+  /** Discovered task ID — applied to state by computeNextState() */
+  task?: string | null;
 }
 
 /**
@@ -180,7 +186,7 @@ export async function determineNextActionEnhanced(
           // Find first slice to plan
           const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
           if (nextSlice) {
-            return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Milestone planned — plan slice ${nextSlice}` };
+            return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Milestone planned — plan slice ${nextSlice}`, slice: nextSlice };
           }
         }
       }
@@ -259,17 +265,19 @@ async function handleIdleEnhanced(
           phase: "EXECUTE_TASK",
           tddSubPhase: "RED",
           description: `Execute ${nextSlice}/${nextTask}`,
+          slice: nextSlice,
+          task: nextTask,
         };
       }
       // Slice has no pending tasks — might need planning
-      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Plan slice ${nextSlice}` };
+      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Plan slice ${nextSlice}`, slice: nextSlice };
     }
   }
 
   // No milestone set — try to find one
   const nextMilestone = await findNextMilestone(projectRoot);
   if (nextMilestone) {
-    return { phase: "IDLE", tddSubPhase: null, description: `Found milestone ${nextMilestone} — set it as current to begin` };
+    return { phase: "IDLE", tddSubPhase: null, description: `Found milestone ${nextMilestone} — set it as current to begin`, milestone: nextMilestone };
   }
 
   return { phase: "IDLE", tddSubPhase: null, description: "No work to do — waiting for instructions" };
@@ -289,7 +297,7 @@ async function handleCompleteSliceEnhanced(
     // Skip reassess — go directly to next slice
     const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
     if (nextSlice) {
-      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Skip reassess — plan next slice ${nextSlice}` };
+      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Skip reassess — plan next slice ${nextSlice}`, slice: nextSlice, task: null };
     }
     return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "All slices done — complete milestone" };
   }
@@ -308,7 +316,7 @@ async function handleReassessEnhanced(
   // After reassess, find next slice
   const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
   if (nextSlice) {
-    return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Reassess complete — plan next slice ${nextSlice}` };
+    return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Reassess complete — plan next slice ${nextSlice}`, slice: nextSlice, task: null };
   }
 
   // All slices done

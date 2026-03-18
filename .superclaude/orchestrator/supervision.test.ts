@@ -6,6 +6,7 @@ import {
   isLocked,
   readLock,
   detectStuck,
+  checkTimeout,
   type LockData,
   type StuckDetectionResult,
 } from "./supervision.ts";
@@ -87,4 +88,35 @@ test("detectStuck returns not_stuck when different tasks dispatched", () => {
   ];
   const result = detectStuck("S01/T02", history);
   expect(result.stuck).toBe(false);
+});
+
+// ─── Timeout Tiers (GAP-12) ──────────────────────────────────────
+
+test("checkTimeout returns 'none' for short elapsed time", () => {
+  expect(checkTimeout(5000)).toBe("none");
+});
+
+test("checkTimeout returns 'idle' at 10 minutes", () => {
+  expect(checkTimeout(10 * 60 * 1000)).toBe("idle");
+});
+
+test("checkTimeout returns 'soft' at 15 minutes", () => {
+  expect(checkTimeout(15 * 60 * 1000)).toBe("soft");
+});
+
+test("checkTimeout returns 'hard' at 30 minutes", () => {
+  expect(checkTimeout(30 * 60 * 1000)).toBe("hard");
+});
+
+test("checkTimeout 'idle' is reachable between idle and soft thresholds", () => {
+  // 12 minutes: above idle (10min) but below soft (15min)
+  expect(checkTimeout(12 * 60 * 1000)).toBe("idle");
+});
+
+test("checkTimeout all tiers are distinct and reachable", () => {
+  // Verify that all tiers are hit in the correct ranges
+  expect(checkTimeout(5 * 60 * 1000)).toBe("none");    // 5min < idle(10min)
+  expect(checkTimeout(12 * 60 * 1000)).toBe("idle");   // 12min: idle ≤ x < soft
+  expect(checkTimeout(20 * 60 * 1000)).toBe("soft");   // 20min: soft ≤ x < hard
+  expect(checkTimeout(35 * 60 * 1000)).toBe("hard");   // 35min: x ≥ hard
 });
