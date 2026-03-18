@@ -1,0 +1,99 @@
+{
+  "$id": "current.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "project_root",
+    "context_profile",
+    "phase",
+    "active_runtime",
+    "active_milestone",
+    "active_slice",
+    "active_task",
+    "current_run_id",
+    "queue_head",
+    "blocked",
+    "awaiting_human",
+    "git",
+    "last_transition_at",
+    "last_verified_commit",
+    "recovery_ref",
+    "metrics"
+  ],
+  "properties": {
+    "version": { "type": "integer", "minimum": 1 },
+    "project_root": { "type": "string", "minLength": 1 },
+    "context_profile": { "enum": ["budget", "balanced", "quality"] },
+    "phase": {
+      "enum": [
+        "intake",
+        "clarify",
+        "map",
+        "research",
+        "plan",
+        "dispatch",
+        "implement",
+        "verify",
+        "review",
+        "integrate",
+        "complete_task",
+        "complete_slice",
+        "reassess",
+        "recover",
+        "awaiting_human",
+        "blocked",
+        "complete"
+      ]
+    },
+    "active_runtime": { "type": ["string", "null"] },
+    "active_milestone": { "type": ["string", "null"] },
+    "active_slice": { "type": ["string", "null"] },
+    "active_task": { "type": ["string", "null"] },
+    "current_run_id": { "type": ["string", "null"] },
+    "queue_head": { "type": ["string", "null"] },
+    "blocked": { "type": "boolean" },
+    "awaiting_human": { "type": "boolean" },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trunk_branch",
+        "milestone_branch",
+        "task_branch",
+        "worktree_path",
+        "base_commit",
+        "head_commit",
+        "dirty"
+      ],
+      "properties": {
+        "trunk_branch": { "type": "string", "minLength": 1 },
+        "milestone_branch": { "type": ["string", "null"] },
+        "task_branch": { "type": ["string", "null"] },
+        "worktree_path": { "type": ["string", "null"] },
+        "base_commit": { "type": ["string", "null"] },
+        "head_commit": { "type": ["string", "null"] },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "last_transition_at": { "type": ["string", "null"] },
+    "last_verified_commit": { "type": ["string", "null"] },
+    "recovery_ref": { "type": ["string", "null"] },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "human_interventions",
+        "completed_tasks",
+        "failed_attempts",
+        "recovered_runs"
+      ],
+      "properties": {
+        "human_interventions": { "type": "integer", "minimum": 0 },
+        "completed_tasks": { "type": "integer", "minimum": 0 },
+        "failed_attempts": { "type": "integer", "minimum": 0 },
+        "recovered_runs": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

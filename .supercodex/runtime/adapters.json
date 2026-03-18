@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "runtimes": {
+    "claude": {
+      "display_name": "Claude Code",
+      "enabled": false,
+      "configured": false
+    },
+    "codex": {
+      "display_name": "Codex",
+      "enabled": false,
+      "configured": false
+    }
+  }
+}

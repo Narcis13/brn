@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "context_profile": "balanced",
+  "autonomy": "maximum_for_reversible_and_semi_reversible_actions",
+  "runtime_routing": "strongest_reasoner_for_planning_best_observed_executor_for_tasks",
+  "tdd_mode": "strict_tdd",
+  "planning_style": "vertical_slices",
+  "review_style": [
+    "security",
+    "maintainability",
+    "correctness"
+  ],
+  "roadmap_reassessment": "after_each_slice",
+  "memory_audit": "every_slice",
+  "git_flow": "protected_trunk_to_milestone_branch_to_disposable_task_branches_with_isolated_worktrees",
+  "integration": "serial_convergence"
+}

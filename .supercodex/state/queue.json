@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "unit_id": "M001/S01",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": [],
+      "enqueued_at": "2026-03-18T12:00:00.000Z",
+      "milestone_id": "M001",
+      "slice_id": "S01",
+      "notes": "Populate the vault with real project memory and milestone artifacts."
+    },
+    {
+      "unit_id": "M001/S02",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M001/S01"],
+      "enqueued_at": "2026-03-18T12:05:00.000Z",
+      "milestone_id": "M001",
+      "slice_id": "S02",
+      "notes": "Implement state schemas, journal persistence, and transition guards."
+    },
+    {
+      "unit_id": "M001/S03",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M001/S02"],
+      "enqueued_at": "2026-03-18T12:10:00.000Z",
+      "milestone_id": "M001",
+      "slice_id": "S03",
+      "notes": "Add deterministic queue and lock protocols."
+    },
+    {
+      "unit_id": "M001/S04",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M001/S03"],
+      "enqueued_at": "2026-03-18T12:15:00.000Z",
+      "milestone_id": "M001",
+      "slice_id": "S04",
+      "notes": "Deliver the CLI and read-only git reconcile flow."
+    }
+  ]
+}

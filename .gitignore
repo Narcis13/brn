@@ -1,1 +1,5 @@
 node_modules/
+dist/
+.supercodex/temp/*
+!.supercodex/temp/README.md
+.supercodex-worktrees/

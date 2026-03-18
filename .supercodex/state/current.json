@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "project_root": "/Users/narcisbrindusescu/newme/brn",
+  "context_profile": "balanced",
+  "phase": "plan",
+  "active_runtime": null,
+  "active_milestone": "M001",
+  "active_slice": null,
+  "active_task": null,
+  "current_run_id": null,
+  "queue_head": "M001/S01",
+  "blocked": false,
+  "awaiting_human": false,
+  "git": {
+    "trunk_branch": "main",
+    "milestone_branch": null,
+    "task_branch": null,
+    "worktree_path": null,
+    "base_commit": null,
+    "head_commit": "9eb0074c0587088be91d001053f0444607d2812e",
+    "dirty": true
+  },
+  "last_transition_at": "2026-03-18T12:00:00.000Z",
+  "last_verified_commit": null,
+  "recovery_ref": null,
+  "metrics": {
+    "human_interventions": 0,
+    "completed_tasks": 0,
+    "failed_attempts": 0,
+    "recovered_runs": 0
+  }
+}

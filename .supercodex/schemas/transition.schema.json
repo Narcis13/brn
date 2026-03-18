@@ -1,0 +1,66 @@
+{
+  "$id": "transition.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "timestamp",
+    "from_phase",
+    "to_phase",
+    "reason",
+    "actor",
+    "queue_head",
+    "blocked",
+    "awaiting_human"
+  ],
+  "properties": {
+    "timestamp": { "type": "string", "minLength": 1 },
+    "from_phase": {
+      "enum": [
+        "intake",
+        "clarify",
+        "map",
+        "research",
+        "plan",
+        "dispatch",
+        "implement",
+        "verify",
+        "review",
+        "integrate",
+        "complete_task",
+        "complete_slice",
+        "reassess",
+        "recover",
+        "awaiting_human",
+        "blocked",
+        "complete"
+      ]
+    },
+    "to_phase": {
+      "enum": [
+        "intake",
+        "clarify",
+        "map",
+        "research",
+        "plan",
+        "dispatch",
+        "implement",
+        "verify",
+        "review",
+        "integrate",
+        "complete_task",
+        "complete_slice",
+        "reassess",
+        "recover",
+        "awaiting_human",
+        "blocked",
+        "complete"
+      ]
+    },
+    "reason": { "type": "string", "minLength": 1 },
+    "actor": { "type": "string", "minLength": 1 },
+    "unit_id": { "type": "string" },
+    "queue_head": { "type": ["string", "null"] },
+    "blocked": { "type": "boolean" },
+    "awaiting_human": { "type": "boolean" }
+  }
+}

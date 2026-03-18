@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "template": {
+    "unit_id": null,
+    "unit_type": null,
+    "runtime": null,
+    "role": null,
+    "objective": null,
+    "context_refs": [],
+    "acceptance_criteria": [],
+    "files_in_scope": [],
+    "tests": [],
+    "constraints": [],
+    "safety_class": null,
+    "output_contract": [],
+    "stop_conditions": [],
+    "artifacts_to_update": []
+  },
+  "note": "Phase 0 scaffold aligned to the shared dispatch packet contract; not yet executable."
+}

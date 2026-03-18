@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "default_policy_ref": ".supercodex/runtime/policies.json",
+  "task_class_overrides": {}
+}
