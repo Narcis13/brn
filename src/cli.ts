@@ -3,6 +3,7 @@
 import { pathToFileURL } from "node:url";
 
 import { hasGitRepository } from "./supercodex/git.js";
+import { syncPlanningQueue, validatePlanningSurface } from "./supercodex/planning/index.js";
 import { getRuntimeAdapter } from "./supercodex/runtime/adapters.js";
 import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntimes } from "./supercodex/runtime/registry.js";
 import { loadRuntimeRunHandle } from "./supercodex/runtime/runs.js";
@@ -60,6 +61,8 @@ function usage(): string {
     "  supercodex runtime collect --run-id <run_id>",
     "  supercodex runtime resume --run-id <run_id> [--prompt <text>]",
     "  supercodex runtime cancel --run-id <run_id>",
+    "  supercodex plan sync",
+    "  supercodex plan validate [--unit <unit_id>]",
     "  supercodex next-action show [--json]",
     "  supercodex next-action dispatch",
   ].join("\n");
@@ -381,6 +384,32 @@ async function handleRuntime(args: string[], root: string, writeOut: (text: stri
   throw new Error(`Unknown runtime subcommand: ${subcommand ?? "<missing>"}`);
 }
 
+function handlePlan(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "sync") {
+    const result = syncPlanningQueue(root);
+    const reconciled = reconcileState(root);
+    writeJson(writeOut, {
+      ...result,
+      reconciled_state: reconciled,
+    });
+    return 0;
+  }
+
+  if (subcommand === "validate") {
+    const unitId = getOption(args, "--unit");
+    const validations = validatePlanningSurface(root, unitId);
+    writeJson(writeOut, {
+      ok: validations.every((validation) => validation.ok),
+      validations,
+    });
+    return validations.every((validation) => validation.ok) ? 0 : 1;
+  }
+
+  throw new Error(`Unknown plan subcommand: ${subcommand ?? "<missing>"}`);
+}
+
 async function handleNextAction(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
   const subcommand = args[0];
 
@@ -422,6 +451,8 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return handleLock(rest, cwd, writeOut);
       case "runtime":
         return await handleRuntime(rest, cwd, writeOut);
+      case "plan":
+        return handlePlan(rest, cwd, writeOut);
       case "next-action":
         return await handleNextAction(rest, cwd, writeOut);
       default:

@@ -1,4 +1,12 @@
 import { readJsonFile, readTextIfExists, writeJsonFile, writeTextAtomic } from "../fs.js";
+import {
+  expectedArtifactsForUnit,
+  isModernSlice,
+  loadTaskArtifact,
+  parseUnitId,
+  syncPlanningQueue,
+  validatePlanningUnit,
+} from "../planning/index.js";
 import { resolveRepoPath } from "../paths.js";
 import { getRuntimeAdapter } from "../runtime/adapters.js";
 import { renderDispatchPrompt, renderResumePrompt } from "../runtime/prompts.js";
@@ -68,23 +76,6 @@ function unique(values: string[]): string[] {
   }
 
   return items;
-}
-
-function parseUnitId(unitId: string): { milestone_id: string | null; slice_id: string | null; task_id: string | null } {
-  const match = /^(M\d{3})(?:\/(S\d{2})(?:\/(T\d{2}))?)?$/.exec(unitId);
-  if (!match) {
-    return {
-      milestone_id: null,
-      slice_id: null,
-      task_id: null,
-    };
-  }
-
-  return {
-    milestone_id: match[1] ?? null,
-    slice_id: match[2] ?? null,
-    task_id: match[3] ?? null,
-  };
 }
 
 function readMarkdown(root: string, ref: string): string {
@@ -174,6 +165,14 @@ function resolveUnitArtifacts(root: string, item: QueueItem): { unit: string[]; 
   const milestoneId = item.milestone_id ?? parsed.milestone_id;
   const sliceId = item.slice_id ?? parsed.slice_id;
   const taskId = item.task_id ?? parsed.task_id;
+
+  if (parsed.kind === "roadmap" || item.unit_type === "roadmap") {
+    return {
+      unit: ["vault/roadmap.md"].filter((ref) => isPathPresent(root, ref)),
+      milestone: [],
+    };
+  }
+
   const milestoneRefs = milestoneId
     ? [
         `vault/milestones/${milestoneId}/milestone.md`,
@@ -187,6 +186,8 @@ function resolveUnitArtifacts(root: string, item: QueueItem): { unit: string[]; 
     return {
       unit: [
         `vault/milestones/${milestoneId}/slices/${sliceId}/tasks/${taskId}.md`,
+        `vault/milestones/${milestoneId}/slices/${sliceId}/boundary-map.md`,
+        `vault/milestones/${milestoneId}/slices/${sliceId}/plan.md`,
         `vault/milestones/${milestoneId}/slices/${sliceId}/summary.md`,
       ].filter((ref) => isPathPresent(root, ref)),
       milestone: milestoneRefs,
@@ -197,6 +198,7 @@ function resolveUnitArtifacts(root: string, item: QueueItem): { unit: string[]; 
     return {
       unit: [
         `vault/milestones/${milestoneId}/slices/${sliceId}/slice.md`,
+        `vault/milestones/${milestoneId}/slices/${sliceId}/boundary-map.md`,
         `vault/milestones/${milestoneId}/slices/${sliceId}/research.md`,
         `vault/milestones/${milestoneId}/slices/${sliceId}/plan.md`,
         `vault/milestones/${milestoneId}/slices/${sliceId}/review.md`,
@@ -216,12 +218,18 @@ function loadRoutingConfig(root: string): RuntimeRoutingConfig {
   return readJsonFile<RuntimeRoutingConfig>(resolveRepoPath(root, ".supercodex/runtime/routing.json"));
 }
 
-function defaultRoleForItem(current: CurrentState, item: QueueItem): string {
+function defaultRoleForItem(root: string, current: CurrentState, item: QueueItem): string {
   switch (item.unit_type) {
     case "milestone":
     case "roadmap":
       return "strategist";
     case "slice":
+      if (item.milestone_id && item.slice_id && isModernSlice(root, item.milestone_id, item.slice_id)) {
+        return validatePlanningUnit(root, item.unit_id).ok ? "implementer" : "slice-planner";
+      }
+      return current.phase === "plan" || current.phase === "dispatch" || current.phase === "recover"
+        ? "implementer"
+        : "integrator";
     case "task":
       return current.phase === "plan" || current.phase === "dispatch" || current.phase === "recover"
         ? "implementer"
@@ -256,7 +264,16 @@ function chooseRuntime(
     ? [preferredRuntime, ...(preferredRuntime === "claude" ? (["codex"] as const) : (["claude"] as const))]
     : ["codex", "claude"];
 
-  const reasoningFirst = new Set(["strategist", "interviewer", "mapper", "researcher", "reviewers", "maintenance"]);
+  const reasoningFirst = new Set([
+    "strategist",
+    "interviewer",
+    "mapper",
+    "researcher",
+    "reviewers",
+    "maintenance",
+    "slice-planner",
+    "task-framer",
+  ]);
   if (!preferredRuntime && reasoningFirst.has(role)) {
     preferenceOrder.splice(0, preferenceOrder.length, "claude", "codex");
   }
@@ -346,6 +363,7 @@ function buildContextManifest(
 
 function buildDispatchPacket(root: string, item: QueueItem, role: string, manifest: ContextManifest): DispatchPacket {
   const resolved = resolveUnitArtifacts(root, item);
+  const parsed = parseUnitId(item.unit_id);
   const texts = manifest.refs.map((ref) => readMarkdown(root, ref));
   const unitTexts = resolved.unit.map((ref) => readMarkdown(root, ref));
   const milestoneTexts = resolved.milestone.map((ref) => readMarkdown(root, ref));
@@ -361,51 +379,99 @@ function buildDispatchPacket(root: string, item: QueueItem, role: string, manife
   const planText = planRef ? readMarkdown(root, planRef) : "";
   const reviewText = reviewRef ? readMarkdown(root, reviewRef) : "";
   const boundaryText = milestoneTexts.join("\n");
+  const planningRole = role === "strategist" || role === "slice-planner" || role === "task-framer";
 
-  const acceptanceCriteria = unique([
-    ...extractBulletItems(planText),
-    ...extractBulletItems(reviewText),
-  ]).slice(0, 8);
+  let taskArtifact: ReturnType<typeof loadTaskArtifact> | null = null;
+  if (parsed.kind === "task" && parsed.milestone_id && parsed.slice_id && parsed.task_id) {
+    try {
+      taskArtifact = loadTaskArtifact(root, parsed.milestone_id, parsed.slice_id, parsed.task_id);
+    } catch {
+      taskArtifact = null;
+    }
+  }
 
-  const filesInScope = unique([
-    ...texts.flatMap(extractCodeRefs),
-    ...resolved.unit,
-    ...resolved.milestone,
-  ]);
+  const acceptanceCriteria = (
+    taskArtifact
+      ? taskArtifact.acceptance_criteria
+      : unique([
+          ...extractBulletItems(planText),
+          ...extractBulletItems(reviewText),
+        ])
+  ).slice(0, 8);
 
-  const tests = unique(texts.flatMap(extractCommands));
-  const verificationPlan = unique([
-    ...extractBulletItems(reviewText),
-    ...extractBulletItems(boundaryText).filter((line) => /validate|inspect|verify|review|schema/i.test(line)),
-    "Run the most relevant automated checks for the bounded unit.",
-    "Inspect persisted evidence and blockers before claiming completion.",
-  ]);
+  const filesInScope = unique(
+    taskArtifact
+      ? [...taskArtifact.likely_files, ...resolved.unit, ...resolved.milestone]
+      : [
+          ...texts.flatMap(extractCodeRefs),
+          ...resolved.unit,
+          ...resolved.milestone,
+          ...(planningRole ? expectedArtifactsForUnit(root, item.unit_id) : []),
+        ],
+  );
 
-  const constraints = unique([
-    ...extractBulletItems(boundaryText),
-    "Use disk-backed state and files as ground truth rather than prior chat context.",
-    "Do not claim verified completion without evidence in the normalized result.",
-  ]).slice(0, 8);
+  const tests = unique(
+    taskArtifact
+      ? taskArtifact.verification_plan.filter((entry) => /^(pnpm|npm|npx|vitest|tsx)\b/.test(entry))
+      : texts.flatMap(extractCommands),
+  );
+  const verificationPlan = unique(
+    taskArtifact
+      ? taskArtifact.verification_plan
+      : [
+          ...extractBulletItems(reviewText),
+          ...extractBulletItems(boundaryText).filter((line) => /validate|inspect|verify|review|schema/i.test(line)),
+          "Run the most relevant automated checks for the bounded unit.",
+          "Inspect persisted evidence and blockers before claiming completion.",
+        ],
+  );
 
-  const safetyClass = filesInScope.some((ref) => ref === "package.json" || ref.includes(".supercodex/schemas/"))
-    ? "semi_reversible"
-    : "reversible";
+  const constraints = unique(
+    taskArtifact
+      ? [
+          `Why now: ${taskArtifact.why_now}`,
+          `TDD mode: ${taskArtifact.tdd_mode}`,
+          "Use disk-backed state and files as ground truth rather than prior chat context.",
+          "Do not claim verified completion without evidence in the normalized result.",
+        ]
+      : [
+          ...extractBulletItems(boundaryText),
+          "Use disk-backed state and files as ground truth rather than prior chat context.",
+          "Do not claim verified completion without evidence in the normalized result.",
+        ],
+  ).slice(0, 8);
 
-  const artifactsToUpdate = unique([
-    ...resolved.unit.filter((ref) => ref.endsWith("summary.md") || ref.endsWith("review.md")),
-    ...resolved.milestone.filter((ref) => ref.endsWith("summary.md")),
-    "vault/assumptions.md",
-  ]);
+  const safetyClass = taskArtifact
+    ? taskArtifact.safety_class
+    : filesInScope.some((ref) => ref === "package.json" || ref.includes(".supercodex/schemas/"))
+      ? "semi_reversible"
+      : "reversible";
+
+  const artifactsToUpdate = unique(
+    taskArtifact
+      ? [...expectedArtifactsForUnit(root, item.unit_id), "vault/assumptions.md"]
+      : [
+          ...(planningRole ? expectedArtifactsForUnit(root, item.unit_id) : []),
+          ...resolved.unit.filter((ref) => ref.endsWith("summary.md") || ref.endsWith("review.md")),
+          ...resolved.milestone.filter((ref) => ref.endsWith("summary.md")),
+          "vault/assumptions.md",
+        ],
+  );
 
   const packet: DispatchPacket = {
     version: 1,
     unit_id: item.unit_id,
     unit_type: item.unit_type,
     role,
-    objective,
+    objective: taskArtifact?.objective ?? objective,
     context_refs: manifest.refs,
-    acceptance_criteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : [objective],
-    files_in_scope: filesInScope.length > 0 ? filesInScope : ["src/", ".supercodex/", "vault/"],
+    acceptance_criteria: acceptanceCriteria.length > 0 ? acceptanceCriteria : [taskArtifact?.objective ?? objective],
+    files_in_scope:
+      filesInScope.length > 0
+        ? filesInScope
+        : planningRole
+          ? expectedArtifactsForUnit(root, item.unit_id)
+          : ["src/", ".supercodex/", "vault/"],
     tests: tests.length > 0 ? tests : ["pnpm test"],
     verification_plan: verificationPlan,
     constraints,
@@ -545,7 +611,7 @@ function nextActionForUnit(
     };
   }
 
-  const role = override.preferred_role ?? defaultRoleForItem(current, item);
+  const role = override.preferred_role ?? defaultRoleForItem(root, current, item);
   const preferredRuntime = latestRun?.status === "failed" ? latestRun.runtime : override.preferred_runtime;
   const runtime = chooseRuntime(registry, preferredRuntime, role);
 
@@ -715,10 +781,35 @@ function updateStateAfterResult(root: string, runId: string, decision: NextActio
     return;
   }
 
+  const planningUnit =
+    decision.unit_type === "roadmap" ||
+    decision.unit_type === "milestone" ||
+    decision.role === "slice-planner" ||
+    decision.role === "task-framer";
+
+  if (planningUnit) {
+    syncPlanningQueue(root);
+  }
+
   if (result.status === "success") {
-    const current = loadCurrentState(root);
-    if (current.phase !== "implement") {
-      transitionState(root, "implement", `Run ${runId} completed and awaits verification.`, unitId, "next-action");
+    if (planningUnit) {
+      const validation = validatePlanningUnit(root, unitId);
+      if (!validation.ok) {
+        transitionState(
+          root,
+          "recover",
+          `Run ${runId} reported planning success but left invalid artifacts for ${unitId}.`,
+          unitId,
+          "next-action",
+        );
+      } else {
+        transitionState(root, "plan", `Run ${runId} completed planning for ${unitId}.`, unitId, "next-action");
+      }
+    } else {
+      const current = loadCurrentState(root);
+      if (current.phase !== "implement") {
+        transitionState(root, "implement", `Run ${runId} completed and awaits verification.`, unitId, "next-action");
+      }
     }
   } else if (result.status === "blocked") {
     transitionState(root, "blocked", `Run ${runId} reported a blocker.`, unitId, "next-action");

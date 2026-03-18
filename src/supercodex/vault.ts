@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import { fileExists, readText, writeTextAtomic } from "./fs.js";
-import { findPackageRoot, isPlaceholderContent, resolveRepoPath, ROOT_TEMPLATE_FILES } from "./paths.js";
+import { findPackageRoot, isPlaceholderContent, listManagedTemplateFiles, PLACEHOLDER_CHECKS, resolveRepoPath } from "./paths.js";
 import type { TemplateSyncResult } from "./types.js";
 
 const packageRoot = findPackageRoot(fileURLToPath(import.meta.url));
@@ -13,7 +13,7 @@ export function syncManagedTemplates(targetRoot: string): TemplateSyncResult {
     kept: [],
   };
 
-  for (const relativePath of ROOT_TEMPLATE_FILES) {
+  for (const relativePath of listManagedTemplateFiles(packageRoot)) {
     const sourcePath = resolveRepoPath(packageRoot, relativePath);
     const targetPath = resolveRepoPath(targetRoot, relativePath);
     const sourceContent = readText(sourcePath);
@@ -38,7 +38,7 @@ export function syncManagedTemplates(targetRoot: string): TemplateSyncResult {
 }
 
 export function findPlaceholderFiles(targetRoot: string): string[] {
-  return ROOT_TEMPLATE_FILES.filter((relativePath) => {
+  return Object.keys(PLACEHOLDER_CHECKS).filter((relativePath) => {
     const targetPath = resolveRepoPath(targetRoot, relativePath);
     if (!fileExists(targetPath)) {
       return relativePath.startsWith("vault/");

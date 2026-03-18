@@ -19,6 +19,7 @@ import {
   validateQueueState,
   validateTransitionRecord,
 } from "./schemas.js";
+import { isModernMilestone, parseUnitId, validatePlanningUnit } from "./planning/index.js";
 import { loadDispatchTemplate, loadRuntimeRegistry } from "./runtime/registry.js";
 import { runtimeSchemaFileEntries } from "./runtime/schemas.js";
 import { synthSchemaFileEntries } from "./synth/schemas.js";
@@ -37,7 +38,7 @@ const TRANSITION_RULES: Record<Phase, Phase[]> = {
   map: ["research", "plan"],
   research: ["map", "plan"],
   plan: ["clarify", "map", "research", "dispatch"],
-  dispatch: ["implement"],
+  dispatch: ["plan", "implement"],
   implement: ["verify"],
   verify: ["implement", "review"],
   review: ["implement", "integrate", "complete_task"],
@@ -172,17 +173,16 @@ function assertTransitionAllowed(from: Phase, to: Phase): void {
   }
 }
 
-function parseUnitId(unitId: string): Partial<CurrentState> {
-  const match = /^(M\d{3})(?:\/(S\d{2})(?:\/(T\d{2}))?)?$/.exec(unitId);
-  if (!match) {
+function stateFieldsFromUnitId(unitId: string): Partial<CurrentState> {
+  const parsed = parseUnitId(unitId);
+  if (parsed.kind === "unknown") {
     throw new Error(`Unsupported unit id: ${unitId}`);
   }
 
-  const [, milestone, slice, task] = match;
   return {
-    active_milestone: milestone ?? null,
-    active_slice: slice ?? null,
-    active_task: task ?? null,
+    active_milestone: parsed.milestone_id ?? null,
+    active_slice: parsed.slice_id ?? null,
+    active_task: parsed.task_id ?? null,
   };
 }
 
@@ -209,7 +209,7 @@ export function transitionState(
   assertTransitionAllowed(current.phase, phase);
 
   const timestamp = new Date().toISOString();
-  const unitFields = unitId ? parseUnitId(unitId) : {};
+  const unitFields = unitId ? stateFieldsFromUnitId(unitId) : {};
   const statusFlags = applyStatusForPhase(phase);
   const nextState: CurrentState = {
     ...current,
@@ -361,6 +361,23 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
         if (!fileExists(resolveRepoPath(root, milestoneFile))) {
           issues.push(`Missing active milestone artifact: ${milestoneFile}`);
         }
+      }
+    }
+
+    if (current.active_task && current.active_milestone && current.active_slice) {
+      const validation = validatePlanningUnit(root, `${current.active_milestone}/${current.active_slice}/${current.active_task}`);
+      if (!validation.ok) {
+        issues.push(...validation.issues);
+      }
+    } else if (current.active_slice && current.active_milestone && isModernMilestone(current.active_milestone)) {
+      const validation = validatePlanningUnit(root, `${current.active_milestone}/${current.active_slice}`);
+      if (!validation.ok) {
+        issues.push(...validation.issues);
+      }
+    } else if (current.active_milestone && isModernMilestone(current.active_milestone)) {
+      const validation = validatePlanningUnit(root, current.active_milestone);
+      if (!validation.ok) {
+        issues.push(...validation.issues);
       }
     }
 

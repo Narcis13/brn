@@ -1,115 +1,14 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const ROOT_TEMPLATE_FILES = [
+const ROOT_TEMPLATE_ROOT_FILES = [
   ".gitignore",
   "AGENTS.md",
   "CLAUDE.md",
   "SUPER_CODEX.md",
-  "skills/README.md",
-  "vault/index.md",
-  "vault/vision.md",
-  "vault/roadmap.md",
-  "vault/architecture.md",
-  "vault/constraints.md",
-  "vault/decisions.md",
-  "vault/assumptions.md",
-  "vault/feedback/QUESTIONS.md",
-  "vault/feedback/BLOCKERS.md",
-  "vault/feedback/ANSWERS.md",
-  "vault/milestones/README.md",
-  "vault/milestones/M001/milestone.md",
-  "vault/milestones/M001/boundary-map.md",
-  "vault/milestones/M001/summary.md",
-  "vault/milestones/M001/uat.md",
-  "vault/milestones/M001/slices/S01/slice.md",
-  "vault/milestones/M001/slices/S01/research.md",
-  "vault/milestones/M001/slices/S01/plan.md",
-  "vault/milestones/M001/slices/S01/review.md",
-  "vault/milestones/M001/slices/S01/summary.md",
-  "vault/milestones/M001/slices/S02/slice.md",
-  "vault/milestones/M001/slices/S02/research.md",
-  "vault/milestones/M001/slices/S02/plan.md",
-  "vault/milestones/M001/slices/S02/review.md",
-  "vault/milestones/M001/slices/S02/summary.md",
-  "vault/milestones/M001/slices/S03/slice.md",
-  "vault/milestones/M001/slices/S03/research.md",
-  "vault/milestones/M001/slices/S03/plan.md",
-  "vault/milestones/M001/slices/S03/review.md",
-  "vault/milestones/M001/slices/S03/summary.md",
-  "vault/milestones/M001/slices/S04/slice.md",
-  "vault/milestones/M001/slices/S04/research.md",
-  "vault/milestones/M001/slices/S04/plan.md",
-  "vault/milestones/M001/slices/S04/review.md",
-  "vault/milestones/M001/slices/S04/summary.md",
-  "vault/milestones/M002/milestone.md",
-  "vault/milestones/M002/boundary-map.md",
-  "vault/milestones/M002/summary.md",
-  "vault/milestones/M002/uat.md",
-  "vault/milestones/M002/slices/S01/slice.md",
-  "vault/milestones/M002/slices/S01/research.md",
-  "vault/milestones/M002/slices/S01/plan.md",
-  "vault/milestones/M002/slices/S01/review.md",
-  "vault/milestones/M002/slices/S01/summary.md",
-  "vault/milestones/M002/slices/S02/slice.md",
-  "vault/milestones/M002/slices/S02/research.md",
-  "vault/milestones/M002/slices/S02/plan.md",
-  "vault/milestones/M002/slices/S02/review.md",
-  "vault/milestones/M002/slices/S02/summary.md",
-  "vault/milestones/M002/slices/S03/slice.md",
-  "vault/milestones/M002/slices/S03/research.md",
-  "vault/milestones/M002/slices/S03/plan.md",
-  "vault/milestones/M002/slices/S03/review.md",
-  "vault/milestones/M002/slices/S03/summary.md",
-  "vault/milestones/M002/slices/S04/slice.md",
-  "vault/milestones/M002/slices/S04/research.md",
-  "vault/milestones/M002/slices/S04/plan.md",
-  "vault/milestones/M002/slices/S04/review.md",
-  "vault/milestones/M002/slices/S04/summary.md",
-  "vault/milestones/M003/milestone.md",
-  "vault/milestones/M003/boundary-map.md",
-  "vault/milestones/M003/summary.md",
-  "vault/milestones/M003/uat.md",
-  "vault/milestones/M003/slices/S01/slice.md",
-  "vault/milestones/M003/slices/S01/research.md",
-  "vault/milestones/M003/slices/S01/plan.md",
-  "vault/milestones/M003/slices/S02/slice.md",
-  "vault/milestones/M003/slices/S02/research.md",
-  "vault/milestones/M003/slices/S02/plan.md",
-  "vault/milestones/M003/slices/S03/slice.md",
-  "vault/milestones/M003/slices/S03/research.md",
-  "vault/milestones/M003/slices/S03/plan.md",
-  "vault/milestones/M003/slices/S04/slice.md",
-  "vault/milestones/M003/slices/S04/research.md",
-  "vault/milestones/M003/slices/S04/plan.md",
-  "vault/milestones/M003/slices/S05/slice.md",
-  "vault/milestones/M003/slices/S05/research.md",
-  "vault/milestones/M003/slices/S05/plan.md",
-  "vault/onboarding/README.md",
-  "vault/patterns/README.md",
-  ".supercodex/runtime/adapters.json",
-  ".supercodex/runtime/policies.json",
-  ".supercodex/runtime/routing.json",
-  ".supercodex/prompts/dispatch.json",
-  ".supercodex/prompts/next-action.md",
-  ".supercodex/state/current.json",
-  ".supercodex/state/queue.json",
-  ".supercodex/state/transitions.jsonl",
-  ".supercodex/runs/README.md",
-  ".supercodex/audits/README.md",
-  ".supercodex/metrics/README.md",
-  ".supercodex/temp/README.md",
-  ".supercodex/schemas/README.md",
-  ".supercodex/schemas/current.schema.json",
-  ".supercodex/schemas/queue.schema.json",
-  ".supercodex/schemas/lock.schema.json",
-  ".supercodex/schemas/transition.schema.json",
-  ".supercodex/schemas/dispatch.schema.json",
-  ".supercodex/schemas/result.schema.json",
-  ".supercodex/schemas/probe.schema.json",
-  ".supercodex/schemas/runtime-registry.schema.json",
-  ".supercodex/schemas/runtime-handle.schema.json",
 ] as const;
+
+const ROOT_TEMPLATE_DIRS = ["skills", "vault", ".supercodex"] as const;
 
 export const PLACEHOLDER_CHECKS: Record<string, RegExp[]> = {
   "vault/vision.md": [/Describe the real-world outcome/i, /Observable outcome 1/i],
@@ -123,6 +22,30 @@ export const PLACEHOLDER_CHECKS: Record<string, RegExp[]> = {
   ".supercodex/state/current.json": [/"active_milestone": null/, /"phase": "intake"/],
   ".supercodex/state/queue.json": [/"items": \[\]/],
 };
+
+function listFilesRecursive(root: string, directory: string): string[] {
+  const absolute = join(root, directory);
+  if (!existsSync(absolute)) {
+    return [];
+  }
+
+  return readdirSync(absolute, { withFileTypes: true })
+    .flatMap((entry) => {
+      const relativePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return listFilesRecursive(root, relativePath);
+      }
+
+      return [relativePath];
+    })
+    .sort();
+}
+
+export function listManagedTemplateFiles(root: string): string[] {
+  const rootFiles = ROOT_TEMPLATE_ROOT_FILES.filter((relativePath) => existsSync(join(root, relativePath)));
+  const directoryFiles = ROOT_TEMPLATE_DIRS.flatMap((directory) => listFilesRecursive(root, directory));
+  return [...new Set([...rootFiles, ...directoryFiles])].sort();
+}
 
 export const CURRENT_STATE_PATH = ".supercodex/state/current.json";
 export const QUEUE_STATE_PATH = ".supercodex/state/queue.json";
