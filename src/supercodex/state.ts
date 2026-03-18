@@ -21,6 +21,7 @@ import {
 } from "./schemas.js";
 import { loadDispatchTemplate, loadRuntimeRegistry } from "./runtime/registry.js";
 import { runtimeSchemaFileEntries } from "./runtime/schemas.js";
+import { synthSchemaFileEntries } from "./synth/schemas.js";
 import type {
   CurrentState,
   LockRecord,
@@ -113,7 +114,7 @@ export function loadLocks(root: string): LockRecord[] {
 }
 
 export function writeSchemaFiles(root: string): void {
-  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries]) {
+  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries, ...synthSchemaFileEntries]) {
     writeJsonFile(resolveRepoPath(root, `.supercodex/schemas/${fileName}`), schema);
   }
 }

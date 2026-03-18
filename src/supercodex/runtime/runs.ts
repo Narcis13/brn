@@ -18,7 +18,7 @@ export interface RuntimeRunPaths {
 }
 
 function compactTimestamp(timestamp: string): string {
-  return timestamp.replace(/[-:TZ.]/g, "").slice(0, 14);
+  return timestamp.replace(/[-:TZ.]/g, "").slice(0, 17);
 }
 
 function slugifyUnitId(unitId: string): string {

@@ -30,4 +30,5 @@ Phase 2 notes:
 
 - `M001` is complete and leaves behind the vault, state schemas, queue protocol, locks, and CLI scaffold.
 - `M002` is the active implementation milestone for runtime adapters, normalized dispatch, and result handling.
+- `M003` is now decomposed in `vault/milestones/M003/` as the next milestone for deterministic selection, context assembly, retry policy, and canonical run persistence.
 - Next-action synthesis, canonical run persistence, and autonomous routing remain future milestones.

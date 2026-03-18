@@ -7,6 +7,7 @@ import { getRuntimeAdapter } from "./supercodex/runtime/adapters.js";
 import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntimes } from "./supercodex/runtime/registry.js";
 import { loadRuntimeRunHandle } from "./supercodex/runtime/runs.js";
 import { RUNTIME_IDS } from "./supercodex/runtime/types.js";
+import { dispatchNextAction, formatNextActionShow, synthesizeNextAction } from "./supercodex/synth/next-action.js";
 import { findPlaceholderFiles, syncManagedTemplates } from "./supercodex/vault.js";
 import {
   acquireLock,
@@ -59,6 +60,8 @@ function usage(): string {
     "  supercodex runtime collect --run-id <run_id>",
     "  supercodex runtime resume --run-id <run_id> [--prompt <text>]",
     "  supercodex runtime cancel --run-id <run_id>",
+    "  supercodex next-action show [--json]",
+    "  supercodex next-action dispatch",
   ].join("\n");
 }
 
@@ -378,6 +381,27 @@ async function handleRuntime(args: string[], root: string, writeOut: (text: stri
   throw new Error(`Unknown runtime subcommand: ${subcommand ?? "<missing>"}`);
 }
 
+async function handleNextAction(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
+  const subcommand = args[0];
+
+  if (subcommand === "show") {
+    const result = synthesizeNextAction(root);
+    if (args.includes("--json")) {
+      writeJson(writeOut, result);
+    } else {
+      writeOut(formatNextActionShow(result));
+    }
+    return 0;
+  }
+
+  if (subcommand === "dispatch") {
+    writeJson(writeOut, await dispatchNextAction(root));
+    return 0;
+  }
+
+  throw new Error(`Unknown next-action subcommand: ${subcommand ?? "<missing>"}`);
+}
+
 export async function runCli(argv: string[], options: CliOptions = {}): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
   const writeOut = options.writeOut ?? ((text: string) => process.stdout.write(text));
@@ -398,6 +422,8 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return handleLock(rest, cwd, writeOut);
       case "runtime":
         return await handleRuntime(rest, cwd, writeOut);
+      case "next-action":
+        return await handleNextAction(rest, cwd, writeOut);
       default:
         writeErr(`${usage()}\n`);
         return command ? 1 : 0;

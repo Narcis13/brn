@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileExists, readJsonFile, readText, writeJsonFile, writeTextAtomic } from "../fs.js";
 import { resolveRepoPath } from "../paths.js";
 import { runCommand, cancelActiveRun, terminatePid } from "./process.js";
+import { renderDispatchPrompt, renderResumePrompt } from "./prompts.js";
 import { loadDispatchPacket, loadRuntimeRegistry, probeRuntimes } from "./registry.js";
 import { ensureRunDirectory, collectRuntimeRun, createRunId, getRuntimeRunPaths, loadRuntimeRunHandle, resolveRunRef, saveNormalizedResult, saveRuntimeRunHandle } from "./runs.js";
 import { runtimeModelResponseSchema, validateDispatchPacket, validateNormalizedResult, validateRuntimeModelResponse } from "./schemas.js";
@@ -27,8 +28,8 @@ export interface RuntimeAdapter {
   readonly id: RuntimeId;
   readonly display_name: string;
   probe(root: string): Promise<RuntimeProbeResult>;
-  dispatch(root: string, packet: DispatchPacket): Promise<RuntimeDispatchResult>;
-  resume(root: string, runId: string, prompt?: string): Promise<RuntimeDispatchResult>;
+  dispatch(root: string, packet: DispatchPacket, nextRunId?: string): Promise<RuntimeDispatchResult>;
+  resume(root: string, runId: string, prompt?: string, nextRunId?: string): Promise<RuntimeDispatchResult>;
   cancel(root: string, runId: string): Promise<boolean>;
   collect(root: string, runId: string): RuntimeCollectResult;
   supports(root: string, capability: RuntimeCapability): boolean;
@@ -83,36 +84,6 @@ function listDirtyPaths(root: string): string[] {
 function difference(after: string[], before: string[]): string[] {
   const baseline = new Set(before);
   return after.filter((path) => !baseline.has(path));
-}
-
-function renderDispatchPrompt(packet: DispatchPacket): string {
-  return [
-    "You are executing one SUPER_CODEX dispatch packet.",
-    "Follow the packet exactly and return JSON only.",
-    "Return a JSON object with these fields:",
-    '- `status`: "success" | "failed" | "blocked" | "interrupted"',
-    "- `summary`: concise result summary",
-    "- `tests_written`: array of tests added",
-    "- `tests_run`: array of tests or checks executed",
-    "- `verification_evidence`: array of evidence statements",
-    "- `assumptions`: array of assumptions made",
-    "- `blockers`: array of blockers encountered",
-    "- `followups`: array of follow-up actions",
-    "",
-    "Dispatch packet:",
-    JSON.stringify(packet, null, 2),
-  ].join("\n");
-}
-
-function renderResumePrompt(packet: DispatchPacket, prompt?: string): string {
-  return [
-    "Continue the existing SUPER_CODEX runtime session for the same unit.",
-    "Return JSON only using the same response schema as before.",
-    prompt?.trim() ? `Operator follow-up: ${prompt.trim()}` : "Operator follow-up: Continue and report the current state precisely.",
-    "",
-    "Original dispatch packet:",
-    JSON.stringify(packet, null, 2),
-  ].join("\n");
 }
 
 function coerceStringArray(value: unknown): string[] {
@@ -364,11 +335,11 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     return cancelled;
   }
 
-  async dispatch(root: string, packet: DispatchPacket): Promise<RuntimeDispatchResult> {
-    return await this.execute(root, packet, null, renderDispatchPrompt(packet));
+  async dispatch(root: string, packet: DispatchPacket, nextRunId?: string): Promise<RuntimeDispatchResult> {
+    return await this.execute(root, packet, null, renderDispatchPrompt(packet), null, nextRunId);
   }
 
-  async resume(root: string, runId: string, prompt?: string): Promise<RuntimeDispatchResult> {
+  async resume(root: string, runId: string, prompt?: string, nextRunId?: string): Promise<RuntimeDispatchResult> {
     const handle = loadRuntimeRunHandle(root, runId);
     if (handle.runtime !== this.id) {
       throw new Error(`Run ${runId} belongs to ${handle.runtime}, not ${this.id}.`);
@@ -379,7 +350,7 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     }
 
     const packet = loadDispatchPacket(resolveRunRef(root, handle.packet_ref));
-    return await this.execute(root, packet, runId, renderResumePrompt(packet, prompt), handle.session_id);
+    return await this.execute(root, packet, runId, renderResumePrompt(packet, prompt), handle.session_id, nextRunId);
   }
 
   protected abstract buildDispatchPlan(
@@ -397,11 +368,12 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     parentRunId: string | null,
     prompt: string,
     resumeSessionId: string | null = null,
+    nextRunId?: string,
   ): Promise<RuntimeDispatchResult> {
     validateDispatchPacket(packet);
     const entry = resolveEntry(root, this.id);
     const started_at = new Date().toISOString();
-    const run_id = createRunId(this.id, packet.unit_id, started_at);
+    const run_id = nextRunId ?? createRunId(this.id, packet.unit_id, started_at);
     const runPaths = ensureRunDirectory(root, run_id);
     const plan = this.buildDispatchPlan(root, entry, prompt, runPaths, resumeSessionId, parentRunId !== null);
     const beforeDirty = listDirtyPaths(root);
