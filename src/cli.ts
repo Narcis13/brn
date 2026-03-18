@@ -3,6 +3,10 @@
 import { pathToFileURL } from "node:url";
 
 import { hasGitRepository } from "./supercodex/git.js";
+import { getRuntimeAdapter } from "./supercodex/runtime/adapters.js";
+import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntimes } from "./supercodex/runtime/registry.js";
+import { loadRuntimeRunHandle } from "./supercodex/runtime/runs.js";
+import { RUNTIME_IDS } from "./supercodex/runtime/types.js";
 import { findPlaceholderFiles, syncManagedTemplates } from "./supercodex/vault.js";
 import {
   acquireLock,
@@ -25,6 +29,7 @@ import {
 import { validateCurrentState } from "./supercodex/schemas.js";
 import { PHASES, QUEUE_STATUSES, UNIT_TYPES } from "./supercodex/types.js";
 import type { CurrentState, LockRecord, Phase, QueueItem, QueueStatus, TransitionRecord, UnitType } from "./supercodex/types.js";
+import type { RuntimeId } from "./supercodex/runtime/types.js";
 
 interface CliOptions {
   cwd?: string;
@@ -48,6 +53,12 @@ function usage(): string {
     "  supercodex lock list",
     "  supercodex lock acquire <resource> --owner <owner> --scope <scope> --reason <text>",
     "  supercodex lock release <resource>",
+    "  supercodex runtime list",
+    "  supercodex runtime probe [claude|codex]",
+    "  supercodex runtime dispatch --runtime <claude|codex> --packet <path>",
+    "  supercodex runtime collect --run-id <run_id>",
+    "  supercodex runtime resume --run-id <run_id> [--prompt <text>]",
+    "  supercodex runtime cancel --run-id <run_id>",
   ].join("\n");
 }
 
@@ -99,6 +110,10 @@ function isUnitType(value: string): value is UnitType {
 
 function isQueueStatus(value: string): value is QueueStatus {
   return QUEUE_STATUSES.includes(value as QueueStatus);
+}
+
+function isRuntimeId(value: string): value is RuntimeId {
+  return RUNTIME_IDS.includes(value as RuntimeId);
 }
 
 function seedCurrentState(root: string): CurrentState {
@@ -305,6 +320,64 @@ function handleLock(args: string[], root: string, writeOut: (text: string) => vo
   throw new Error(`Unknown lock subcommand: ${subcommand ?? "<missing>"}`);
 }
 
+async function handleRuntime(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
+  const subcommand = args[0];
+
+  if (subcommand === "list") {
+    writeJson(writeOut, listRuntimeRegistry(root));
+    return 0;
+  }
+
+  if (subcommand === "probe") {
+    const runtimeValue = args[1];
+    if (runtimeValue && !isRuntimeId(runtimeValue)) {
+      throw new Error(`Unsupported runtime: ${runtimeValue}`);
+    }
+
+    writeJson(writeOut, await probeRuntimes(root, runtimeValue as RuntimeId | undefined));
+    return 0;
+  }
+
+  if (subcommand === "dispatch") {
+    const runtimeValue = requireOption(args, "--runtime");
+    if (!isRuntimeId(runtimeValue)) {
+      throw new Error(`Unsupported runtime: ${runtimeValue}`);
+    }
+
+    const packetPath = resolvePacketPath(root, requireOption(args, "--packet"));
+    const packet = loadDispatchPacket(packetPath);
+    const result = await getRuntimeAdapter(runtimeValue).dispatch(root, packet);
+    writeJson(writeOut, result);
+    return 0;
+  }
+
+  if (subcommand === "collect") {
+    const runId = requireOption(args, "--run-id");
+    const handle = loadRuntimeRunHandle(root, runId);
+    writeJson(writeOut, getRuntimeAdapter(handle.runtime).collect(root, runId));
+    return 0;
+  }
+
+  if (subcommand === "resume") {
+    const runId = requireOption(args, "--run-id");
+    const prompt = getOption(args, "--prompt");
+    const handle = loadRuntimeRunHandle(root, runId);
+    writeJson(writeOut, await getRuntimeAdapter(handle.runtime).resume(root, runId, prompt));
+    return 0;
+  }
+
+  if (subcommand === "cancel") {
+    const runId = requireOption(args, "--run-id");
+    const handle = loadRuntimeRunHandle(root, runId);
+    writeJson(writeOut, {
+      cancelled: await getRuntimeAdapter(handle.runtime).cancel(root, runId),
+    });
+    return 0;
+  }
+
+  throw new Error(`Unknown runtime subcommand: ${subcommand ?? "<missing>"}`);
+}
+
 export async function runCli(argv: string[], options: CliOptions = {}): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
   const writeOut = options.writeOut ?? ((text: string) => process.stdout.write(text));
@@ -323,6 +396,8 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return handleQueue(rest, cwd, writeOut);
       case "lock":
         return handleLock(rest, cwd, writeOut);
+      case "runtime":
+        return await handleRuntime(rest, cwd, writeOut);
       default:
         writeErr(`${usage()}\n`);
         return command ? 1 : 0;

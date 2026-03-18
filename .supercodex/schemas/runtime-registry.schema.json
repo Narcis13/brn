@@ -1,0 +1,201 @@
+{
+  "$id": "runtime-registry.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "runtimes"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "runtimes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claude",
+        "codex"
+      ],
+      "properties": {
+        "claude": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "display_name",
+            "command",
+            "enabled",
+            "configured",
+            "capabilities"
+          ],
+          "properties": {
+            "display_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "configured": {
+              "type": "boolean"
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "images",
+                  "long_shell",
+                  "non_interactive",
+                  "patching",
+                  "resume",
+                  "structured_output",
+                  "subagents"
+                ]
+              }
+            },
+            "default_args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "string"
+            },
+            "last_probe": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "available",
+                "path",
+                "version",
+                "checked_at",
+                "error"
+              ],
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "checked_at": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "codex": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "display_name",
+            "command",
+            "enabled",
+            "configured",
+            "capabilities"
+          ],
+          "properties": {
+            "display_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "configured": {
+              "type": "boolean"
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "enum": [
+                  "images",
+                  "long_shell",
+                  "non_interactive",
+                  "patching",
+                  "resume",
+                  "structured_output",
+                  "subagents"
+                ]
+              }
+            },
+            "default_args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "notes": {
+              "type": "string"
+            },
+            "last_probe": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "available",
+                "path",
+                "version",
+                "checked_at",
+                "error"
+              ],
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "version": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "checked_at": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -4,7 +4,7 @@
     {
       "unit_id": "M001/S01",
       "unit_type": "slice",
-      "status": "ready",
+      "status": "done",
       "depends_on": [],
       "enqueued_at": "2026-03-18T12:00:00.000Z",
       "milestone_id": "M001",
@@ -14,7 +14,7 @@
     {
       "unit_id": "M001/S02",
       "unit_type": "slice",
-      "status": "ready",
+      "status": "done",
       "depends_on": ["M001/S01"],
       "enqueued_at": "2026-03-18T12:05:00.000Z",
       "milestone_id": "M001",
@@ -24,7 +24,7 @@
     {
       "unit_id": "M001/S03",
       "unit_type": "slice",
-      "status": "ready",
+      "status": "done",
       "depends_on": ["M001/S02"],
       "enqueued_at": "2026-03-18T12:10:00.000Z",
       "milestone_id": "M001",
@@ -34,12 +34,52 @@
     {
       "unit_id": "M001/S04",
       "unit_type": "slice",
-      "status": "ready",
+      "status": "done",
       "depends_on": ["M001/S03"],
       "enqueued_at": "2026-03-18T12:15:00.000Z",
       "milestone_id": "M001",
       "slice_id": "S04",
       "notes": "Deliver the CLI and read-only git reconcile flow."
+    },
+    {
+      "unit_id": "M002/S01",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M001/S04"],
+      "enqueued_at": "2026-03-18T15:05:00.000Z",
+      "milestone_id": "M002",
+      "slice_id": "S01",
+      "notes": "Define runtime contracts, schemas, and the capability registry."
+    },
+    {
+      "unit_id": "M002/S02",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M002/S01"],
+      "enqueued_at": "2026-03-18T15:10:00.000Z",
+      "milestone_id": "M002",
+      "slice_id": "S02",
+      "notes": "Implement the normalized Codex adapter."
+    },
+    {
+      "unit_id": "M002/S03",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M002/S02"],
+      "enqueued_at": "2026-03-18T15:15:00.000Z",
+      "milestone_id": "M002",
+      "slice_id": "S03",
+      "notes": "Implement the normalized Claude adapter."
+    },
+    {
+      "unit_id": "M002/S04",
+      "unit_type": "slice",
+      "status": "ready",
+      "depends_on": ["M002/S03"],
+      "enqueued_at": "2026-03-18T15:20:00.000Z",
+      "milestone_id": "M002",
+      "slice_id": "S04",
+      "notes": "Expose runtime commands and prove manual interoperability."
     }
   ]
 }

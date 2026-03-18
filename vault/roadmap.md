@@ -6,7 +6,7 @@ Build SUPER_CODEX in milestone order so each milestone leaves behind a usable co
 
 ## Current Status
 
-- Active milestone: `M001` / Vault and State Engine
+- Active milestone: `M002` / Runtime Adapter Layer
 
 ## Milestones
 

@@ -13,20 +13,21 @@ Current navigation:
 - Feedback questions: [feedback/QUESTIONS.md](/Users/narcisbrindusescu/newme/brn/vault/feedback/QUESTIONS.md)
 - Feedback blockers: [feedback/BLOCKERS.md](/Users/narcisbrindusescu/newme/brn/vault/feedback/BLOCKERS.md)
 - Feedback answers: [feedback/ANSWERS.md](/Users/narcisbrindusescu/newme/brn/vault/feedback/ANSWERS.md)
-- Active milestone: [milestones/M001/milestone.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M001/milestone.md)
-- Active boundary map: [milestones/M001/boundary-map.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M001/boundary-map.md)
+- Active milestone: [milestones/M002/milestone.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M002/milestone.md)
+- Active boundary map: [milestones/M002/boundary-map.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M002/boundary-map.md)
 
 Status:
 
-- Active milestone: M001
+- Active milestone: M002
 - Active slice: none
 - Active task: none
 
 Current queue head:
 
-- `M001/S01`
+- `M002/S01`
 
-Phase 1 notes:
+Phase 2 notes:
 
-- `M001` is the implementation milestone for the vault and deterministic state engine.
-- Runtime adapters, prompt synthesis, and autonomous execution remain future milestones.
+- `M001` is complete and leaves behind the vault, state schemas, queue protocol, locks, and CLI scaffold.
+- `M002` is the active implementation milestone for runtime adapters, normalized dispatch, and result handling.
+- Next-action synthesis, canonical run persistence, and autonomous routing remain future milestones.

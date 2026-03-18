@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { afterEach } from "vitest";
 
@@ -46,6 +46,24 @@ export function readJson<T>(root: string, relativePath: string): T {
 
 export function readText(root: string, relativePath: string): string {
   return readFileSync(join(root, relativePath), "utf8");
+}
+
+export function writeJson(root: string, relativePath: string, value: unknown): void {
+  writeText(root, relativePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+export function writeText(root: string, relativePath: string, content: string): void {
+  const path = join(root, relativePath);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, "utf8");
+}
+
+export function writeExecutable(root: string, relativePath: string, content: string): string {
+  const path = join(root, relativePath);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content, { encoding: "utf8", mode: 0o755 });
+  chmodSync(path, 0o755);
+  return path;
 }
 
 afterEach(() => {

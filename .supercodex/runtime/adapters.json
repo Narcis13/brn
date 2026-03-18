@@ -3,13 +3,37 @@
   "runtimes": {
     "claude": {
       "display_name": "Claude Code",
-      "enabled": false,
-      "configured": false
+      "command": "claude",
+      "enabled": true,
+      "configured": true,
+      "capabilities": [
+        "images",
+        "long_shell",
+        "non_interactive",
+        "patching",
+        "resume",
+        "structured_output",
+        "subagents"
+      ],
+      "default_args": [],
+      "notes": "Configure additional safety or sandbox flags here if the local environment requires them."
     },
     "codex": {
       "display_name": "Codex",
-      "enabled": false,
-      "configured": false
+      "command": "codex",
+      "enabled": true,
+      "configured": true,
+      "capabilities": [
+        "images",
+        "long_shell",
+        "non_interactive",
+        "patching",
+        "resume",
+        "structured_output",
+        "subagents"
+      ],
+      "default_args": [],
+      "notes": "Configure additional safety or sandbox flags here if the local environment requires them."
     }
   }
 }

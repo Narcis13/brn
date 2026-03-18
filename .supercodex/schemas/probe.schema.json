@@ -1,0 +1,79 @@
+{
+  "$id": "probe.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runtime",
+    "display_name",
+    "command",
+    "enabled",
+    "configured",
+    "capabilities",
+    "available",
+    "path",
+    "version",
+    "checked_at",
+    "error"
+  ],
+  "properties": {
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command": {
+      "type": "string",
+      "minLength": 1
+    },
+    "enabled": {
+      "type": "boolean"
+    },
+    "configured": {
+      "type": "boolean"
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "images",
+          "long_shell",
+          "non_interactive",
+          "patching",
+          "resume",
+          "structured_output",
+          "subagents"
+        ]
+      }
+    },
+    "available": {
+      "type": "boolean"
+    },
+    "path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "checked_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

@@ -19,6 +19,8 @@ import {
   validateQueueState,
   validateTransitionRecord,
 } from "./schemas.js";
+import { loadDispatchTemplate, loadRuntimeRegistry } from "./runtime/registry.js";
+import { runtimeSchemaFileEntries } from "./runtime/schemas.js";
 import type {
   CurrentState,
   LockRecord,
@@ -111,7 +113,7 @@ export function loadLocks(root: string): LockRecord[] {
 }
 
 export function writeSchemaFiles(root: string): void {
-  for (const [fileName, schema] of schemaFileEntries) {
+  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries]) {
     writeJsonFile(resolveRepoPath(root, `.supercodex/schemas/${fileName}`), schema);
   }
 }
@@ -331,10 +333,13 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
     CURRENT_STATE_PATH,
     QUEUE_STATE_PATH,
     TRANSITIONS_PATH,
+    ".supercodex/runtime/adapters.json",
+    ".supercodex/runtime/routing.json",
+    ".supercodex/runtime/policies.json",
+    ".supercodex/prompts/dispatch.json",
     "vault/vision.md",
     "vault/roadmap.md",
     "vault/index.md",
-    "vault/milestones/M001/milestone.md",
   ]) {
     if (!fileExists(resolveRepoPath(root, relativePath))) {
       issues.push(`Missing required file: ${relativePath}`);
@@ -345,6 +350,19 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
 
   try {
     const current = loadCurrentState(root);
+    if (current.active_milestone) {
+      for (const milestoneFile of [
+        `vault/milestones/${current.active_milestone}/milestone.md`,
+        `vault/milestones/${current.active_milestone}/boundary-map.md`,
+        `vault/milestones/${current.active_milestone}/summary.md`,
+        `vault/milestones/${current.active_milestone}/uat.md`,
+      ]) {
+        if (!fileExists(resolveRepoPath(root, milestoneFile))) {
+          issues.push(`Missing active milestone artifact: ${milestoneFile}`);
+        }
+      }
+    }
+
     const queue = loadQueueState(root);
     const nextEligible = computeNextEligibleItem(queue);
     if (current.queue_head !== (nextEligible?.unit_id ?? null)) {
@@ -380,6 +398,8 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
     }
 
     loadLocks(root);
+    loadRuntimeRegistry(root);
+    loadDispatchTemplate(root);
     const reconciled = buildReconciledState(root);
     if (reconciled.git.dirty !== current.git.dirty) {
       issues.push(`git dirty mismatch: current=${current.git.dirty} expected=${reconciled.git.dirty}`);

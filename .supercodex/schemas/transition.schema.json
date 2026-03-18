@@ -13,7 +13,10 @@
     "awaiting_human"
   ],
   "properties": {
-    "timestamp": { "type": "string", "minLength": 1 },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1
+    },
     "from_phase": {
       "enum": [
         "intake",
@@ -56,11 +59,28 @@
         "complete"
       ]
     },
-    "reason": { "type": "string", "minLength": 1 },
-    "actor": { "type": "string", "minLength": 1 },
-    "unit_id": { "type": "string" },
-    "queue_head": { "type": ["string", "null"] },
-    "blocked": { "type": "boolean" },
-    "awaiting_human": { "type": "boolean" }
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_id": {
+      "type": "string"
+    },
+    "queue_head": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "blocked": {
+      "type": "boolean"
+    },
+    "awaiting_human": {
+      "type": "boolean"
+    }
   }
 }

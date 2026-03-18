@@ -1,20 +1,50 @@
 {
   "version": 1,
-  "template": {
-    "unit_id": null,
-    "unit_type": null,
-    "runtime": null,
-    "role": null,
-    "objective": null,
-    "context_refs": [],
-    "acceptance_criteria": [],
-    "files_in_scope": [],
-    "tests": [],
-    "constraints": [],
-    "safety_class": null,
-    "output_contract": [],
-    "stop_conditions": [],
-    "artifacts_to_update": []
+  "unit_id": "M002/S01",
+  "unit_type": "slice_planning",
+  "role": "task-framer",
+  "objective": "Probe runtime availability and validate the shared adapter boundary",
+  "context_refs": [
+    "vault/milestones/M002/milestone.md",
+    "vault/milestones/M002/boundary-map.md",
+    "vault/decisions.md"
+  ],
+  "acceptance_criteria": [
+    "Both runtimes can consume the same packet shape",
+    "Results normalize to the shared schema",
+    "Runtime-specific behavior stays behind the adapter boundary"
+  ],
+  "files_in_scope": [
+    "src/supercodex/runtime/",
+    "src/cli.ts",
+    ".supercodex/runtime/adapters.json"
+  ],
+  "tests": [
+    "pnpm test"
+  ],
+  "verification_plan": [
+    "run unit tests for runtime registry, probing, and dispatch normalization",
+    "inspect the persisted normalized result and raw refs"
+  ],
+  "constraints": [
+    "Do not let runtime-specific argv handling leak into state orchestration",
+    "Do not require Phase 3 next-action synthesis for manual dispatch"
+  ],
+  "safety_class": "reversible",
+  "output_contract": {
+    "must_update_artifacts": true,
+    "must_produce_evidence": true,
+    "must_not_claim_done_without_verification": true,
+    "notes": [
+      "Return JSON-compatible normalized results"
+    ]
   },
-  "note": "Phase 0 scaffold aligned to the shared dispatch packet contract; not yet executable."
+  "stop_conditions": [
+    "Pause if a runtime cannot be invoked or does not return machine-parseable output"
+  ],
+  "artifacts_to_update": [
+    ".supercodex/runtime/adapters.json",
+    ".supercodex/prompts/dispatch.json",
+    "vault/milestones/M002/summary.md"
+  ]
 }

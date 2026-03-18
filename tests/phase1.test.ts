@@ -16,8 +16,8 @@ describe("Phase 1 CLI", () => {
 
     const current = readJson<CurrentState>(root, ".supercodex/state/current.json");
     expect(current.project_root).toBe(root);
-    expect(current.active_milestone).toBe("M001");
-    expect(current.queue_head).toBe("M001/S01");
+    expect(current.active_milestone).toBe("M002");
+    expect(current.queue_head).toBe("M002/S01");
     expect(current.last_transition_at).toBeTruthy();
 
     const doctor = await invokeCli(root, ["doctor"]);
@@ -33,24 +33,24 @@ describe("Phase 1 CLI", () => {
     await invokeCli(root, ["init"]);
 
     const next = await invokeCli(root, ["queue", "next"]);
-    expect(JSON.parse(next.stdout)).toMatchObject({ unit_id: "M001/S01" });
+    expect(JSON.parse(next.stdout)).toMatchObject({ unit_id: "M002/S01" });
 
-    const markDone = await invokeCli(root, ["queue", "mark-done", "M001/S01"]);
+    const markDone = await invokeCli(root, ["queue", "mark-done", "M002/S01"]);
     expect(markDone.code).toBe(0);
 
     const current = readJson<CurrentState>(root, ".supercodex/state/current.json");
-    expect(current.queue_head).toBe("M001/S02");
+    expect(current.queue_head).toBe("M002/S02");
 
     const add = await invokeCli(root, [
       "queue",
       "add",
-      "M001/S99",
+      "M002/S99",
       "--type",
       "slice",
       "--depends-on",
-      "M001/S04",
+      "M002/S04",
       "--milestone",
-      "M001",
+      "M002",
       "--slice",
       "S99",
       "--notes",
@@ -58,7 +58,7 @@ describe("Phase 1 CLI", () => {
     ]);
     expect(add.code).toBe(0);
 
-    const remove = await invokeCli(root, ["queue", "remove", "M001/S99"]);
+    const remove = await invokeCli(root, ["queue", "remove", "M002/S99"]);
     expect(remove.code).toBe(0);
   });
 
@@ -112,7 +112,7 @@ describe("Phase 1 CLI", () => {
       "--reason",
       "Queue head is ready for implementation",
       "--unit",
-      "M001/S01",
+      "M002/S01",
     ]);
     expect(transition.code).toBe(0);
 
@@ -124,15 +124,15 @@ describe("Phase 1 CLI", () => {
     expect(transitions.at(-1)).toMatchObject({
       from_phase: "plan",
       to_phase: "dispatch",
-      unit_id: "M001/S01",
+      unit_id: "M002/S01",
     });
 
-    execFileSync("git", ["checkout", "-b", "task/M001-S01-T01"], { cwd: root, stdio: "pipe" });
+    execFileSync("git", ["checkout", "-b", "task/M002-S01-T01"], { cwd: root, stdio: "pipe" });
     const reconcile = await invokeCli(root, ["state", "reconcile"]);
     expect(reconcile.code).toBe(0);
 
     const current = readJson<CurrentState>(root, ".supercodex/state/current.json");
-    expect(current.git.task_branch).toBe("task/M001-S01-T01");
+    expect(current.git.task_branch).toBe("task/M002-S01-T01");
     expect(current.phase).toBe("dispatch");
   });
 

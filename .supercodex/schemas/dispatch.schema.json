@@ -1,0 +1,131 @@
+{
+  "$id": "dispatch.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "unit_type",
+    "role",
+    "objective",
+    "context_refs",
+    "acceptance_criteria",
+    "files_in_scope",
+    "tests",
+    "verification_plan",
+    "constraints",
+    "safety_class",
+    "output_contract",
+    "stop_conditions",
+    "artifacts_to_update"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "files_in_scope": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verification_plan": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "safety_class": {
+      "type": "string",
+      "minLength": 1
+    },
+    "output_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "must_update_artifacts",
+        "must_produce_evidence",
+        "must_not_claim_done_without_verification"
+      ],
+      "properties": {
+        "must_update_artifacts": {
+          "type": "boolean"
+        },
+        "must_produce_evidence": {
+          "type": "boolean"
+        },
+        "must_not_claim_done_without_verification": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "artifacts_to_update": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

@@ -2,17 +2,32 @@
   "$id": "queue.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["version", "items"],
+  "required": [
+    "version",
+    "items"
+  ],
   "properties": {
-    "version": { "type": "integer", "minimum": 1 },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "items": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["unit_id", "unit_type", "status", "depends_on", "enqueued_at"],
+        "required": [
+          "unit_id",
+          "unit_type",
+          "status",
+          "depends_on",
+          "enqueued_at"
+        ],
         "properties": {
-          "unit_id": { "type": "string", "minLength": 1 },
+          "unit_id": {
+            "type": "string",
+            "minLength": 1
+          },
           "unit_type": {
             "enum": [
               "milestone",
@@ -29,16 +44,36 @@
               "audit"
             ]
           },
-          "status": { "enum": ["ready", "blocked", "done"] },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked",
+              "done"
+            ]
+          },
           "depends_on": {
             "type": "array",
-            "items": { "type": "string", "minLength": 1 }
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
           },
-          "enqueued_at": { "type": "string", "minLength": 1 },
-          "milestone_id": { "type": "string" },
-          "slice_id": { "type": "string" },
-          "task_id": { "type": "string" },
-          "notes": { "type": "string" }
+          "enqueued_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "milestone_id": {
+            "type": "string"
+          },
+          "slice_id": {
+            "type": "string"
+          },
+          "task_id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          }
         }
       }
     }
