@@ -166,7 +166,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "RED",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",
@@ -192,7 +192,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "RED",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T02",
@@ -218,7 +218,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "GREEN",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",
@@ -242,7 +242,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "GREEN",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",
@@ -267,7 +267,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "RED",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",
@@ -344,7 +344,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "RED",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",
@@ -377,7 +377,7 @@ Implement auth token generation`
 
     const state: ProjectState = {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "RED",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T01",

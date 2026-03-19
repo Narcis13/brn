@@ -9,7 +9,7 @@
 This project implements the SUPER_CLAUDE self-evolving AI coding system.
 - **Deterministic layer**: `.superclaude/orchestrator/` — Bun/TypeScript scripts handling state, git, context, verification
 - **LLM layer**: Claude via Claude Code — judgment, code writing, test design, review
-- All state is markdown on disk in `.superclaude/state/`
+- Machine state is JSON on disk (`.superclaude/state/state.json`), prompt-injected content stays markdown
 - The vault (`.superclaude/vault/`) is the system's long-term memory
 
 ## Coding Standards
@@ -22,17 +22,17 @@ This project implements the SUPER_CLAUDE self-evolving AI coding system.
 ## Testing
 - `bun test` for all tests
 - Test files co-located: `foo.test.ts` next to `foo.ts`
-- TDD enforced: RED (failing tests) → GREEN (pass) → REFACTOR
+- TDD enforced: one-shot IMPLEMENT (tests + code + refactor) → VERIFY
 
 ## Key Paths
 - `SUPER_CLAUDE.md` — Full system spec
 - `AGENTS.md` — Sub-agent router/index
 - `.superclaude/orchestrator/` — Deterministic brain
-- `.superclaude/state/STATE.md` — Current state machine position
+- `.superclaude/state/state.json` — Current state machine position
 - `.superclaude/vault/` — Living knowledge base
 - `.superclaude/skills/` — SKILL.md files for sub-agents
 
 ## Git Convention
 - Branch per milestone: `superc/M001`
-- Commits: `feat(S01/T01): [red|green|refactor] description`
+- Commits: `feat(S01/T01): [implement] description`
 - Squash merge to main on milestone completion

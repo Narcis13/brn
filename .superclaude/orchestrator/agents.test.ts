@@ -518,6 +518,24 @@ describe("buildReviewPrompt", () => {
     expect(prompt).toContain("### Summary");
   });
 
+  test("review prompt includes MUST-FIX scoping boundary", () => {
+    const ctx: ContextPayload = {
+      taskPlan: "Review auth code",
+      codeFiles: { "src/auth.ts": "export const x = 1;" },
+      upstreamSummaries: [],
+      vaultDocs: [],
+      boundaryContracts: [],
+    };
+
+    const prompt = buildReviewPrompt("correctness", ctx);
+    expect(prompt).toContain("MUST-FIX Boundary");
+    expect(prompt).toContain("Must-Have Truths");
+    expect(prompt).toContain("Must-Have Artifacts");
+    expect(prompt).toContain("Must-Have Key Links");
+    expect(prompt).toContain("Security vulnerabilities");
+    expect(prompt).toContain("SHOULD-FIX or CONSIDER");
+  });
+
   test("all 6 review personas are defined", () => {
     expect(REVIEW_PERSONAS).toHaveLength(6);
     expect(REVIEW_PERSONAS).toContain("correctness");

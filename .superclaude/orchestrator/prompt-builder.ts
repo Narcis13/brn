@@ -259,24 +259,13 @@ function buildExecuteTaskPrompt(
   tddSubPhase: TDDSubPhase | null,
   ctx: ContextPayload
 ): string {
-  switch (tddSubPhase) {
-    case "RED":
-      return buildRedPrompt(ctx);
-    case "GREEN":
-      return buildGreenPrompt(ctx);
-    case "REFACTOR":
-      return buildRefactorPrompt(ctx);
-    case "VERIFY":
-      return buildVerifyPrompt(ctx);
-    default:
-      return buildRedPrompt(ctx);
-  }
+  return buildImplementPrompt(ctx);
 }
 
-function buildRedPrompt(ctx: ContextPayload): string {
-  return `# TDD — RED PHASE (Write Failing Tests)
+function buildImplementPrompt(ctx: ContextPayload): string {
+  return `# EXECUTE TASK — TDD Implementation (One-Shot)
 
-You are the Implementer sub-agent in RED mode.
+You are the Implementer sub-agent. Complete this task using strict TDD: write tests first, then implement, then clean up.
 
 ## Task Plan
 ${ctx.taskPlan}
@@ -288,108 +277,45 @@ ${formatCodeFiles(ctx.codeFiles)}
 
 ${formatVaultDocs(ctx.vaultDocs)}
 
-## Instructions
-1. Read the task's must-haves carefully — they specify EXACT file paths for all artifacts
-2. Write test files at the EXACT paths specified in the TDD Sequence section
-3. Tests MUST be runnable with \`bun test\`
-4. Tests MUST FAIL (they test behavior that doesn't exist yet)
-5. Do NOT write any implementation code
+## TDD Protocol — Follow This Order Exactly
+
+### Step 1: RED — Write Failing Tests
+- Read the task's TDD Sequence section for EXACT test file paths
+- Write test files at those EXACT paths
+- Tests must be runnable with \`bun test\`
+- Tests must cover: happy path, edge cases, error cases, integration points
+- Use descriptive test names that read like specifications
+- Do NOT write any implementation code yet
+
+### Step 2: GREEN — Make Tests Pass
+- Read the task's Artifacts section for EXACT implementation file paths
+- Write the MINIMUM code to make all tests pass
+- Create files at the EXACT paths specified
+- All must-have artifacts must exist with real implementation (no stubs)
+- All must-have key links must be wired (imports connected)
+- Run \`bun test\` to verify all tests pass
+
+### Step 3: REFACTOR — Clean Up
+- Refactor for clarity, consistency, and quality
+- Follow established patterns from vault docs
+- Do NOT add new functionality
+- Run \`bun test\` to confirm tests still pass
 
 ## CRITICAL: File Paths
 All file paths in the task plan are relative to the project root.
 Write files at the EXACT paths specified — do not modify or shorten them.
 
-## Constraints
-- Test behavior, not implementation details
-- Use descriptive test names that read like specifications
-- Co-locate test files: \`foo.test.ts\` next to \`foo.ts\`
+## Verification (run these before finishing)
+- \`bun test\` — all tests pass
+- No TODO/FIXME/stub patterns in implementation files
+- All must-have exports present
+- All must-have imports wired
 
-## Scope Guard
-- ONLY write test files
-- Do NOT write implementation code
-- Do NOT add features beyond the must-haves`;
-}
-
-function buildGreenPrompt(ctx: ContextPayload): string {
-  return `# TDD — GREEN PHASE (Make Tests Pass)
-
-You are the Implementer sub-agent in GREEN mode.
-
-## Task Plan
-${ctx.taskPlan}
-
-${formatUpstreamContext(ctx.upstreamSummaries)}
-
-## Current Code
-${formatCodeFiles(ctx.codeFiles)}
-
-${formatVaultDocs(ctx.vaultDocs)}
-
-## Instructions
-1. Read the failing tests and the task plan's must-have artifacts
-2. Create implementation files at the EXACT paths specified in the task plan
-3. Write the MINIMUM code to make all tests pass
-4. Focus on correctness, not elegance
-5. Run \`bun test\` to verify all tests pass
-
-## CRITICAL: File Paths
-All file paths in the task plan are relative to the project root.
-Create files at the EXACT paths specified in the Artifacts section — do not modify or shorten them.
-
-## Constraints
-- Minimum viable implementation — no gold-plating
-- All must-have artifacts must exist with real implementation (no stubs)
-- All must-have key links must be wired
-
-## Scope Guard
-- ONLY implement what the tests require
-- Do NOT add unrequested features
-- Do NOT refactor (that's the next phase)`;
-}
-
-function buildRefactorPrompt(ctx: ContextPayload): string {
-  return `# TDD — REFACTOR PHASE (Clean Up)
-
-You are the Implementer sub-agent in REFACTOR mode.
-
-## Task Plan
-${ctx.taskPlan}
-
-## Current Code
-${formatCodeFiles(ctx.codeFiles)}
-
-${formatVaultDocs(ctx.vaultDocs)}
-
-## Instructions
-1. All tests are currently passing — keep them passing
-2. Refactor for clarity, consistency, and quality
-3. Follow established patterns from the vault docs
-4. Run \`bun test\` after refactoring to confirm tests still pass
-
-## Constraints
-- Do NOT add new functionality
-- Do NOT change test behavior
-- If refactoring breaks tests, revert the change
-
-## Scope Guard
-- ONLY clean up existing implementation
-- Do NOT add new features or tests`;
-}
-
-function buildVerifyPrompt(ctx: ContextPayload): string {
-  return `# TDD — VERIFY PHASE (Comprehensive Check)
-
-Run the following verification commands and report results:
-
-1. \`bun test\` — Full test suite
-2. \`bunx tsc --noEmit\` — Type checking
-3. Check must-haves from the task plan
-
-## Task Plan
-${ctx.taskPlan}
-
-## Must-Haves Checklist
-Report pass/fail for each must-have item.`;
+## Scope Guard (HIGH ATTENTION)
+- ONLY implement what the task plan specifies
+- Do NOT add unrequested features, tests, or files
+- Do NOT modify files outside the task's artifact list
+- If something seems missing from the plan, implement the minimum — do NOT expand scope`;
 }
 
 function buildCompleteSlicePrompt(state: ProjectState, ctx: ContextPayload): string {

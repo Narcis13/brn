@@ -27,7 +27,7 @@ import {
 import { enforceTDDPhase } from "./tdd.ts";
 import { verifyMustHaves } from "./verify.ts";
 import { parseTaskPlan } from "./plan-parser.ts";
-import { writeContinueHere, writeReviewFeedback, clearReviewFeedback } from "./scaffold.ts";
+import { writeContinueHere, writeReviewFeedback, clearReviewFeedback, readReviewAttemptCount } from "./scaffold.ts";
 import {
   createMilestoneBranch,
   commitTDDPhase,
@@ -71,14 +71,14 @@ import {
   endSession,
   writeSessionReport,
 } from "./session.ts";
-import { computePressure, formatPressureStatus, shouldSkipRefactor } from "./budget-pressure.ts";
+import { computePressure, formatPressureStatus } from "./budget-pressure.ts";
 import type { PressurePolicy } from "./budget-pressure.ts";
 import { processDiscussOutput, processResearchOutput, processReassessOutput } from "./phase-handlers.ts";
 import { assembleDashboard, renderDashboard, writeDashboard } from "./dashboard.ts";
 import { generateTaskSummary, generateSliceSummary, generateMilestoneSummary } from "./summary.ts";
 import type { TaskSummary, SliceSummary } from "./types.ts";
 import type { AgentRole, ContextPayload, OrchestratorConfig, Phase, ProjectState, TaskPlan, TDDSubPhase } from "./types.ts";
-import { PATHS, REVIEW_PERSONAS } from "./types.ts";
+import { PATHS, REVIEW_PERSONAS, MAX_REVIEW_RETRIES } from "./types.ts";
 
 // ─── Main ────────────────────────────────────────────────────────
 
@@ -112,8 +112,6 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   let iterations = 0;
   const maxIterations = 100;
   const dispatchHistory: Array<{ task: string; timestamp: string }> = [];
-  const reviewRetries = new Map<string, number>();
-  const MAX_REVIEW_RETRIES = 2;
   const greenRetries = new Map<string, number>();
   const MAX_GREEN_RETRIES = 3;
 
@@ -226,7 +224,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     }
 
     // 6. Git checkpoint before task execution (§13.4)
-    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "RED" &&
+    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "IMPLEMENT" &&
         currentState.currentSlice && currentState.currentTask) {
       const dirty = !(await isCleanWorkingTree(projectRoot));
       if (dirty) {
@@ -346,87 +344,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       }
     }
 
-    // 12. Static verification (during VERIFY sub-phase)
-    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "VERIFY") {
-      const verifyResult = await runStaticVerification(projectRoot, currentState);
-      if (verifyResult !== null && !verifyResult.passed) {
-        const failures = verifyResult.checks.filter((c) => !c.passed);
-        console.log(`  VERIFY FAIL: ${failures.length} check(s) failed`);
-        for (const f of failures) {
-          console.log(`    ✗ ${f.name}: ${f.message}`);
-        }
-        continue;
-      }
-      if (verifyResult !== null) {
-        console.log(`  VERIFY OK: all ${verifyResult.checks.length} static checks passed`);
-      }
-
-      // 12.3 Command-tier verification: tsc + linter (GAP-10)
-      const cmdChecks = await runCommandVerification(projectRoot);
-      const cmdFailures = cmdChecks.filter((c) => !c.passed);
-      if (cmdFailures.length > 0) {
-        console.log(`  CMD VERIFY FAIL: ${cmdFailures.length} check(s) failed`);
-        for (const f of cmdFailures) {
-          console.log(`    ✗ ${f.name}: ${f.message}`);
-        }
-        session.issuesEncountered.push(`Command verification: ${cmdFailures.map(f => f.name).join(", ")} failed on ${taskKey}`);
-        // Don't block — log the failures but continue (these are informational during early use)
-      } else {
-        console.log(`  CMD VERIFY OK: ${cmdChecks.map(c => c.name).join(", ")} passed`);
-      }
-
-      // 12.5 Reviewer quality gate (§8.3 — run reviewer personas after VERIFY)
-      const reviewResult = await runReviewerQualityGate(
-        projectRoot, currentState, context, pressure, config.timeouts.hard
-      );
-      if (!reviewResult.passed) {
-        const retryCount = reviewRetries.get(taskKey) ?? 0;
-        console.log(`  REVIEW: ${reviewResult.mustFixCount} MUST-FIX issue(s) found (attempt ${retryCount + 1}/${MAX_REVIEW_RETRIES + 1})`);
-        for (const issue of reviewResult.issues) {
-          console.log(`    ✗ ${issue}`);
-        }
-        session.issuesEncountered.push(`Review: ${reviewResult.mustFixCount} MUST-FIX issues on ${taskKey}`);
-
-        if (retryCount < MAX_REVIEW_RETRIES) {
-          // Write review feedback so the implementer knows what to fix
-          if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
-            await writeReviewFeedback(
-              projectRoot,
-              currentState.currentMilestone,
-              currentState.currentSlice,
-              currentState.currentTask,
-              reviewResult.issues,
-              retryCount + 1
-            );
-          }
-
-          // Roll state back to GREEN so the implementer can fix the issues
-          reviewRetries.set(taskKey, retryCount + 1);
-          const rollbackState = { ...currentState, tddSubPhase: "GREEN" as const, lastUpdated: new Date().toISOString() };
-          await writeState(projectRoot, rollbackState);
-          console.log(`  Rolling back to GREEN for fix attempt ${retryCount + 1}/${MAX_REVIEW_RETRIES}`);
-          await releaseLock(projectRoot);
-          continue;
-        } else {
-          // Max retries exhausted — allow advancement but flag for human review
-          console.log(`  WARNING: Max review retries exhausted. Advancing with unresolved MUST-FIX issues.`);
-          session.blockedItems.push(`${taskKey}: ${reviewResult.mustFixCount} unresolved MUST-FIX issues after ${MAX_REVIEW_RETRIES} fix attempts`);
-        }
-      } else {
-        // Review passed — clean up any leftover review feedback
-        if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
-          await clearReviewFeedback(
-            projectRoot,
-            currentState.currentMilestone,
-            currentState.currentSlice,
-            currentState.currentTask
-          );
-        }
-        if (pressure.allowReview && pressure.reviewPersonaCount > 0) {
-          console.log(`  REVIEW OK: ${pressure.reviewPersonaCount} persona(s) passed`);
-        }
-      }
-    }
+    // 12. (Verification moved to slice level — see COMPLETE_SLICE section below)
 
     // 13. Git commit for successful work (§13.3)
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase &&
@@ -445,6 +363,47 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         console.log(`  Committed: feat(${currentState.currentSlice}/${currentState.currentTask}): [${tddLabel}]`);
       }
     } else if (currentState.phase === "COMPLETE_SLICE" && currentState.currentSlice) {
+      // 12. Slice-level verification: full test suite + command checks + reviewer quality gate
+      console.log(`  Slice verification: running full suite...`);
+
+      // 12.1 Full test suite
+      const { runFullTestSuite: runFull } = await import("./tdd.ts");
+      const fullTestResult = await runFull(projectRoot);
+      if (!fullTestResult.passing) {
+        console.log(`  SLICE VERIFY FAIL: ${fullTestResult.failedTests} test(s) failing in full suite`);
+        session.issuesEncountered.push(`Slice verify: ${fullTestResult.failedTests} test(s) failing on ${currentState.currentSlice}`);
+      } else {
+        console.log(`  SLICE VERIFY OK: all ${fullTestResult.totalTests} test(s) passing`);
+      }
+
+      // 12.2 Command-tier verification: tsc + linter
+      const cmdChecks = await runCommandVerification(projectRoot);
+      const cmdFailures = cmdChecks.filter((c) => !c.passed);
+      if (cmdFailures.length > 0) {
+        console.log(`  CMD VERIFY FAIL: ${cmdFailures.length} check(s) failed`);
+        for (const f of cmdFailures) {
+          console.log(`    ✗ ${f.name}: ${f.message}`);
+        }
+        session.issuesEncountered.push(`Command verification: ${cmdFailures.map(f => f.name).join(", ")} failed on ${currentState.currentSlice}`);
+      } else {
+        console.log(`  CMD VERIFY OK: ${cmdChecks.map(c => c.name).join(", ")} passed`);
+      }
+
+      // 12.3 Reviewer quality gate (runs once for the entire slice)
+      const reviewResult = await runReviewerQualityGate(
+        projectRoot, currentState, context, pressure, config.timeouts.hard
+      );
+      if (!reviewResult.passed) {
+        console.log(`  SLICE REVIEW: ${reviewResult.mustFixCount} MUST-FIX issue(s) found`);
+        for (const issue of reviewResult.issues) {
+          console.log(`    ✗ ${issue}`);
+        }
+        session.issuesEncountered.push(`Slice review: ${reviewResult.mustFixCount} MUST-FIX issues on ${currentState.currentSlice}`);
+        // Log but don't block slice completion — issues are tracked for human review
+      } else if (pressure.allowReview && pressure.reviewPersonaCount > 0) {
+        console.log(`  SLICE REVIEW OK: ${pressure.reviewPersonaCount} persona(s) passed`);
+      }
+
       // GAP-21: Write slice summary from aggregated task summaries (§7.3)
       if (currentState.currentMilestone) {
         await writeSliceSummaryOnComplete(
@@ -481,8 +440,8 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       console.log(`  Tagged: ${tag}`);
     }
 
-    // Track completed tasks
-    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "VERIFY" &&
+    // Track completed tasks (after IMPLEMENT — verification happens at slice level)
+    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "IMPLEMENT" &&
         currentState.currentSlice && currentState.currentTask) {
       session.tasksCompleted.push(`${currentState.currentSlice}/${currentState.currentTask}: ${nextAction.description}`);
 
@@ -525,8 +484,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     }
 
     // 15. Update state
-    const skipRefactor = shouldSkipRefactor(pressure);
-    const newState = computeNextState(currentState, nextAction, skipRefactor);
+    const newState = computeNextState(currentState, nextAction);
     await writeState(projectRoot, newState);
 
     // 16. Release lock
@@ -691,10 +649,7 @@ export function getAgentRoleForPhase(
     case "PLAN_SLICE":
       return "architect";
     case "EXECUTE_TASK":
-      if (tddSubPhase === "RED" || tddSubPhase === "GREEN" || tddSubPhase === "REFACTOR") {
-        return "implementer";
-      }
-      return null; // VERIFY is a mechanical check phase
+      return "implementer";
     case "COMPLETE_SLICE":
     case "COMPLETE_MILESTONE":
       return "scribe";
@@ -837,7 +792,6 @@ async function invokeDoctorAgent(
 export function computeNextState(
   current: ProjectState,
   action: { phase: string; tddSubPhase: string | null; milestone?: string | null; slice?: string | null; task?: string | null },
-  skipRefactor: boolean = false
 ): ProjectState {
   const next = { ...current, lastUpdated: new Date().toISOString() };
 
@@ -854,12 +808,7 @@ export function computeNextState(
 
   // If we're in EXECUTE_TASK, advance TDD sub-phase
   if (current.phase === "EXECUTE_TASK" && current.tddSubPhase) {
-    let nextTDD = advanceTDDPhase(current.tddSubPhase);
-
-    // Skip REFACTOR if budget pressure says so
-    if (nextTDD === "REFACTOR" && skipRefactor) {
-      nextTDD = advanceTDDPhase("REFACTOR"); // Jump to VERIFY
-    }
+    const nextTDD = advanceTDDPhase(current.tddSubPhase);
 
     if (nextTDD === null) {
       // Task complete → move to next task or COMPLETE_SLICE

@@ -101,7 +101,7 @@ A markdown report is also written to `.superclaude/state/DASHBOARD.md` at sessio
 | `.superclaude/orchestrator/verify.ts` | Verification checks |
 | `.superclaude/orchestrator/cost.ts` | Cost tracking |
 | `.superclaude/orchestrator/git.ts` | Git operations |
-| `.superclaude/state/STATE.md` | Current state machine position |
+| `.superclaude/state/state.json` | Current state machine position |
 | `.superclaude/vault/` | Living knowledge base |
 
 ## Running Tests

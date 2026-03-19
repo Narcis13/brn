@@ -16,7 +16,7 @@ export type Phase =
   | "REASSESS"
   | "COMPLETE_MILESTONE";
 
-export type TDDSubPhase = "RED" | "GREEN" | "REFACTOR" | "VERIFY";
+export type TDDSubPhase = "IMPLEMENT";
 
 export type TaskStatus = "pending" | "in_progress" | "complete" | "failed" | "blocked";
 export type SliceStatus = "pending" | "in_progress" | "complete" | "failed";
@@ -421,6 +421,11 @@ export interface EvolverResult {
   newLearnings: string[];
 }
 
+// ─── Constants ──────────────────────────────────────────────────
+
+/** Maximum review retry attempts before allowing advancement with unresolved issues. */
+export const MAX_REVIEW_RETRIES = 2;
+
 // ─── Orchestrator Config ─────────────────────────────────────────
 
 export interface OrchestratorConfig {
@@ -456,7 +461,7 @@ export const PATHS = {
   specs: ".superclaude/specs",
   history: ".superclaude/history",
 
-  stateFile: ".superclaude/state/STATE.md",
+  stateFile: ".superclaude/state/state.json",
   projectFile: ".superclaude/state/PROJECT.md",
   decisionsFile: ".superclaude/state/DECISIONS.md",
   lockFile: ".superclaude/state/auto.lock",

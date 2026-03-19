@@ -79,47 +79,21 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("S00 built the types");
   });
 
-  test("EXECUTE_TASK RED prompt focuses on test writing", () => {
-    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "RED" });
+  test("EXECUTE_TASK IMPLEMENT prompt contains unified TDD instructions", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
     const ctx = makeContext({
-      taskPlan: "Write auth tests",
+      taskPlan: "Write auth tests and implement",
       vaultDocs: ["## TypeScript patterns\nUse strict types"],
     });
 
     const prompt = buildPrompt(state, ctx);
-    expect(prompt).toContain("RED");
-    expect(prompt).toContain("Failing");
-    expect(prompt).toContain("test");
-    expect(prompt).toContain("MUST FAIL");
-    expect(prompt).toContain("TypeScript patterns");
-  });
-
-  test("EXECUTE_TASK GREEN prompt focuses on implementation", () => {
-    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "GREEN" });
-    const ctx = makeContext({ taskPlan: "Implement auth" });
-
-    const prompt = buildPrompt(state, ctx);
-    expect(prompt).toContain("GREEN");
-    expect(prompt).toContain("MINIMUM");
-  });
-
-  test("EXECUTE_TASK REFACTOR prompt preserves test passing", () => {
-    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "REFACTOR" });
-    const ctx = makeContext({ taskPlan: "Refactor auth" });
-
-    const prompt = buildPrompt(state, ctx);
-    expect(prompt).toContain("REFACTOR");
-    expect(prompt).toContain("still pass");
-  });
-
-  test("EXECUTE_TASK VERIFY prompt runs comprehensive checks", () => {
-    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "VERIFY" });
-    const ctx = makeContext({ taskPlan: "Verify auth task" });
-
-    const prompt = buildPrompt(state, ctx);
-    expect(prompt).toContain("VERIFY");
+    expect(prompt).toContain("One-Shot");
+    expect(prompt).toContain("Step 1: RED");
+    expect(prompt).toContain("Step 2: GREEN");
+    expect(prompt).toContain("Step 3: REFACTOR");
     expect(prompt).toContain("bun test");
-    expect(prompt).toContain("tsc");
+    expect(prompt).toContain("TypeScript patterns");
+    expect(prompt).toContain("Scope Guard");
   });
 
   test("COMPLETE_SLICE prompt generates summary and UAT", () => {
@@ -162,7 +136,7 @@ describe("buildPrompt", () => {
   });
 
   test("EXECUTE_TASK with code files includes them in prompt", () => {
-    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "GREEN" });
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
     const ctx = makeContext({
       taskPlan: "Implement feature",
       codeFiles: {

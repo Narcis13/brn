@@ -11,7 +11,7 @@ function makeDashboardData(overrides?: Partial<DashboardData>): DashboardData {
   return {
     state: {
       phase: "EXECUTE_TASK",
-      tddSubPhase: "GREEN",
+      tddSubPhase: "IMPLEMENT",
       currentMilestone: "M001",
       currentSlice: "S01",
       currentTask: "T02",
@@ -66,7 +66,7 @@ test("renderDashboard includes header", () => {
 test("renderDashboard shows current state", () => {
   const output = renderDashboard(makeDashboardData());
   expect(output).toContain("EXECUTE_TASK");
-  expect(output).toContain("GREEN");
+  expect(output).toContain("IMPLEMENT");
   expect(output).toContain("M001");
   expect(output).toContain("S01");
   expect(output).toContain("T02");
@@ -165,7 +165,7 @@ test("renderDashboardMarkdown includes title", () => {
 test("renderDashboardMarkdown includes current state table", () => {
   const output = renderDashboardMarkdown(makeDashboardData());
   expect(output).toContain("| Phase | EXECUTE_TASK |");
-  expect(output).toContain("| TDD Sub-Phase | GREEN |");
+  expect(output).toContain("| TDD Sub-Phase | IMPLEMENT |");
   expect(output).toContain("| Milestone | M001 |");
 });
 

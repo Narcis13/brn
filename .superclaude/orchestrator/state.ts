@@ -1,6 +1,6 @@
 /**
  * SUPER_CLAUDE — State Machine
- * Reads and writes STATE.md, determines next action.
+ * Reads and writes state.json, determines next action.
  */
 
 import { PATHS, type Phase, type ProjectState, type TDDSubPhase } from "./types.ts";
@@ -17,8 +17,6 @@ import { scaffoldSlice, scaffoldTask } from "./scaffold.ts";
 import { isDiscussNeeded, isResearchNeeded, isPhaseArtifactComplete } from "./phase-handlers.ts";
 import { shouldSkipPhase, type PressurePolicy } from "./budget-pressure.ts";
 
-const STATE_PATH = PATHS.stateFile;
-
 // ─── Default State ───────────────────────────────────────────────
 
 const DEFAULT_STATE: ProjectState = {
@@ -30,50 +28,35 @@ const DEFAULT_STATE: ProjectState = {
   lastUpdated: new Date().toISOString(),
 };
 
-// ─── Frontmatter Parsing ─────────────────────────────────────────
+// ─── Migration ──────────────────────────────────────────────
 
-function parseFrontmatter(content: string): Record<string, string> {
+/** Temporary migration: map old sub-phases to IMPLEMENT. VERIFY no longer exists as a sub-phase. */
+function migrateSubPhase(raw: string | null | undefined): TDDSubPhase | null {
+  if (!raw || raw === "null") return null;
+  if (raw === "RED" || raw === "GREEN" || raw === "REFACTOR" || raw === "VERIFY") return "IMPLEMENT";
+  if (raw === "IMPLEMENT") return "IMPLEMENT";
+  return null;
+}
+
+/**
+ * Parse legacy STATE.md frontmatter format for migration.
+ */
+function parseLegacyState(content: string): ProjectState {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!match?.[1]) return {};
+  if (!match?.[1]) return { ...DEFAULT_STATE };
 
-  const result: Record<string, string> = {};
+  const fm: Record<string, string> = {};
   for (const line of match[1].split("\n")) {
     const colonIdx = line.indexOf(":");
     if (colonIdx === -1) continue;
     const key = line.slice(0, colonIdx).trim();
     const value = line.slice(colonIdx + 1).trim();
-    result[key] = value;
+    fm[key] = value;
   }
-  return result;
-}
-
-function toFrontmatter(data: Record<string, string | null>): string {
-  const lines = ["---"];
-  for (const [key, value] of Object.entries(data)) {
-    lines.push(`${key}: ${value ?? "null"}`);
-  }
-  lines.push("---");
-  return lines.join("\n");
-}
-
-// ─── Read State ──────────────────────────────────────────────────
-
-export async function readState(projectRoot: string): Promise<ProjectState> {
-  const path = `${projectRoot}/${STATE_PATH}`;
-  const file = Bun.file(path);
-
-  if (!(await file.exists())) {
-    return { ...DEFAULT_STATE };
-  }
-
-  const content = await file.text();
-  const fm = parseFrontmatter(content);
 
   return {
     phase: (fm["phase"] as Phase) ?? "IDLE",
-    tddSubPhase: fm["tdd_sub_phase"] === "null" || !fm["tdd_sub_phase"]
-      ? null
-      : (fm["tdd_sub_phase"] as TDDSubPhase),
+    tddSubPhase: migrateSubPhase(fm["tdd_sub_phase"] ?? null),
     currentMilestone: fm["milestone"] === "null" ? null : (fm["milestone"] ?? null),
     currentSlice: fm["slice"] === "null" ? null : (fm["slice"] ?? null),
     currentTask: fm["task"] === "null" ? null : (fm["task"] ?? null),
@@ -81,23 +64,57 @@ export async function readState(projectRoot: string): Promise<ProjectState> {
   };
 }
 
+// ─── Read State ──────────────────────────────────────────────────
+
+export async function readState(projectRoot: string): Promise<ProjectState> {
+  const jsonPath = `${projectRoot}/${PATHS.stateFile}`;
+  const jsonFile = Bun.file(jsonPath);
+
+  // Try JSON first (new format)
+  if (await jsonFile.exists()) {
+    try {
+      const raw = await jsonFile.json();
+      return {
+        phase: (raw.phase as Phase) ?? "IDLE",
+        tddSubPhase: migrateSubPhase(raw.tddSubPhase),
+        currentMilestone: raw.milestone ?? null,
+        currentSlice: raw.slice ?? null,
+        currentTask: raw.task ?? null,
+        lastUpdated: raw.lastUpdated ?? new Date().toISOString(),
+      };
+    } catch {
+      console.error("[SUPER_CLAUDE] Failed to parse state.json — resetting to IDLE");
+      return { ...DEFAULT_STATE };
+    }
+  }
+
+  // Fallback: migrate from legacy STATE.md
+  const legacyPath = `${projectRoot}/.superclaude/state/STATE.md`;
+  const legacyFile = Bun.file(legacyPath);
+  if (await legacyFile.exists()) {
+    const content = await legacyFile.text();
+    const state = parseLegacyState(content);
+    // Write as JSON for future reads
+    await writeState(projectRoot, state);
+    return state;
+  }
+
+  return { ...DEFAULT_STATE };
+}
+
 // ─── Write State ─────────────────────────────────────────────────
 
 export async function writeState(projectRoot: string, state: ProjectState): Promise<void> {
-  const path = `${projectRoot}/${STATE_PATH}`;
-
-  const fm = toFrontmatter({
+  const path = `${projectRoot}/${PATHS.stateFile}`;
+  const data = {
     phase: state.phase,
-    tdd_sub_phase: state.tddSubPhase,
+    tddSubPhase: state.tddSubPhase,
     milestone: state.currentMilestone,
     slice: state.currentSlice,
     task: state.currentTask,
-    last_updated: new Date().toISOString(),
-  });
-
-  const body = `\n## Current Position\n\n- **Phase:** ${state.phase}\n- **Milestone:** ${state.currentMilestone ?? "none"}\n- **Slice:** ${state.currentSlice ?? "none"}\n- **Task:** ${state.currentTask ?? "none"}\n- **TDD Sub-Phase:** ${state.tddSubPhase ?? "n/a"}\n`;
-
-  await Bun.write(path, fm + "\n" + body);
+    lastUpdated: new Date().toISOString(),
+  };
+  await Bun.write(path, JSON.stringify(data, null, 2) + "\n");
 }
 
 // ─── Next Action ─────────────────────────────────────────────────
@@ -225,7 +242,7 @@ export async function determineNextActionEnhanced(
             if (nextTask) {
               return {
                 phase: "EXECUTE_TASK",
-                tddSubPhase: "RED",
+                tddSubPhase: "IMPLEMENT",
                 description: `Slice planned — execute ${planSliceId}/${nextTask}`,
                 slice: planSliceId,
                 task: nextTask,
@@ -311,7 +328,7 @@ async function handleIdleEnhanced(
       if (nextTask) {
         return {
           phase: "EXECUTE_TASK",
-          tddSubPhase: "RED",
+          tddSubPhase: "IMPLEMENT",
           description: `Execute ${nextSlice}/${nextTask}`,
           slice: nextSlice,
           task: nextTask,
@@ -400,20 +417,7 @@ async function handleIdle(projectRoot: string, state: ProjectState): Promise<Nex
 }
 
 function handleExecuteTask(state: ProjectState): NextAction {
-  const subPhase = state.tddSubPhase;
-  switch (subPhase) {
-    case null:
-    case "RED":
-      return { phase: "EXECUTE_TASK", tddSubPhase: "RED", description: "Write failing tests" };
-    case "GREEN":
-      return { phase: "EXECUTE_TASK", tddSubPhase: "GREEN", description: "Implement to pass tests" };
-    case "REFACTOR":
-      return { phase: "EXECUTE_TASK", tddSubPhase: "REFACTOR", description: "Refactor implementation" };
-    case "VERIFY":
-      return { phase: "EXECUTE_TASK", tddSubPhase: "VERIFY", description: "Run comprehensive verification" };
-    default:
-      return { phase: "EXECUTE_TASK", tddSubPhase: "RED", description: "Unknown TDD sub-phase — start RED" };
-  }
+  return { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT", description: "Implement task (TDD one-shot)" };
 }
 
 // ─── Transition Helpers ──────────────────────────────────────────
@@ -421,14 +425,8 @@ function handleExecuteTask(state: ProjectState): NextAction {
 export function advanceTDDPhase(current: TDDSubPhase | null): TDDSubPhase | null {
   switch (current) {
     case null:
-    case "RED":
-      return "GREEN";
-    case "GREEN":
-      return "REFACTOR";
-    case "REFACTOR":
-      return "VERIFY";
-    case "VERIFY":
-      return null; // Task complete
+    case "IMPLEMENT":
+      return null; // Task complete — verification happens at slice level
   }
 }
 

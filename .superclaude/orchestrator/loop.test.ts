@@ -23,12 +23,12 @@ describe("computeNextState", () => {
 
   test("applies discovered slice and task from action", () => {
     const state: ProjectState = { ...baseState, phase: "IDLE", currentMilestone: "M001" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "RED" as const, slice: "S01", task: "T01" };
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" as const, slice: "S01", task: "T01" };
     const next = computeNextState(state, action);
     expect(next.currentSlice).toBe("S01");
     expect(next.currentTask).toBe("T01");
     expect(next.phase).toBe("EXECUTE_TASK");
-    expect(next.tddSubPhase).toBe("RED");
+    expect(next.tddSubPhase).toBe("IMPLEMENT");
   });
 
   test("clears task when action sets task to null (new slice)", () => {
@@ -47,8 +47,8 @@ describe("computeNextState", () => {
   });
 
   test("preserves slice/task when action fields are undefined", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "RED", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "RED" };
+    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" };
     const next = computeNextState(state, action);
     expect(next.currentSlice).toBe("S01");
     expect(next.currentTask).toBe("T01");
@@ -56,47 +56,12 @@ describe("computeNextState", () => {
 
   // ─── TDD Phase Advancement ──────────────────────────────────────
 
-  test("advances TDD sub-phase RED → GREEN", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "RED", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "RED" };
-    const next = computeNextState(state, action);
-    expect(next.tddSubPhase).toBe("GREEN");
-  });
-
-  test("advances TDD sub-phase GREEN → REFACTOR", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "GREEN", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "GREEN" };
-    const next = computeNextState(state, action);
-    expect(next.tddSubPhase).toBe("REFACTOR");
-  });
-
-  test("advances TDD sub-phase REFACTOR → VERIFY", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "REFACTOR", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "REFACTOR" };
-    const next = computeNextState(state, action);
-    expect(next.tddSubPhase).toBe("VERIFY");
-  });
-
-  test("advances TDD VERIFY → COMPLETE_SLICE (task done)", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "VERIFY", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "VERIFY" };
+  test("advances TDD IMPLEMENT → COMPLETE_SLICE (task done)", () => {
+    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" };
     const next = computeNextState(state, action);
     expect(next.phase).toBe("COMPLETE_SLICE");
     expect(next.tddSubPhase).toBeNull();
-  });
-
-  test("skips REFACTOR when skipRefactor is true", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "GREEN", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "GREEN" };
-    const next = computeNextState(state, action, true);
-    expect(next.tddSubPhase).toBe("VERIFY"); // Skipped REFACTOR
-  });
-
-  test("does not skip REFACTOR when skipRefactor is false", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "GREEN", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "GREEN" };
-    const next = computeNextState(state, action, false);
-    expect(next.tddSubPhase).toBe("REFACTOR");
   });
 
   // ─── Phase Transitions ──────────────────────────────────────────
@@ -123,12 +88,12 @@ describe("computeNextState", () => {
     expect(next.currentSlice).toBe("S01");
   });
 
-  test("transitions from PLAN_SLICE to EXECUTE_TASK with RED", () => {
+  test("transitions from PLAN_SLICE to EXECUTE_TASK with IMPLEMENT", () => {
     const state: ProjectState = { ...baseState, phase: "PLAN_SLICE", currentMilestone: "M001", currentSlice: "S01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "RED", task: "T01" };
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT", task: "T01" };
     const next = computeNextState(state, action);
     expect(next.phase).toBe("EXECUTE_TASK");
-    expect(next.tddSubPhase).toBe("RED");
+    expect(next.tddSubPhase).toBe("IMPLEMENT");
     expect(next.currentTask).toBe("T01");
   });
 
@@ -171,11 +136,12 @@ describe("computeNextState", () => {
   });
 
   test("does not mutate original state", () => {
-    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "RED", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
-    const action = { phase: "EXECUTE_TASK", tddSubPhase: "RED" };
+    const state: ProjectState = { ...baseState, phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT", currentMilestone: "M001", currentSlice: "S01", currentTask: "T01" };
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" };
     const next = computeNextState(state, action);
-    expect(state.tddSubPhase).toBe("RED");
-    expect(next.tddSubPhase).toBe("GREEN");
+    expect(state.tddSubPhase).toBe("IMPLEMENT");
+    expect(next.phase).toBe("COMPLETE_SLICE");
+    expect(next.tddSubPhase).toBeNull();
   });
 });
 
@@ -198,20 +164,9 @@ describe("getAgentRoleForPhase", () => {
     expect(getAgentRoleForPhase("PLAN_SLICE", null)).toBe("architect");
   });
 
-  test("maps EXECUTE_TASK RED to implementer", () => {
-    expect(getAgentRoleForPhase("EXECUTE_TASK", "RED")).toBe("implementer");
-  });
-
-  test("maps EXECUTE_TASK GREEN to implementer", () => {
-    expect(getAgentRoleForPhase("EXECUTE_TASK", "GREEN")).toBe("implementer");
-  });
-
-  test("maps EXECUTE_TASK REFACTOR to implementer", () => {
-    expect(getAgentRoleForPhase("EXECUTE_TASK", "REFACTOR")).toBe("implementer");
-  });
-
-  test("maps EXECUTE_TASK VERIFY to null (mechanical)", () => {
-    expect(getAgentRoleForPhase("EXECUTE_TASK", "VERIFY")).toBeNull();
+  test("maps EXECUTE_TASK to implementer", () => {
+    expect(getAgentRoleForPhase("EXECUTE_TASK", "IMPLEMENT")).toBe("implementer");
+    expect(getAgentRoleForPhase("EXECUTE_TASK", null)).toBe("implementer");
   });
 
   test("maps COMPLETE_SLICE to scribe", () => {

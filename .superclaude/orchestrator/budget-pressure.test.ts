@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import {
   computePressure,
   shouldSkipPhase,
-  shouldSkipRefactor,
   getEffectiveContextBudget,
   formatPressureStatus,
   type PressureTier,
@@ -65,7 +64,6 @@ test("boundary: exactly 90% is RED", () => {
 test("GREEN allows all features", () => {
   const p = computePressure({ currentCost: 0, budgetCeiling: 25 });
   expect(p.allowResearch).toBe(true);
-  expect(p.allowRefactor).toBe(true);
   expect(p.allowReview).toBe(true);
   expect(p.reviewPersonaCount).toBe(6);
   expect(p.contextBudgetMultiplier).toBe(1.0);
@@ -80,10 +78,9 @@ test("YELLOW reduces review personas and context", () => {
   expect(p.contextBudgetMultiplier).toBe(0.85);
 });
 
-test("ORANGE disables research, refactor, discuss, reassess", () => {
+test("ORANGE disables research, discuss, reassess", () => {
   const p = computePressure({ currentCost: 20, budgetCeiling: 25 });
   expect(p.allowResearch).toBe(false);
-  expect(p.allowRefactor).toBe(false);
   expect(p.allowDiscuss).toBe(false);
   expect(p.allowReassess).toBe(false);
   expect(p.reviewPersonaCount).toBe(1);
@@ -92,7 +89,6 @@ test("ORANGE disables research, refactor, discuss, reassess", () => {
 test("RED disables everything except execution", () => {
   const p = computePressure({ currentCost: 24, budgetCeiling: 25 });
   expect(p.allowResearch).toBe(false);
-  expect(p.allowRefactor).toBe(false);
   expect(p.allowReview).toBe(false);
   expect(p.reviewPersonaCount).toBe(0);
   expect(p.contextBudgetMultiplier).toBe(0.5);
@@ -123,18 +119,6 @@ test("shouldSkipPhase returns false for EXECUTE_TASK (never skipped)", () => {
 test("shouldSkipPhase returns true for REASSESS in ORANGE", () => {
   const p = computePressure({ currentCost: 20, budgetCeiling: 25 });
   expect(shouldSkipPhase("REASSESS", p)).toBe(true);
-});
-
-// ─── Refactor Skipping ─────────────────────────────────────────
-
-test("shouldSkipRefactor is false in GREEN", () => {
-  const p = computePressure({ currentCost: 0, budgetCeiling: 25 });
-  expect(shouldSkipRefactor(p)).toBe(false);
-});
-
-test("shouldSkipRefactor is true in ORANGE", () => {
-  const p = computePressure({ currentCost: 20, budgetCeiling: 25 });
-  expect(shouldSkipRefactor(p)).toBe(true);
 });
 
 // ─── Effective Context Budget ─────────────────────────────────

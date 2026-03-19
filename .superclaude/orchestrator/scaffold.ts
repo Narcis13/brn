@@ -234,6 +234,25 @@ After fixing, ensure all tests still pass.
   await Bun.write(`${base}/REVIEW_FEEDBACK.md`, content);
 }
 
+/**
+ * Read the review attempt count from REVIEW_FEEDBACK.md on disk.
+ * Returns 0 if the file doesn't exist (no prior review attempts).
+ */
+export async function readReviewAttemptCount(
+  projectRoot: string,
+  milestone: string,
+  slice: string,
+  task: string
+): Promise<number> {
+  const path = `${projectRoot}/${PATHS.taskPath(milestone, slice, task)}/REVIEW_FEEDBACK.md`;
+  const file = Bun.file(path);
+  if (!(await file.exists())) return 0;
+
+  const content = await file.text();
+  const match = content.match(/review_attempt:\s*(\d+)/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
 export async function clearReviewFeedback(
   projectRoot: string,
   milestoneId: string,

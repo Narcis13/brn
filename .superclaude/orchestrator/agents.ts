@@ -524,6 +524,19 @@ export function buildReviewPrompt(
   sections.push(focus);
   sections.push("");
 
+  // MUST-FIX scoping boundary
+  sections.push(`## MUST-FIX Boundary (CRITICAL)`);
+  sections.push(`MUST-FIX means: "This code will not work correctly for its specified purpose."`);
+  sections.push(`Only flag MUST-FIX for:`);
+  sections.push(`- Violations of the task's Must-Have Truths (observable behaviors that don't work)`);
+  sections.push(`- Violations of the task's Must-Have Artifacts (files missing, exports missing, stubs)`);
+  sections.push(`- Violations of the task's Must-Have Key Links (imports not wired)`);
+  sections.push(`- Security vulnerabilities (OWASP Top 10)`);
+  sections.push(`- Code that will crash at runtime (not style issues, not "could be better")`);
+  sections.push("");
+  sections.push(`Everything else is SHOULD-FIX or CONSIDER — quality improvements that don't block task completion.`);
+  sections.push("");
+
   // Code to review
   if (Object.keys(context.codeFiles).length > 0) {
     sections.push(`## Code to Review`);

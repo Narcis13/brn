@@ -25,8 +25,6 @@ export interface PressurePolicy {
   percentUsed: number;
   /** Whether to include RESEARCH phase */
   allowResearch: boolean;
-  /** Whether to include REFACTOR sub-phase in TDD */
-  allowRefactor: boolean;
   /** Whether to run reviewer personas */
   allowReview: boolean;
   /** How many reviewer personas to run (0-6) */
@@ -72,7 +70,6 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         tier: "GREEN",
         percentUsed,
         allowResearch: true,
-        allowRefactor: true,
         allowReview: true,
         reviewPersonaCount: 6,
         contextBudgetMultiplier: 1.0,
@@ -86,7 +83,6 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         tier: "YELLOW",
         percentUsed,
         allowResearch: true,
-        allowRefactor: true,
         allowReview: true,
         reviewPersonaCount: 3,
         contextBudgetMultiplier: 0.85,
@@ -100,13 +96,12 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         tier: "ORANGE",
         percentUsed,
         allowResearch: false,
-        allowRefactor: false,
         allowReview: true,
         reviewPersonaCount: 1,
         contextBudgetMultiplier: 0.65,
         allowDiscuss: false,
         allowReassess: false,
-        description: "High pressure — skip research/refactor/discuss, minimal review, compressed context",
+        description: "High pressure — skip research/discuss, minimal review, compressed context",
       };
 
     case "RED":
@@ -114,7 +109,6 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         tier: "RED",
         percentUsed,
         allowResearch: false,
-        allowRefactor: false,
         allowReview: false,
         reviewPersonaCount: 0,
         contextBudgetMultiplier: 0.5,
@@ -142,13 +136,6 @@ export function shouldSkipPhase(
     default:
       return false;
   }
-}
-
-/**
- * Check if REFACTOR sub-phase should be skipped in TDD cycle.
- */
-export function shouldSkipRefactor(policy: PressurePolicy): boolean {
-  return !policy.allowRefactor;
 }
 
 /**

@@ -61,10 +61,10 @@ test("commitTDDPhase commits with correct message format", async () => {
   await Bun.write(`${TEST_ROOT}/auth.test.ts`, "test('auth', () => {});\n");
   await Bun.$`git -C ${TEST_ROOT} add -A`.quiet();
 
-  await commitTDDPhase(TEST_ROOT, "S01", "T01", "red", "write auth token tests");
+  await commitTDDPhase(TEST_ROOT, "S01", "T01", "implement", "implement auth token generation");
 
   const log = await Bun.$`git -C ${TEST_ROOT} log --oneline -1`.text();
-  expect(log).toContain("feat(S01/T01): [red] write auth token tests");
+  expect(log).toContain("feat(S01/T01): [implement] implement auth token generation");
 });
 
 test("commitSliceComplete commits with correct message format", async () => {

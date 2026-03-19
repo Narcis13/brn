@@ -163,12 +163,12 @@ test("bad", () => { expect(true).toBe(false); });`
 // ─── enforceTDDPhase ────────────────────────────────────────────
 
 describe("enforceTDDPhase", () => {
-  test("RED: succeeds when test files exist and tests fail", async () => {
+  test("IMPLEMENT: succeeds when test files exist and tests pass", async () => {
     writeFileSync(
       `${SRC_DIR}/features/auth/auth.test.ts`,
       `import { test, expect } from "bun:test";
 test("auth token", () => {
-  expect(true).toBe(false); // intentionally fail
+  expect(1 + 1).toBe(2);
 });`
     );
 
@@ -178,64 +178,24 @@ test("auth token", () => {
       implementationFiles: ["src/features/auth/auth.ts"],
     };
 
-    const result = await enforceTDDPhase("RED", TEST_ROOT, sequence);
+    const result = await enforceTDDPhase("IMPLEMENT", TEST_ROOT, sequence);
     expect(result.passed).toBe(true);
-    expect(result.phase).toBe("RED");
+    expect(result.phase).toBe("IMPLEMENT");
   });
 
-  test("RED: fails when no test files found", async () => {
+  test("IMPLEMENT: fails when no test files found", async () => {
     const sequence: TDDSequence = {
       testFiles: ["src/nonexistent.test.ts"],
       testCases: [],
       implementationFiles: [],
     };
 
-    const result = await enforceTDDPhase("RED", TEST_ROOT, sequence);
+    const result = await enforceTDDPhase("IMPLEMENT", TEST_ROOT, sequence);
     expect(result.passed).toBe(false);
     expect(result.message).toContain("no test");
   });
 
-  test("RED: fails when tests pass (not testing new behavior)", async () => {
-    writeFileSync(
-      `${SRC_DIR}/features/auth/auth.test.ts`,
-      `import { test, expect } from "bun:test";
-test("trivially passes", () => {
-  expect(true).toBe(true);
-});`
-    );
-
-    const sequence: TDDSequence = {
-      testFiles: ["src/features/auth/auth.test.ts"],
-      testCases: ["trivially passes"],
-      implementationFiles: [],
-    };
-
-    const result = await enforceTDDPhase("RED", TEST_ROOT, sequence);
-    expect(result.passed).toBe(false);
-    expect(result.message).toContain("pass");
-  });
-
-  test("GREEN: succeeds when tests pass", async () => {
-    writeFileSync(
-      `${SRC_DIR}/features/auth/auth.test.ts`,
-      `import { test, expect } from "bun:test";
-test("passes now", () => {
-  expect(1 + 1).toBe(2);
-});`
-    );
-
-    const sequence: TDDSequence = {
-      testFiles: ["src/features/auth/auth.test.ts"],
-      testCases: ["passes now"],
-      implementationFiles: [],
-    };
-
-    const result = await enforceTDDPhase("GREEN", TEST_ROOT, sequence);
-    expect(result.passed).toBe(true);
-    expect(result.phase).toBe("GREEN");
-  });
-
-  test("GREEN: fails when tests still fail", async () => {
+  test("IMPLEMENT: fails when tests fail", async () => {
     writeFileSync(
       `${SRC_DIR}/features/auth/auth.test.ts`,
       `import { test, expect } from "bun:test";
@@ -250,68 +210,9 @@ test("still failing", () => {
       implementationFiles: [],
     };
 
-    const result = await enforceTDDPhase("GREEN", TEST_ROOT, sequence);
+    const result = await enforceTDDPhase("IMPLEMENT", TEST_ROOT, sequence);
     expect(result.passed).toBe(false);
-    expect(result.message).toContain("fail");
+    expect(result.message).toContain("failing");
   });
 
-  test("REFACTOR: succeeds when tests still pass", async () => {
-    writeFileSync(
-      `${SRC_DIR}/features/auth/auth.test.ts`,
-      `import { test, expect } from "bun:test";
-test("still passes after refactor", () => {
-  expect(2 + 2).toBe(4);
-});`
-    );
-
-    const sequence: TDDSequence = {
-      testFiles: ["src/features/auth/auth.test.ts"],
-      testCases: ["still passes after refactor"],
-      implementationFiles: [],
-    };
-
-    const result = await enforceTDDPhase("REFACTOR", TEST_ROOT, sequence);
-    expect(result.passed).toBe(true);
-    expect(result.phase).toBe("REFACTOR");
-  });
-
-  test("REFACTOR: fails when tests break", async () => {
-    writeFileSync(
-      `${SRC_DIR}/features/auth/auth.test.ts`,
-      `import { test, expect } from "bun:test";
-test("broke during refactor", () => {
-  expect(1).toBe(999);
-});`
-    );
-
-    const sequence: TDDSequence = {
-      testFiles: ["src/features/auth/auth.test.ts"],
-      testCases: ["broke during refactor"],
-      implementationFiles: [],
-    };
-
-    const result = await enforceTDDPhase("REFACTOR", TEST_ROOT, sequence);
-    expect(result.passed).toBe(false);
-    expect(result.message).toContain("broke");
-  });
-
-  test("VERIFY: succeeds when full suite passes", async () => {
-    writeFileSync(
-      `${SRC_DIR}/verify.test.ts`,
-      `import { test, expect } from "bun:test";
-test("all good", () => {
-  expect(true).toBe(true);
-});`
-    );
-
-    const sequence: TDDSequence = {
-      testFiles: ["src/verify.test.ts"],
-      testCases: ["all good"],
-      implementationFiles: [],
-    };
-
-    const result = await enforceTDDPhase("VERIFY", TEST_ROOT, sequence);
-    expect(result.passed).toBe(true);
-    expect(result.phase).toBe("VERIFY");
-  });
 });

@@ -26,5 +26,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": [".superclaude/**/*.ts", "src/**/*.ts"]
+  "include": [".superclaude/**/*.ts", "src/**/*.ts", "playground/**/*.ts"]
 }
