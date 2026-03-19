@@ -12,7 +12,7 @@
  */
 
 import { parseArgs, getProjectRoot } from "./config.ts";
-import { readState, writeState, determineNextAction, determineNextActionEnhanced, advanceTDDPhase } from "./state.ts";
+import { readState, writeState, determineNextActionEnhanced, advanceTDDPhase } from "./state.ts";
 import { assembleContext } from "./context.ts";
 import { buildPrompt } from "./prompt-builder.ts";
 import {
@@ -35,11 +35,10 @@ import {
   commitMilestoneComplete,
   createCheckpoint,
   rollbackToCheckpoint,
-  squashMergeToMain,
   tagRelease,
   stageAll,
-  stashChanges,
   isCleanWorkingTree,
+  isScopedClean,
 } from "./git.ts";
 import {
   createCostTracker,
@@ -107,7 +106,7 @@ async function main() {
 // ─── Auto Loop ───────────────────────────────────────────────────
 
 async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
-  const sessionId = new Date().toISOString().slice(0, 10) + "-auto";
+  const sessionId = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19) + "-auto";
   const session = createSession(sessionId);
   let costTracker = createCostTracker(sessionId);
   let iterations = 0;
@@ -229,7 +228,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     // 6. Git checkpoint before task execution (§13.4)
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "RED" &&
         currentState.currentSlice && currentState.currentTask) {
-      await stashChanges(projectRoot);
+      const dirty = !(await isCleanWorkingTree(projectRoot));
+      if (dirty) {
+        console.log(`  WARNING: Working tree has uncommitted changes. Commit orchestrator fixes before running.`);
+      }
       await createCheckpoint(projectRoot, currentState.currentSlice, currentState.currentTask);
       console.log(`  Checkpoint: ${currentState.currentSlice}/${currentState.currentTask}`);
     }
@@ -429,7 +431,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     // 13. Git commit for successful work (§13.3)
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase &&
         currentState.currentSlice && currentState.currentTask) {
-      const clean = await isCleanWorkingTree(projectRoot);
+      const clean = await isScopedClean(projectRoot);
       if (!clean) {
         await stageAll(projectRoot);
         const tddLabel = currentState.tddSubPhase.toLowerCase();
@@ -453,7 +455,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         );
       }
 
-      const clean = await isCleanWorkingTree(projectRoot);
+      const clean = await isScopedClean(projectRoot);
       if (!clean) {
         await stageAll(projectRoot);
         await commitSliceComplete(projectRoot, currentState.currentSlice);
@@ -468,7 +470,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         result.output
       );
 
-      const clean = await isCleanWorkingTree(projectRoot);
+      const clean = await isScopedClean(projectRoot);
       if (!clean) {
         await stageAll(projectRoot);
         await commitMilestoneComplete(projectRoot, currentState.currentMilestone);
@@ -610,10 +612,17 @@ async function invokeClaudeHeadless(
   prompt: string,
   timeoutMs: number = 30 * 60 * 1000
 ): Promise<InvocationResult> {
+  const timestamp = Date.now();
+  const debugDir = `${getProjectRoot()}/.superclaude/history/debug`;
+  await Bun.$`mkdir -p ${debugDir}`.quiet();
+
   try {
     // Write prompt to temp file to avoid shell escaping issues
-    const tmpFile = `/tmp/superclaude-prompt-${Date.now()}.md`;
+    const tmpFile = `/tmp/superclaude-prompt-${timestamp}.md`;
     await Bun.write(tmpFile, prompt);
+
+    // Log prompt for debugging
+    await Bun.write(`${debugDir}/prompt-${timestamp}.md`, prompt);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -629,8 +638,15 @@ async function invokeClaudeHeadless(
 
       clearTimeout(timer);
 
-      // Cleanup temp file
+      // Cleanup temp file (keep debug copy)
       await Bun.$`rm -f ${tmpFile}`.quiet();
+
+      // Log output for debugging
+      const status = exitCode === 0 ? "OK" : `FAIL(${exitCode})`;
+      await Bun.write(
+        `${debugDir}/output-${timestamp}.md`,
+        `# Claude Output [${status}]\n\n${output}\n`
+      );
 
       if (exitCode !== 0) {
         const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
@@ -640,14 +656,15 @@ async function invokeClaudeHeadless(
       return { success: true, output, error: null };
     } catch (err) {
       clearTimeout(timer);
-      await Bun.$`rm -f ${tmpFile}`.quiet();
+      await Bun.$`rm -f /tmp/superclaude-prompt-${timestamp}.md`.quiet();
       const message = err instanceof Error ? err.message : String(err);
       const isTimeout = message.includes("abort") || message.includes("signal");
-      return {
-        success: false,
-        output: null,
-        error: isTimeout ? `Timeout after ${timeoutMs}ms: subprocess killed` : message,
-      };
+      const error = isTimeout ? `Timeout after ${timeoutMs}ms: subprocess killed` : message;
+
+      // Log error for debugging
+      await Bun.write(`${debugDir}/output-${timestamp}.md`, `# Claude Error\n\n${error}\n`);
+
+      return { success: false, output: null, error };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

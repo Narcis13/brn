@@ -281,17 +281,23 @@ You are the Implementer sub-agent in RED mode.
 ## Task Plan
 ${ctx.taskPlan}
 
+${formatUpstreamContext(ctx.upstreamSummaries)}
+
 ## Current Code
 ${formatCodeFiles(ctx.codeFiles)}
 
 ${formatVaultDocs(ctx.vaultDocs)}
 
 ## Instructions
-1. Read the task's must-haves carefully
-2. Write test files that cover: happy path, edge cases, error cases, integration points
+1. Read the task's must-haves carefully — they specify EXACT file paths for all artifacts
+2. Write test files at the EXACT paths specified in the TDD Sequence section
 3. Tests MUST be runnable with \`bun test\`
 4. Tests MUST FAIL (they test behavior that doesn't exist yet)
 5. Do NOT write any implementation code
+
+## CRITICAL: File Paths
+All file paths in the task plan are relative to the project root.
+Write files at the EXACT paths specified — do not modify or shorten them.
 
 ## Constraints
 - Test behavior, not implementation details
@@ -312,16 +318,23 @@ You are the Implementer sub-agent in GREEN mode.
 ## Task Plan
 ${ctx.taskPlan}
 
+${formatUpstreamContext(ctx.upstreamSummaries)}
+
 ## Current Code
 ${formatCodeFiles(ctx.codeFiles)}
 
 ${formatVaultDocs(ctx.vaultDocs)}
 
 ## Instructions
-1. Read the failing test output
-2. Write the MINIMUM code to make all tests pass
-3. Focus on correctness, not elegance
-4. Run \`bun test\` to verify all tests pass
+1. Read the failing tests and the task plan's must-have artifacts
+2. Create implementation files at the EXACT paths specified in the task plan
+3. Write the MINIMUM code to make all tests pass
+4. Focus on correctness, not elegance
+5. Run \`bun test\` to verify all tests pass
+
+## CRITICAL: File Paths
+All file paths in the task plan are relative to the project root.
+Create files at the EXACT paths specified in the Artifacts section — do not modify or shorten them.
 
 ## Constraints
 - Minimum viable implementation — no gold-plating
@@ -460,4 +473,9 @@ function formatCodeFiles(files: Record<string, string>): string {
 function formatVaultDocs(docs: string[]): string {
   if (docs.length === 0) return "";
   return `## Vault Docs\n${docs.join("\n\n")}`;
+}
+
+function formatUpstreamContext(summaries: string[]): string {
+  if (summaries.length === 0) return "";
+  return `## Context\n${summaries.join("\n\n")}`;
 }

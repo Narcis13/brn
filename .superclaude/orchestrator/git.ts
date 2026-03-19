@@ -6,6 +6,18 @@
  * Per spec §13: Branch structure, commit convention, checkpoint protocol, squash merge.
  */
 
+// ─── Staging Scope ──────────────────────────────────────────────
+
+/**
+ * Paths that Claude writes to and should be committed.
+ * Everything else (orchestrator code, node_modules, etc.) is excluded.
+ */
+const STAGING_PATHS = [
+  "playground/",
+  ".superclaude/state/",
+  ".superclaude/history/",
+];
+
 // ─── Branch Operations ──────────────────────────────────────────
 
 /**
@@ -188,10 +200,34 @@ export async function getCurrentBranch(projectRoot: string): Promise<string> {
 }
 
 /**
- * Stage all changes in the working tree.
+ * Stage only paths that Claude writes to — implementation code and state.
+ * Never stages orchestrator code, preventing accidental self-modification commits.
  */
 export async function stageAll(projectRoot: string): Promise<void> {
-  await Bun.$`git -C ${projectRoot} add -A`.quiet();
+  for (const path of STAGING_PATHS) {
+    // Use -- to separate pathspec; add only if path has changes
+    await Bun.$`git -C ${projectRoot} add -A -- ${path}`
+      .quiet()
+      .catch(() => {});
+  }
+}
+
+/**
+ * Check if there are staged or unstaged changes within the scoped paths only.
+ * Returns true if no changes exist in the staging scope.
+ */
+export async function isScopedClean(projectRoot: string): Promise<boolean> {
+  let hasChanges = false;
+  for (const path of STAGING_PATHS) {
+    const status = await Bun.$`git -C ${projectRoot} status --porcelain -- ${path}`
+      .text()
+      .catch(() => "");
+    if (status.trim().length > 0) {
+      hasChanges = true;
+      break;
+    }
+  }
+  return !hasChanges;
 }
 
 /**
