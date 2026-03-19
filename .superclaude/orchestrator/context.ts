@@ -13,6 +13,27 @@
  */
 
 import { PATHS, type ContextPayload, type ProjectState } from "./types.ts";
+import { listSpecs } from "./milestone-manager.ts";
+
+/**
+ * Load the spec file content for a given milestone.
+ * Finds the spec whose frontmatter milestone matches.
+ */
+async function loadSpecForMilestone(
+  projectRoot: string,
+  milestoneId: string
+): Promise<string> {
+  const specs = await listSpecs(projectRoot);
+  const match = specs.find((s) => s.milestone === milestoneId && s.status === "ready");
+  if (!match) return "";
+
+  const specPath = `${projectRoot}/${PATHS.specs}/${match.filename}`;
+  const file = Bun.file(specPath);
+  if (await file.exists()) {
+    return await file.text();
+  }
+  return "";
+}
 
 // ─── Token Budget Constants ─────────────────────────────────────
 
@@ -100,8 +121,8 @@ export async function loadCodeFilesForTask(
 
   // Match file paths that look like source files
   const pathPatterns = [
-    // "Implementation file(s): src/foo.ts" or "- src/foo.ts"
-    /(?:^|\s)(src\/[\w/.,-]+\.(?:ts|tsx|js|jsx|json))/gm,
+    // "Implementation file(s): playground/src/foo.ts" or "- playground/src/foo.ts"
+    /(?:^|\s)((?:playground\/)?src\/[\w/.,-]+\.(?:ts|tsx|js|jsx|json))/gm,
     // "path/to/file.ts — description"
     /(?:^|\s)([\w/.,-]+\.(?:ts|tsx|js|jsx))\s*[—\-]/gm,
   ];
@@ -144,6 +165,14 @@ export async function assembleContext(
   };
 
   const { currentMilestone: m, currentSlice: s, currentTask: t } = state;
+
+  // Load the spec file for the current milestone — provides requirements, tech stack, paths
+  if (m) {
+    const specContent = await loadSpecForMilestone(projectRoot, m);
+    if (specContent) {
+      payload.upstreamSummaries.push(`## Feature Spec\n${specContent}`);
+    }
+  }
 
   switch (state.phase) {
     case "DISCUSS":

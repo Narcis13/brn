@@ -267,38 +267,44 @@ async function handleIdleEnhanced(
       return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: `Milestone ${state.currentMilestone} complete — finalize` };
     }
 
-    // Check if discuss is needed
-    if (await isDiscussNeeded(projectRoot, state.currentMilestone)) {
-      if (pressure && shouldSkipPhase("DISCUSS", pressure)) {
-        // Skip discuss due to budget pressure
-      } else {
-        return { phase: "DISCUSS", tddSubPhase: null, description: "No context — start discuss phase" };
-      }
-    }
-
-    // Check if research is needed
-    if (await isResearchNeeded(projectRoot, state.currentMilestone)) {
-      if (pressure && shouldSkipPhase("RESEARCH", pressure)) {
-        // Skip research due to budget pressure
-      } else {
-        return { phase: "RESEARCH", tddSubPhase: null, description: "No research — start research phase" };
-      }
-    }
-
-    // Check for roadmap
+    // Check for roadmap first — if it exists and is filled, skip discuss/research
     const roadmapPath = `${projectRoot}/${PATHS.milestonePath(state.currentMilestone)}/ROADMAP.md`;
     const roadmapFile = Bun.file(roadmapPath);
-    if (await roadmapFile.exists()) {
-      const content = await roadmapFile.text();
-      if (content.includes("_To be planned during PLAN_MILESTONE phase._")) {
-        return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "No roadmap — plan milestone" };
+    const hasRoadmap = await roadmapFile.exists();
+    const roadmapIsComplete = hasRoadmap
+      && !(await roadmapFile.text()).includes("_To be planned during PLAN_MILESTONE phase._");
+
+    if (!roadmapIsComplete) {
+      // Only check discuss/research if we haven't planned the milestone yet
+      if (await isDiscussNeeded(projectRoot, state.currentMilestone)) {
+        if (pressure && shouldSkipPhase("DISCUSS", pressure)) {
+          // Skip discuss due to budget pressure
+        } else {
+          return { phase: "DISCUSS", tddSubPhase: null, description: "No context — start discuss phase" };
+        }
       }
-    } else {
+
+      if (await isResearchNeeded(projectRoot, state.currentMilestone)) {
+        if (pressure && shouldSkipPhase("RESEARCH", pressure)) {
+          // Skip research due to budget pressure
+        } else {
+          return { phase: "RESEARCH", tddSubPhase: null, description: "No research — start research phase" };
+        }
+      }
+
+      // No roadmap or roadmap is placeholder — need to plan
       return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "No roadmap — plan milestone" };
     }
 
-    // Find next slice to work on
-    const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+    // Find next slice to work on — scaffold from ROADMAP if no slice dirs exist yet
+    let nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+    if (!nextSlice) {
+      const roadmapSlices = await discoverSlicesFromRoadmap(projectRoot, state.currentMilestone);
+      for (const s of roadmapSlices) {
+        await scaffoldSlice(projectRoot, state.currentMilestone, s.id, s.demoSentence);
+      }
+      nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+    }
     if (nextSlice) {
       // Find next task in this slice
       const nextTask = await findNextTask(projectRoot, state.currentMilestone, nextSlice);
