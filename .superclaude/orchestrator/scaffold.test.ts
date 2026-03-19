@@ -59,9 +59,9 @@ test("scaffoldTask creates PLAN.md with goal", async () => {
   const planText = await plan.text();
   expect(planText).toContain("task: T01");
   expect(planText).toContain("Implement JWT generation");
-  expect(planText).toContain("[RED]");
-  expect(planText).toContain("[GREEN]");
-  expect(planText).toContain("[REFACTOR]");
+  expect(planText).toContain("## Goal");
+  expect(planText).toContain("## TDD Sequence");
+  expect(planText).toContain("## Must-Haves");
 });
 
 test("writeReviewFeedback creates REVIEW_FEEDBACK.md with issues", async () => {

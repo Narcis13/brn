@@ -77,6 +77,45 @@ _To be planned during PLAN_SLICE phase._
 
 // ─── Task Scaffold ──────────────────────────────────────────────
 
+/**
+ * Extract a task's full section from the slice PLAN.md.
+ * Captures from "### T01:" heading until the next task heading, section heading, or separator.
+ */
+function extractTaskSection(slicePlanContent: string, taskId: string): string | null {
+  const headingPrefix = `### ${taskId}`;
+  const startIdx = slicePlanContent.indexOf(headingPrefix);
+  if (startIdx === -1) return null;
+
+  // Find end: next ### T heading, next ## heading, or --- separator
+  const afterHeading = slicePlanContent.slice(startIdx);
+  const headingLineEnd = afterHeading.indexOf("\n");
+  if (headingLineEnd === -1) return null;
+
+  const body = afterHeading.slice(headingLineEnd + 1);
+
+  // Find the end boundary
+  const nextTaskMatch = body.match(/\n### T\d{2}/);
+  const nextSectionMatch = body.match(/\n## [^#]/);
+  const nextSeparatorMatch = body.match(/\n---\s*$/m);
+
+  const boundaries = [
+    nextTaskMatch?.index ?? Infinity,
+    nextSectionMatch?.index ?? Infinity,
+    nextSeparatorMatch?.index ?? Infinity,
+  ];
+  const endIdx = Math.min(...boundaries);
+  const taskBody = endIdx === Infinity ? body.trim() : body.slice(0, endIdx).trim();
+
+  // Extract goal from heading line
+  const headingLine = afterHeading.slice(0, headingLineEnd);
+  const goalText = headingLine
+    .replace(/^###\s*T\d+\s*[:—\-]?\s*/, "")
+    .replace(/\*\*/g, "")
+    .trim();
+
+  return `## Goal\n${goalText}\n\n${taskBody}`;
+}
+
 export async function scaffoldTask(
   projectRoot: string,
   milestoneId: string,
@@ -85,49 +124,39 @@ export async function scaffoldTask(
   goal: string
 ): Promise<void> {
   const base = `${projectRoot}/${PATHS.taskPath(milestoneId, sliceId, taskId)}`;
-
   await Bun.$`mkdir -p ${base}`;
 
-  await Bun.write(
-    `${base}/PLAN.md`,
-    `---
-task: ${taskId}
-slice: ${sliceId}
-milestone: ${milestoneId}
-status: pending
----
+  // Try to extract the detailed task section from the slice PLAN.md
+  const slicePlanPath = `${projectRoot}/${PATHS.slicePath(milestoneId, sliceId)}/PLAN.md`;
+  const slicePlanFile = Bun.file(slicePlanPath);
+  let taskBody = "";
 
-## Goal
-${goal}
+  if (await slicePlanFile.exists()) {
+    const slicePlan = await slicePlanFile.text();
+    const section = extractTaskSection(slicePlan, taskId);
+    if (section) {
+      taskBody = section;
+    }
+  }
 
-## Context
-_Injected by orchestrator at execution time._
+  // Fallback to minimal template if extraction failed
+  if (!taskBody) {
+    taskBody = `## Goal\n${goal}\n\n## TDD Sequence\n- _TBD_\n\n## Must-Haves\n- _To be defined_`;
+  }
 
-## Steps
-1. [RED] Write failing tests
-2. [GREEN] Implement to make tests pass
-3. [REFACTOR] Clean up implementation
-4. [VERIFY] Run full test suite, type-check, lint
+  const content = [
+    "---",
+    `task: ${taskId}`,
+    `slice: ${sliceId}`,
+    `milestone: ${milestoneId}`,
+    "status: pending",
+    "---",
+    "",
+    taskBody,
+    "",
+  ].join("\n");
 
-## Must-Haves
-### Truths
-- _To be defined_
-
-### Artifacts
-- _To be defined_
-
-### Key Links
-- _To be defined_
-
-## Must-NOT-Haves
-- _To be defined_
-
-## TDD Sequence
-- Test file(s) to create: _TBD_
-- Test cases to write first: _TBD_
-- Implementation file(s): _TBD_
-`
-  );
+  await Bun.write(`${base}/PLAN.md`, content);
 }
 
 // ─── Write Continue-Here ────────────────────────────────────────
