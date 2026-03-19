@@ -23,4 +23,16 @@ export function runMigrations(db: Database): void {
       created_at    TEXT NOT NULL
     )
   `);
+
+  // Boards table: stores kanban boards owned by users
+  db.run(`
+    CREATE TABLE IF NOT EXISTS boards (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      user_id    TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
 }

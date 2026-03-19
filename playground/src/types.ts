@@ -34,3 +34,31 @@ export interface AuthContext {
   /** User's email address */
   email: string;
 }
+
+/**
+ * A board as stored in the database.
+ * Boards contain lists and are owned by users.
+ */
+export interface Board {
+  /** UUID v4 identifier */
+  id: string;
+  /** Display name of the board */
+  name: string;
+  /** UUID of the user who owns this board */
+  userId: string;
+  /** ISO 8601 timestamp of creation */
+  createdAt: string;
+  /** ISO 8601 timestamp of last update */
+  updatedAt: string;
+}
+
+/**
+ * Input for creating a new board.
+ * ID and timestamps are generated automatically.
+ */
+export interface NewBoard {
+  /** Display name of the board */
+  name: string;
+  /** UUID of the user who will own this board */
+  userId: string;
+}
