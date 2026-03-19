@@ -121,6 +121,8 @@ export async function loadCodeFilesForTask(
 
   // Match file paths that look like source files
   const pathPatterns = [
+    // Backtick-wrapped: `playground/src/foo.ts` (most common in task plans)
+    /`((?:playground\/)?(?:src\/)?[\w/.,-]+\.(?:ts|tsx|js|jsx|json))`/gm,
     // "Implementation file(s): playground/src/foo.ts" or "- playground/src/foo.ts"
     /(?:^|\s)((?:playground\/)?src\/[\w/.,-]+\.(?:ts|tsx|js|jsx|json))/gm,
     // "path/to/file.ts — description"
@@ -221,7 +223,11 @@ export async function assembleContext(
         }
 
         // Load upstream task summaries from same slice (not current task's)
+        // Falls back to loading upstream task plans if no summaries exist yet
         payload.upstreamSummaries = await loadUpstreamTaskSummaries(projectRoot, m, s, t);
+        if (payload.upstreamSummaries.length === 0) {
+          payload.upstreamSummaries = await loadUpstreamTaskPlans(projectRoot, m, s, t);
+        }
 
         // Load relevant vault docs referenced in task plan
         payload.vaultDocs = await loadRelevantVaultDocs(projectRoot, payload.taskPlan);
@@ -391,6 +397,38 @@ async function loadUpstreamTaskSummaries(
   }
 
   return summaries;
+}
+
+/**
+ * Fallback: load upstream task PLAN.md files when no SUMMARY.md exists yet.
+ * Provides the agent with upstream task goals, artifacts, and key links.
+ */
+async function loadUpstreamTaskPlans(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string,
+  currentTaskId: string
+): Promise<string[]> {
+  const plans: string[] = [];
+  const tasksDir = `${projectRoot}/${PATHS.slicePath(milestoneId, sliceId)}/tasks`;
+
+  try {
+    const glob = new Bun.Glob("*/PLAN.md");
+    for await (const path of glob.scan({ cwd: tasksDir })) {
+      const taskId = path.split("/")[0];
+      if (taskId && taskId < currentTaskId) {
+        const content = await loadFile(
+          projectRoot,
+          `${PATHS.slicePath(milestoneId, sliceId)}/tasks/${path}`
+        );
+        if (content) plans.push(`## Upstream Task ${taskId}\n${content}`);
+      }
+    }
+  } catch {
+    // Directory may not exist yet
+  }
+
+  return plans;
 }
 
 async function loadAllTaskSummaries(

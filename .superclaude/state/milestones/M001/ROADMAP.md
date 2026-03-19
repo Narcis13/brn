@@ -5,15 +5,16 @@ status: planned
 
 ## Slices
 
-### S01: User Authentication System
+### S01: User Authentication System ✓
 **Demo:** After this, the user can sign up with email/password and log in to receive a JWT token
 **Depends on:** none
 **Risk:** medium
 **Produces:** 
-- Auth API endpoints (/signup, /login)
+- Auth API endpoints (/signup, /login, /me)
 - JWT token generation and validation
 - User table schema and repository
 - Password hashing utilities
+- Auth middleware for protected routes
 **Consumes:** none
 
 ### S02: Board Management
@@ -76,3 +77,15 @@ status: planned
 - Card API from S03
 - Board context from S05
 - Auth context from S04
+
+## Reassessment (2026-03-19)
+
+The roadmap remains solid. S01's implementation provides a strong foundation with auth middleware that subsequent slices can leverage. The only update needed was marking S01 as complete (✓) and documenting the additional deliverables that were built.
+
+The slice ordering and dependencies still make perfect sense:
+- S02-S03 build the backend functionality
+- S04-S06 build the frontend, consuming the APIs
+- Each slice has appropriate risk assessments and clear demo outcomes
+
+No further changes to roadmap needed.
+

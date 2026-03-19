@@ -447,12 +447,15 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
 
       // GAP-21: Write task summary deterministically (§7.3 fractal summaries)
       if (currentState.currentMilestone) {
+        // Use the task plan's goal as the summary description, not the generic action label
+        const taskPlan = await loadTaskPlan(projectRoot, currentState);
+        const taskGoal = taskPlan?.goal ?? nextAction.description;
         await writeTaskSummaryOnComplete(
           projectRoot,
           currentState.currentMilestone,
           currentState.currentSlice,
           currentState.currentTask,
-          nextAction.description,
+          taskGoal,
           result.output
         );
       }
@@ -989,22 +992,46 @@ async function writeSliceSummaryOnComplete(
   try {
     const slicePath = `${projectRoot}/${PATHS.slicePath(milestone, slice)}`;
 
-    // Read task summaries
+    // Read demo sentence from slice PLAN.md frontmatter
+    let demoSentence = "";
+    const planFile = Bun.file(`${slicePath}/PLAN.md`);
+    if (await planFile.exists()) {
+      const planContent = await planFile.text();
+      const demoMatch = planContent.match(/demo_sentence:\s*"?([^"\n]+)"?/i);
+      demoSentence = demoMatch?.[1]?.trim() ?? "";
+    }
+
+    // Read task summaries and aggregate what was built
     const tasksDir = `${slicePath}/tasks`;
     const taskIds: string[] = [];
+    const taskBuiltItems: string[] = [];
     try {
       const entries = await Bun.$`ls ${tasksDir} 2>/dev/null`.text();
-      taskIds.push(...entries.trim().split("\n").filter(Boolean).sort());
+      const sortedIds = entries.trim().split("\n").filter(Boolean).sort();
+      for (const taskId of sortedIds) {
+        taskIds.push(taskId);
+        const summaryFile = Bun.file(`${tasksDir}/${taskId}/SUMMARY.md`);
+        if (await summaryFile.exists()) {
+          const content = await summaryFile.text();
+          const builtMatch = content.match(/## What Was Built\n([\s\S]*?)(?=\n##|$)/);
+          const built = builtMatch?.[1]?.trim();
+          if (built) taskBuiltItems.push(`- **${taskId}:** ${built}`);
+        }
+      }
     } catch {
       // No tasks directory
     }
+
+    const whatWasBuilt = taskBuiltItems.length > 0
+      ? taskBuiltItems.join("\n")
+      : llmOutput?.slice(0, 500) ?? "";
 
     const data: SliceSummary = {
       slice,
       status: "complete",
       tasksCompleted: taskIds,
-      demoSentence: llmOutput?.match(/(?:demo|user can)\s*[:\-]?\s*(.+)/i)?.[1]?.trim() ?? "",
-      whatWasBuilt: llmOutput?.slice(0, 500) ?? "",
+      demoSentence,
+      whatWasBuilt,
       interfacesProduced: [],
       patternsEstablished: [],
       knownLimitations: [],

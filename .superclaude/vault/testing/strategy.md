@@ -9,16 +9,17 @@ related: [[patterns/typescript]], [[architecture/overview]]
 ---
 
 ## Summary
-Testing strategy for SUPER_CLAUDE: what to test, at which layer, and how. TDD (Red-Green-Refactor) is mechanically enforced by the orchestrator.
+Testing strategy for SUPER_CLAUDE: what to test, at which layer, and how. TDD is enforced by the orchestrator.
 
 ## The TDD Cycle
 
-Every implementation task follows this cycle — no exceptions:
+Every implementation task follows one-shot TDD — the agent writes tests, implements, and refactors in a single invocation:
 
-1. **RED** — Write failing tests that encode the requirement
-2. **GREEN** — Write minimum code to make tests pass
-3. **REFACTOR** — Clean up without breaking tests
-4. **VERIFY** — Full suite + type-check + static verification
+1. **Write failing tests** that encode the requirement
+2. **Write minimum code** to make tests pass
+3. **Refactor** for clarity without breaking tests
+
+Verification (full test suite, tsc, reviewer) runs once at **slice level** after all tasks complete.
 
 ## Test Layers
 
@@ -29,7 +30,7 @@ Every implementation task follows this cycle — no exceptions:
 | Integration | `bun test` + real DB/API | API endpoints, data flow | < 10s |
 | E2E | Playwright (web) / Detox (mobile) | User flows, critical paths | < 60s |
 
-## What Every RED Phase Must Cover
+## What Every Test Phase Must Cover
 
 1. **Happy path** — Normal expected behavior
 2. **Edge cases** — Boundaries, empty inputs, max values
@@ -74,4 +75,4 @@ test("write and load roundtrip", async () => {
 - Snapshot tests for behavior — test behavior explicitly
 - Mocking internal modules — only mock external boundaries
 - Tests that depend on execution order — each test must be independent
-- Skipping TDD RED phase — the orchestrator will catch this
+- Skipping tests in the IMPLEMENT phase — the orchestrator enforces test existence

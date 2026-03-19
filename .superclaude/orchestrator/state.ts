@@ -357,7 +357,20 @@ async function handleCompleteSliceEnhanced(
     return { phase: "IDLE", tddSubPhase: null, description: "No milestone — return to IDLE" };
   }
 
-  // After slice completion, reassess (unless budget pressure says skip)
+  // Check if there are more pending tasks in the current slice before completing
+  if (state.currentSlice) {
+    const nextTask = await findNextTask(projectRoot, state.currentMilestone, state.currentSlice);
+    if (nextTask) {
+      return {
+        phase: "EXECUTE_TASK",
+        tddSubPhase: "IMPLEMENT",
+        description: `Next task in slice — execute ${state.currentSlice}/${nextTask}`,
+        task: nextTask,
+      };
+    }
+  }
+
+  // All tasks done — proceed to reassess (unless budget pressure says skip)
   if (pressure && shouldSkipPhase("REASSESS", pressure)) {
     // Skip reassess — go directly to next slice
     const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);

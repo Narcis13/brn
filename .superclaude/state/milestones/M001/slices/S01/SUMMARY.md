@@ -5,19 +5,10 @@ tasks_completed: [T01, T02, T03, T04]
 ---
 
 ## Demo Sentence
-
+After this, the user can sign up with email/password, log in, and receive a JWT token
 
 ## What Was Built
-## Summary
-
-I've successfully completed the documentation for slice S01:
-
-1. **SUMMARY.md** - Comprehensive documentation of what was built, including:
-   - Core components (database, security, API, middleware)
-   - Key architectural decisions and patterns
-   - Boundary contracts for downstream slices
-   - Implementation statistics and future considerations
-
-2. **UAT.md** - Human-readable acceptance test script with:
-   - Copy-pasteable curl commands for all endpoints
-   - Expected responses for
+- **T01:** Project Foundation & User Repository
+- **T02:** Password & JWT Utilities
+- **T03:** Auth Endpoints (Signup & Login)
+- **T04:** Auth Middleware & Protected Routes
