@@ -1,0 +1,126 @@
+{
+  "$id": "integration-state.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "active_unit_id",
+    "queue",
+    "last_integrated_unit_id",
+    "last_integration_commit",
+    "last_result",
+    "updated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "active_unit_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "queue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "unit_id",
+          "worker_id",
+          "canonical_commit",
+          "task_branch",
+          "milestone_branch",
+          "worktree_path",
+          "base_commit",
+          "regression_commands",
+          "status",
+          "enqueued_at",
+          "last_error"
+        ],
+        "properties": {
+          "unit_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "worker_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "canonical_commit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "task_branch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "milestone_branch": {
+            "type": "string",
+            "minLength": 1
+          },
+          "worktree_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "base_commit": {
+            "type": "string",
+            "minLength": 1
+          },
+          "regression_commands": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "status": {
+            "enum": [
+              "ready",
+              "blocked",
+              "integrated"
+            ]
+          },
+          "enqueued_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "last_integrated_unit_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_integration_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_result": {
+      "enum": [
+        "success",
+        "blocked",
+        "failed",
+        null
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

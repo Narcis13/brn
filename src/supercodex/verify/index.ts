@@ -52,9 +52,11 @@ function readJsonIfExists<T>(root: string, ref: string): T | null {
   return readTextIfExists(path) ? readJsonFile<T>(path) : null;
 }
 
-function loadTaskArtifactForUnit(root: string, unitId: string) {
+function loadTaskArtifactForUnit(root: string, unitId: string, fallbackRoot = root) {
   const parsed = ensureTaskUnitId(unitId);
-  return loadTaskArtifact(root, parsed.milestone_id, parsed.slice_id, parsed.task_id);
+  const ref = taskFileRef(unitId);
+  const sourceRoot = readTextIfExists(resolveRepoPath(root, ref)) ? root : fallbackRoot;
+  return loadTaskArtifact(sourceRoot, parsed.milestone_id, parsed.slice_id, parsed.task_id);
 }
 
 function taskFileRef(unitId: string): string {
@@ -81,12 +83,12 @@ function loadPolicyReviewers(root: string): string[] {
   return reviewers.length > 0 ? reviewers : [...DEFAULT_REVIEWERS];
 }
 
-function resolveRequiredReviewers(root: string, unitId: string, report?: VerificationReport | null): string[] {
+function resolveRequiredReviewers(root: string, unitId: string, report?: VerificationReport | null, artifactRoot = root): string[] {
   if (report?.required_reviewers.length) {
     return [...report.required_reviewers];
   }
 
-  const artifact = loadTaskArtifactForUnit(root, unitId);
+  const artifact = loadTaskArtifactForUnit(artifactRoot, unitId, root);
   return artifact.reviewer_passes.length > 0 ? [...artifact.reviewer_passes] : loadPolicyReviewers(root);
 }
 
@@ -229,8 +231,8 @@ export function reviewReportRef(unitId: string, persona: string): string {
   return `${paths.reviews_dir}/${reviewFileName(persona)}`;
 }
 
-export function loadVerificationReport(root: string, unitId: string): VerificationReport | null {
-  const report = readJsonIfExists<VerificationReport>(root, getTaskVerificationPaths(unitId).verification_ref);
+export function loadVerificationReport(root: string, unitId: string, trackedRoot = root): VerificationReport | null {
+  const report = readJsonIfExists<VerificationReport>(trackedRoot, getTaskVerificationPaths(unitId).verification_ref);
   if (!report) {
     return null;
   }
@@ -239,36 +241,36 @@ export function loadVerificationReport(root: string, unitId: string): Verificati
   return report;
 }
 
-export function saveVerificationReport(root: string, report: VerificationReport): string {
+export function saveVerificationReport(root: string, report: VerificationReport, trackedRoot = root): string {
   validateVerificationReport(report);
   const ref = getTaskVerificationPaths(report.unit_id).verification_ref;
-  writeJsonFile(resolveRepoPath(root, ref), report);
+  writeJsonFile(resolveRepoPath(trackedRoot, ref), report);
   return ref;
 }
 
-export function listReviewReports(root: string, unitId: string): ReviewReport[] {
+export function listReviewReports(root: string, unitId: string, trackedRoot = root): ReviewReport[] {
   const paths = getTaskVerificationPaths(unitId);
-  const directory = resolveRepoPath(root, paths.reviews_dir);
+  const directory = resolveRepoPath(trackedRoot, paths.reviews_dir);
 
   return listFiles(directory)
     .filter((fileName) => fileName.endsWith(".json"))
     .map((fileName) => {
-      const report = readJsonFile<ReviewReport>(resolveRepoPath(root, `${paths.reviews_dir}/${fileName}`));
+      const report = readJsonFile<ReviewReport>(resolveRepoPath(trackedRoot, `${paths.reviews_dir}/${fileName}`));
       validateReviewReport(report);
       return report;
     })
     .sort((left, right) => left.persona.localeCompare(right.persona) || left.generated_at.localeCompare(right.generated_at));
 }
 
-export function saveReviewReport(root: string, report: ReviewReport): string {
+export function saveReviewReport(root: string, report: ReviewReport, trackedRoot = root): string {
   validateReviewReport(report);
   const ref = reviewReportRef(report.unit_id, report.persona);
-  writeJsonFile(resolveRepoPath(root, ref), report);
+  writeJsonFile(resolveRepoPath(trackedRoot, ref), report);
   return ref;
 }
 
-export function loadCompletionRecord(root: string, unitId: string): CompletionRecord | null {
-  const record = readJsonIfExists<CompletionRecord>(root, getTaskVerificationPaths(unitId).completion_ref);
+export function loadCompletionRecord(root: string, unitId: string, trackedRoot = root): CompletionRecord | null {
+  const record = readJsonIfExists<CompletionRecord>(trackedRoot, getTaskVerificationPaths(unitId).completion_ref);
   if (!record) {
     return null;
   }
@@ -277,18 +279,18 @@ export function loadCompletionRecord(root: string, unitId: string): CompletionRe
   return record;
 }
 
-export function saveCompletionRecord(root: string, record: CompletionRecord): string {
+export function saveCompletionRecord(root: string, record: CompletionRecord, trackedRoot = root): string {
   validateCompletionRecord(record);
   const ref = getTaskVerificationPaths(record.unit_id).completion_ref;
-  writeJsonFile(resolveRepoPath(root, ref), record);
+  writeJsonFile(resolveRepoPath(trackedRoot, ref), record);
   return ref;
 }
 
-export function getTaskVerificationState(root: string, unitId: string): TaskVerificationState {
-  const artifact = loadTaskArtifactForUnit(root, unitId);
+export function getTaskVerificationState(root: string, unitId: string, trackedRoot = root): TaskVerificationState {
+  const artifact = loadTaskArtifactForUnit(trackedRoot, unitId, root);
   const implementation = latestSuccessfulImplementationRun(root, unitId);
-  const rawVerification = loadVerificationReport(root, unitId);
-  const requiredReviewers = resolveRequiredReviewers(root, unitId, rawVerification);
+  const rawVerification = loadVerificationReport(root, unitId, trackedRoot);
+  const requiredReviewers = resolveRequiredReviewers(root, unitId, rawVerification, trackedRoot);
   let verification: VerificationReport | null = null;
 
   if (implementation && rawVerification && rawVerification.implementation_run_id === implementation.run_id) {
@@ -297,7 +299,7 @@ export function getTaskVerificationState(root: string, unitId: string): TaskVeri
   }
 
   const reviews = verification
-    ? listReviewReports(root, unitId)
+    ? listReviewReports(root, unitId, trackedRoot)
         .map((review) => {
           validateReviewSemantics(review, unitId, verification.verification_run_id);
           return review;
@@ -310,7 +312,7 @@ export function getTaskVerificationState(root: string, unitId: string): TaskVeri
       ? requiredReviewers.filter((persona) => !greenReviewForPersona(reviews, persona, verification.verification_run_id))
       : [];
 
-  const completion = loadCompletionRecord(root, unitId);
+  const completion = loadCompletionRecord(root, unitId, trackedRoot);
   const completionValid =
     !!completion &&
     completion.implementation_run_id === implementation?.run_id &&
@@ -345,10 +347,10 @@ export function getTaskVerificationState(root: string, unitId: string): TaskVeri
   };
 }
 
-export function verificationDoctorIssues(root: string, unitId: string): string[] {
+export function verificationDoctorIssues(root: string, unitId: string, trackedRoot = root): string[] {
   const issues: string[] = [];
-  const artifact = loadTaskArtifactForUnit(root, unitId);
-  const state = getTaskVerificationState(root, unitId);
+  const artifact = loadTaskArtifactForUnit(trackedRoot, unitId, root);
+  const state = getTaskVerificationState(root, unitId, trackedRoot);
 
   if (!state.implementation_run_id) {
     issues.push(`Task ${unitId} has no successful implementation run to verify.`);
@@ -381,8 +383,8 @@ export function verificationDoctorIssues(root: string, unitId: string): string[]
   return issues;
 }
 
-export function writeTaskCompletionArtifacts(root: string, unitId: string): CompletionRecord {
-  const state = getTaskVerificationState(root, unitId);
+export function writeTaskCompletionArtifacts(root: string, unitId: string, trackedRoot = root): CompletionRecord {
+  const state = getTaskVerificationState(root, unitId, trackedRoot);
   if (!state.implementation_run_id || !state.verification || state.verification.verdict !== "pass" || state.pending_reviewers.length > 0) {
     throw new Error(`Task ${unitId} is not ready for deterministic completion.`);
   }
@@ -411,22 +413,27 @@ export function writeTaskCompletionArtifacts(root: string, unitId: string): Comp
     summary,
     completed_at: new Date().toISOString(),
   };
-  saveCompletionRecord(root, completion);
+  saveCompletionRecord(root, completion, trackedRoot);
 
   const taskRef = taskFileRef(unitId);
-  let taskText = readText(resolveRepoPath(root, taskRef));
+  const trackedTaskPath = resolveRepoPath(trackedRoot, taskRef);
+  const sourceTaskPath = resolveRepoPath(root, taskRef);
+  let taskText = readTextIfExists(trackedTaskPath);
+  if (!taskText) {
+    taskText = readText(sourceTaskPath);
+  }
   taskText = replaceMarkdownSection(taskText, "Status", ["completed"]);
   taskText = replaceMarkdownSection(taskText, "Summary", [summary]);
-  writeTextAtomic(resolveRepoPath(root, taskRef), taskText);
+  writeTextAtomic(trackedTaskPath, taskText);
 
   return completion;
 }
 
-export function refreshSliceSummary(root: string, unitId: string): string {
+export function refreshSliceSummary(root: string, unitId: string, trackedRoot = root): string {
   const parsed = ensureTaskUnitId(unitId);
-  const taskIds = listTaskIds(root, parsed.milestone_id, parsed.slice_id);
+  const taskIds = listTaskIds(trackedRoot, parsed.milestone_id, parsed.slice_id);
   const completedTaskIds = taskIds.filter((taskId) =>
-    loadCompletionRecord(root, `${parsed.milestone_id}/${parsed.slice_id}/${taskId}`),
+    loadCompletionRecord(root, `${parsed.milestone_id}/${parsed.slice_id}/${taskId}`, trackedRoot),
   );
   const summaryRef = sliceSummaryRef(unitId);
   const body = [
@@ -436,24 +443,24 @@ export function refreshSliceSummary(root: string, unitId: string): string {
     "",
     `This slice is complete. Completed tasks: ${completedTaskIds.join(", ")}.`,
   ].join("\n");
-  writeTextAtomic(resolveRepoPath(root, summaryRef), `${body}\n`);
+  writeTextAtomic(resolveRepoPath(trackedRoot, summaryRef), `${body}\n`);
   return summaryRef;
 }
 
-export function generateSliceUat(root: string, sliceUnitId: string): string {
+export function generateSliceUat(root: string, sliceUnitId: string, trackedRoot = root): string {
   const parsed = parseUnitId(sliceUnitId);
   if (parsed.kind !== "slice" || !parsed.milestone_id || !parsed.slice_id) {
     throw new Error(`Slice UAT generation requires a slice unit id, received ${sliceUnitId}.`);
   }
 
-  const taskIds = listTaskIds(root, parsed.milestone_id, parsed.slice_id);
+  const taskIds = listTaskIds(trackedRoot, parsed.milestone_id, parsed.slice_id);
   const lines: string[] = [];
   let step = 1;
 
   for (const taskId of taskIds) {
     const unitId = `${parsed.milestone_id}/${parsed.slice_id}/${taskId}`;
-    const artifact = loadTaskArtifactForUnit(root, unitId);
-    const completion = loadCompletionRecord(root, unitId);
+    const artifact = loadTaskArtifactForUnit(trackedRoot, unitId, root);
+    const completion = loadCompletionRecord(root, unitId, trackedRoot);
     const uatSteps = artifact.verification_ladder.human_uat;
 
     if (uatSteps.length === 0) {
@@ -478,7 +485,7 @@ export function generateSliceUat(root: string, sliceUnitId: string): string {
   }
 
   const ref = milestoneUatRef(`${parsed.milestone_id}/${parsed.slice_id}/T01`);
-  const path = resolveRepoPath(root, ref);
+  const path = resolveRepoPath(trackedRoot, ref);
   const current = readTextIfExists(path) ?? `# ${parsed.milestone_id} UAT\n`;
   const next = replaceSliceSection(current, `${parsed.milestone_id}/${parsed.slice_id}`, lines);
   writeTextAtomic(path, next);

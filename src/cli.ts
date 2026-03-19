@@ -3,7 +3,11 @@
 import { pathToFileURL } from "node:url";
 
 import { hasGitRepository } from "./supercodex/git.js";
+import { createProcessImprovementReport, listPatternCandidates, loadLearningState, runLearningCycle, showLearning } from "./supercodex/learning/index.js";
 import { syncPlanningQueue, validatePlanningSurface } from "./supercodex/planning/index.js";
+import { dispatchParallel, runIntegration, showIntegration, showParallel } from "./supercodex/parallel/index.js";
+import { runMemoryAudit, runPostmortem } from "./supercodex/audit/index.js";
+import { assessRecovery, reconcileRecovery } from "./supercodex/recovery/index.js";
 import { getRuntimeAdapter } from "./supercodex/runtime/adapters.js";
 import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntimes } from "./supercodex/runtime/registry.js";
 import { loadRuntimeRunHandle } from "./supercodex/runtime/runs.js";
@@ -62,8 +66,20 @@ function usage(): string {
     "  supercodex runtime collect --run-id <run_id>",
     "  supercodex runtime resume --run-id <run_id> [--prompt <text>]",
     "  supercodex runtime cancel --run-id <run_id>",
+    "  supercodex recover show [--run-id <run_id>]",
+    "  supercodex recover reconcile [--run-id <run_id>]",
+    "  supercodex audit memory --unit <unit_id>",
+    "  supercodex audit postmortem --run-id <run_id>",
+    "  supercodex learning show",
+    "  supercodex learning run --unit <slice_unit_id> | --run-id <run_id>",
+    "  supercodex learning skills",
+    "  supercodex learning patterns",
     "  supercodex plan sync",
     "  supercodex plan validate [--unit <unit_id>]",
+    "  supercodex parallel show",
+    "  supercodex parallel dispatch [--workers <n>]",
+    "  supercodex integrate show",
+    "  supercodex integrate run [--unit <unit_id>]",
     "  supercodex verify show --unit <unit_id> [--json]",
     "  supercodex uat generate --unit <slice_unit_id>",
     "  supercodex next-action show [--json]",
@@ -413,6 +429,45 @@ function handlePlan(args: string[], root: string, writeOut: (text: string) => vo
   throw new Error(`Unknown plan subcommand: ${subcommand ?? "<missing>"}`);
 }
 
+function handleParallel(args: string[], root: string, writeOut: (text: string) => void): Promise<number> | number {
+  const subcommand = args[0];
+
+  if (subcommand === "show") {
+    writeJson(writeOut, showParallel(root));
+    return 0;
+  }
+
+  if (subcommand === "dispatch") {
+    const workers = getOption(args, "--workers");
+    if (workers && (!/^\d+$/.test(workers) || Number.parseInt(workers, 10) <= 0)) {
+      throw new Error(`Invalid worker count: ${workers}`);
+    }
+
+    return dispatchParallel(root, workers ? Number.parseInt(workers, 10) : undefined).then((result) => {
+      writeJson(writeOut, result);
+      return 0;
+    });
+  }
+
+  throw new Error(`Unknown parallel subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+async function handleIntegrate(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
+  const subcommand = args[0];
+
+  if (subcommand === "show") {
+    writeJson(writeOut, showIntegration(root));
+    return 0;
+  }
+
+  if (subcommand === "run") {
+    writeJson(writeOut, await runIntegration(root, getOption(args, "--unit")));
+    return 0;
+  }
+
+  throw new Error(`Unknown integrate subcommand: ${subcommand ?? "<missing>"}`);
+}
+
 function handleVerify(args: string[], root: string, writeOut: (text: string) => void): number {
   const subcommand = args[0];
 
@@ -444,6 +499,86 @@ function handleUat(args: string[], root: string, writeOut: (text: string) => voi
   }
 
   throw new Error(`Unknown uat subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+function handleRecover(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+  const runId = getOption(args, "--run-id");
+
+  if (subcommand === "show") {
+    writeJson(writeOut, assessRecovery(root, runId));
+    return 0;
+  }
+
+  if (subcommand === "reconcile") {
+    const assessment = reconcileRecovery(root, runId);
+    writeJson(writeOut, {
+      assessment,
+      reconciled_state: loadCurrentState(root),
+    });
+    return 0;
+  }
+
+  throw new Error(`Unknown recover subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+function handleAudit(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "memory") {
+    const unitId = requireOption(args, "--unit");
+    writeJson(writeOut, runMemoryAudit(root, unitId));
+    return 0;
+  }
+
+  if (subcommand === "postmortem") {
+    const runId = requireOption(args, "--run-id");
+    writeJson(writeOut, runPostmortem(root, runId));
+    return 0;
+  }
+
+  throw new Error(`Unknown audit subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+function handleLearning(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "show") {
+    writeJson(writeOut, showLearning(root));
+    return 0;
+  }
+
+  if (subcommand === "run") {
+    const unitId = getOption(args, "--unit");
+    const runId = getOption(args, "--run-id");
+    if (!!unitId === !!runId) {
+      throw new Error("learning run requires exactly one of --unit or --run-id.");
+    }
+
+    if (unitId) {
+      writeJson(writeOut, runLearningCycle(root, unitId));
+      return 0;
+    }
+
+    writeJson(writeOut, createProcessImprovementReport(root, runId!));
+    return 0;
+  }
+
+  if (subcommand === "skills") {
+    const state = loadLearningState(root);
+    writeJson(writeOut, {
+      state,
+      skill_health: showLearning(root).skill_health,
+    });
+    return 0;
+  }
+
+  if (subcommand === "patterns") {
+    writeJson(writeOut, listPatternCandidates(root));
+    return 0;
+  }
+
+  throw new Error(`Unknown learning subcommand: ${subcommand ?? "<missing>"}`);
 }
 
 async function handleNextAction(args: string[], root: string, writeOut: (text: string) => void): Promise<number> {
@@ -487,8 +622,18 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return handleLock(rest, cwd, writeOut);
       case "runtime":
         return await handleRuntime(rest, cwd, writeOut);
+      case "recover":
+        return handleRecover(rest, cwd, writeOut);
+      case "audit":
+        return handleAudit(rest, cwd, writeOut);
+      case "learning":
+        return handleLearning(rest, cwd, writeOut);
       case "plan":
         return handlePlan(rest, cwd, writeOut);
+      case "parallel":
+        return await handleParallel(rest, cwd, writeOut);
+      case "integrate":
+        return await handleIntegrate(rest, cwd, writeOut);
       case "verify":
         return handleVerify(rest, cwd, writeOut);
       case "uat":

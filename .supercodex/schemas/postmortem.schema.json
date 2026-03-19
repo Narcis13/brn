@@ -1,0 +1,97 @@
+{
+  "$id": "postmortem.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "unit_id",
+    "trigger",
+    "summary",
+    "findings",
+    "followups",
+    "evidence_refs",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "trigger": {
+      "enum": [
+        "manual",
+        "retry_exhausted",
+        "recovery_replan"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "code",
+          "message",
+          "ref"
+        ],
+        "properties": {
+          "severity": {
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

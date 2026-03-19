@@ -1,17 +1,42 @@
 import { basename, join } from "node:path";
 
+import { auditSchemaFileEntries } from "./audit/schemas.js";
+import {
+  learningSchemaFileEntries,
+  validateLearningState,
+  validatePatternCandidate,
+  validateProcessImprovementReport,
+  validateRoadmapReassessmentReport,
+  validateSkillHealthSnapshot,
+} from "./learning/schemas.js";
+import { parallelSchemaFileEntries, validateIntegrationState, validateParallelState, validateWorkerState } from "./parallel/schemas.js";
 import {
   appendJsonLine,
   fileExists,
   listFiles,
   readJsonFile,
   readJsonLines,
+  readText,
   removeFile,
   writeJsonFile,
   writeTextAtomic,
 } from "./fs.js";
 import { reconcileGitState } from "./git.js";
-import { CURRENT_STATE_PATH, LOCKS_DIR, QUEUE_STATE_PATH, resolveRepoPath, TRANSITIONS_PATH } from "./paths.js";
+import {
+  CURRENT_STATE_PATH,
+  INTEGRATION_STATE_PATH,
+  LEARNING_PATTERNS_DIR,
+  LEARNING_PROCESS_DIR,
+  LEARNING_ROADMAP_DIR,
+  LEARNING_SKILLS_DIR,
+  LEARNING_STATE_PATH,
+  LOCKS_DIR,
+  PARALLEL_STATE_PATH,
+  QUEUE_STATE_PATH,
+  resolveRepoPath,
+  TRANSITIONS_PATH,
+  WORKERS_DIR,
+} from "./paths.js";
 import {
   schemaFileEntries,
   validateCurrentState,
@@ -20,11 +45,13 @@ import {
   validateTransitionRecord,
 } from "./schemas.js";
 import { isModernMilestone, parseUnitId, validatePlanningUnit } from "./planning/index.js";
+import { recoverySchemaFileEntries } from "./recovery/schemas.js";
 import { loadDispatchTemplate, loadRuntimeRegistry } from "./runtime/registry.js";
 import { runtimeSchemaFileEntries } from "./runtime/schemas.js";
+import { getCanonicalRunPaths } from "./synth/runs.js";
 import { synthSchemaFileEntries } from "./synth/schemas.js";
 import { verifySchemaFileEntries } from "./verify/schemas.js";
-import { verificationDoctorIssues } from "./verify/index.js";
+import { getTaskVerificationState, verificationDoctorIssues } from "./verify/index.js";
 import type {
   CurrentState,
   LockRecord,
@@ -54,8 +81,38 @@ const TRANSITION_RULES: Record<Phase, Phase[]> = {
   complete: [],
 };
 
+function currentMetricDefaults(): CurrentState["metrics"] {
+  return {
+    human_interventions: 0,
+    completed_tasks: 0,
+    failed_attempts: 0,
+    recovered_runs: 0,
+    recovery_mismatches: 0,
+    memory_audits: 0,
+    postmortems_generated: 0,
+    parallel_dispatches: 0,
+    integrated_tasks: 0,
+    integration_conflicts: 0,
+    learning_cycles: 0,
+    skill_health_refreshes: 0,
+    pattern_candidates_generated: 0,
+    roadmap_reassessments: 0,
+    process_reports_generated: 0,
+  };
+}
+
+function normalizeCurrentState(raw: CurrentState): CurrentState {
+  return {
+    ...raw,
+    metrics: {
+      ...currentMetricDefaults(),
+      ...(raw.metrics ?? {}),
+    },
+  };
+}
+
 export function loadCurrentState(root: string): CurrentState {
-  const current = readJsonFile<CurrentState>(resolveRepoPath(root, CURRENT_STATE_PATH));
+  const current = normalizeCurrentState(readJsonFile<CurrentState>(resolveRepoPath(root, CURRENT_STATE_PATH)));
   validateCurrentState(current);
   return current;
 }
@@ -117,7 +174,16 @@ export function loadLocks(root: string): LockRecord[] {
 }
 
 export function writeSchemaFiles(root: string): void {
-  for (const [fileName, schema] of [...schemaFileEntries, ...runtimeSchemaFileEntries, ...synthSchemaFileEntries, ...verifySchemaFileEntries]) {
+  for (const [fileName, schema] of [
+    ...schemaFileEntries,
+    ...runtimeSchemaFileEntries,
+    ...synthSchemaFileEntries,
+    ...verifySchemaFileEntries,
+    ...recoverySchemaFileEntries,
+    ...auditSchemaFileEntries,
+    ...learningSchemaFileEntries,
+    ...parallelSchemaFileEntries,
+  ]) {
     writeJsonFile(resolveRepoPath(root, `.supercodex/schemas/${fileName}`), schema);
   }
 }
@@ -339,6 +405,259 @@ function usesPhaseFiveVerification(unitId: string): boolean {
   return !!match && Number.parseInt(match[1], 10) >= 5;
 }
 
+function recoveryRunIdFromRef(recoveryRef: string | null): string | null {
+  if (!recoveryRef) {
+    return null;
+  }
+
+  const match = /\.supercodex\/runs\/([^/]+)\/continue\.md$/.exec(recoveryRef);
+  return match?.[1] ?? null;
+}
+
+function recoveryDoctorIssues(root: string, current: CurrentState): string[] {
+  const issues: string[] = [];
+  const recoveryRunId = current.current_run_id ?? recoveryRunIdFromRef(current.recovery_ref);
+
+  if (current.recovery_ref && !fileExists(resolveRepoPath(root, current.recovery_ref))) {
+    issues.push(`recovery_ref points at a missing file: ${current.recovery_ref}`);
+  }
+
+  if (!recoveryRunId) {
+    if (current.phase === "recover") {
+      issues.push("current phase recover has no current_run_id or recovery_ref.");
+    }
+    return issues;
+  }
+
+  const paths = getCanonicalRunPaths(recoveryRunId);
+  if (!fileExists(resolveRepoPath(root, paths.record_ref))) {
+    issues.push(`Recovery run ${recoveryRunId} is missing record.json.`);
+    return issues;
+  }
+
+  if (current.recovery_ref && current.recovery_ref !== paths.continuation_ref) {
+    issues.push(`recovery_ref mismatch: current=${current.recovery_ref} expected=${paths.continuation_ref}`);
+  }
+
+  if (!fileExists(resolveRepoPath(root, paths.continuation_json_ref))) {
+    issues.push(`Recovery run ${recoveryRunId} is missing continuation.json.`);
+  }
+
+  const checkpointFiles = listFiles(resolveRepoPath(root, paths.checkpoints_dir)).filter((fileName) => fileName.endsWith(".json"));
+  if (checkpointFiles.length === 0) {
+    issues.push(`Recovery run ${recoveryRunId} has no recovery checkpoints.`);
+  }
+
+  if (current.phase === "recover" && current.active_task && current.active_milestone && current.active_slice) {
+    const verificationState = getTaskVerificationState(root, `${current.active_milestone}/${current.active_slice}/${current.active_task}`);
+    if (verificationState.status === "complete") {
+      issues.push(`current phase recover is stale because ${current.active_milestone}/${current.active_slice}/${current.active_task} is already complete.`);
+    }
+  }
+
+  return issues;
+}
+
+function vaultMetadataDoctorIssues(root: string): string[] {
+  const issues: string[] = [];
+  const milestoneDirs = listFiles(resolveRepoPath(root, "vault/milestones")).filter((entry) => /^M\d{3}$/.test(entry));
+  const roadmap = fileExists(resolveRepoPath(root, "vault/roadmap.md")) ? readText(resolveRepoPath(root, "vault/roadmap.md")) : "";
+  const index = fileExists(resolveRepoPath(root, "vault/index.md")) ? readText(resolveRepoPath(root, "vault/index.md")) : "";
+  const milestoneReadme = fileExists(resolveRepoPath(root, "vault/milestones/README.md"))
+    ? readText(resolveRepoPath(root, "vault/milestones/README.md"))
+    : "";
+
+  for (const milestoneId of milestoneDirs) {
+    if (!milestoneReadme.includes(`\`${milestoneId}/\``)) {
+      issues.push(`vault/milestones/README.md does not list ${milestoneId}/.`);
+    }
+    if (!roadmap.includes(`\`${milestoneId}\``)) {
+      issues.push(`vault/roadmap.md does not mention ${milestoneId}.`);
+    }
+    if (!index.includes(`\`${milestoneId}\``)) {
+      issues.push(`vault/index.md does not mention ${milestoneId}.`);
+    }
+  }
+
+  return issues;
+}
+
+function parallelDoctorIssues(root: string): string[] {
+  const issues: string[] = [];
+  const parallelPath = resolveRepoPath(root, PARALLEL_STATE_PATH);
+  const integrationPath = resolveRepoPath(root, INTEGRATION_STATE_PATH);
+
+  if (!fileExists(parallelPath) || !fileExists(integrationPath)) {
+    return issues;
+  }
+
+  const parallel = readJsonFile<unknown>(parallelPath);
+  validateParallelState(parallel);
+  const integration = readJsonFile<unknown>(integrationPath);
+  validateIntegrationState(integration);
+
+  const workerFiles = listFiles(resolveRepoPath(root, WORKERS_DIR)).filter((fileName) => fileName.endsWith(".json"));
+  const workerIdsFromDisk = workerFiles.map((fileName) => fileName.replace(/\.json$/, "")).sort();
+  const workerIdsFromState = [...parallel.worker_ids].sort();
+  if (workerIdsFromDisk.join("\n") !== workerIdsFromState.join("\n")) {
+    issues.push("parallel worker ids do not match .supercodex/state/workers contents.");
+  }
+
+  const locks = loadLocks(root);
+  for (const workerId of parallel.worker_ids) {
+    const workerRef = resolveRepoPath(root, `${WORKERS_DIR}/${workerId}.json`);
+    if (!fileExists(workerRef)) {
+      issues.push(`Missing worker state file for ${workerId}.`);
+      continue;
+    }
+
+    const worker = readJsonFile<unknown>(workerRef);
+    validateWorkerState(worker);
+    const typed = worker as {
+      unit_id: string;
+      worktree_path: string;
+      owned_resources: string[];
+      queue_status: string;
+      canonical_commit: string | null;
+    };
+    if (!fileExists(typed.worktree_path)) {
+      issues.push(`Worker ${workerId} worktree is missing: ${typed.worktree_path}`);
+    }
+
+    for (const resource of typed.owned_resources) {
+      const match = locks.find((lock) => lock.resource === resource);
+      if (!match || match.worker_id !== workerId) {
+        issues.push(`Worker ${workerId} is missing a matching lock for ${resource}.`);
+      }
+    }
+
+    if (typed.queue_status === "ready_to_integrate" && !typed.canonical_commit) {
+      issues.push(`Worker ${workerId} is ready_to_integrate without a canonical_commit.`);
+    }
+  }
+
+  for (const entry of integration.queue) {
+    if (!parallel.worker_ids.includes(entry.worker_id)) {
+      issues.push(`Integration queue item ${entry.unit_id} references missing worker ${entry.worker_id}.`);
+    }
+  }
+
+  return issues;
+}
+
+function learningDoctorIssues(root: string): string[] {
+  const issues: string[] = [];
+  const learningPath = resolveRepoPath(root, LEARNING_STATE_PATH);
+  if (!fileExists(learningPath)) {
+    return issues;
+  }
+
+  const learning = readJsonFile<unknown>(learningPath);
+  validateLearningState(learning);
+  const typed = learning as {
+    latest_skill_health_ref: string | null;
+    latest_roadmap_report_ref: string | null;
+    latest_process_report_ref: string | null;
+    latest_pattern_candidate_refs: string[];
+    processed_slice_unit_ids: string[];
+    processed_postmortem_run_ids: string[];
+  };
+
+  const seenSlices = new Set<string>();
+  for (const unitId of typed.processed_slice_unit_ids) {
+    if (seenSlices.has(unitId)) {
+      issues.push(`learning state contains duplicate processed slice id ${unitId}.`);
+    }
+    seenSlices.add(unitId);
+  }
+
+  const seenRuns = new Set<string>();
+  for (const runId of typed.processed_postmortem_run_ids) {
+    if (seenRuns.has(runId)) {
+      issues.push(`learning state contains duplicate processed postmortem run id ${runId}.`);
+    }
+    seenRuns.add(runId);
+  }
+
+  for (const ref of [
+    typed.latest_skill_health_ref,
+    typed.latest_roadmap_report_ref,
+    typed.latest_process_report_ref,
+    ...typed.latest_pattern_candidate_refs,
+  ].filter(Boolean) as string[]) {
+    if (!fileExists(resolveRepoPath(root, ref))) {
+      issues.push(`learning state points at a missing artifact: ${ref}`);
+    }
+  }
+
+  if (typed.latest_skill_health_ref && fileExists(resolveRepoPath(root, typed.latest_skill_health_ref))) {
+    const snapshot = readJsonFile<unknown>(resolveRepoPath(root, typed.latest_skill_health_ref));
+    validateSkillHealthSnapshot(snapshot);
+    for (const skill of (snapshot as { skills: Array<{ skill_id: string; skill_ref: string }> }).skills) {
+      if (!fileExists(resolveRepoPath(root, skill.skill_ref))) {
+        issues.push(`skill health snapshot references missing skill ${skill.skill_id} at ${skill.skill_ref}.`);
+      }
+    }
+  }
+
+  for (const fileName of listFiles(resolveRepoPath(root, LEARNING_PATTERNS_DIR)).filter((entry) => entry.endsWith(".json"))) {
+    const ref = `${LEARNING_PATTERNS_DIR}/${fileName}`;
+    const candidate = readJsonFile<unknown>(resolveRepoPath(root, ref));
+    validatePatternCandidate(candidate);
+    for (const evidenceRef of (candidate as { evidence_refs: string[] }).evidence_refs) {
+      if (!fileExists(resolveRepoPath(root, evidenceRef))) {
+        issues.push(`pattern candidate ${ref} points at missing evidence ${evidenceRef}.`);
+      }
+    }
+  }
+
+  for (const fileName of listFiles(resolveRepoPath(root, LEARNING_ROADMAP_DIR)).filter((entry) => entry.endsWith(".json"))) {
+    const ref = `${LEARNING_ROADMAP_DIR}/${fileName}`;
+    const report = readJsonFile<unknown>(resolveRepoPath(root, ref));
+    validateRoadmapReassessmentReport(report);
+    for (const evidenceRef of (report as { evidence_refs: string[] }).evidence_refs) {
+      if (!fileExists(resolveRepoPath(root, evidenceRef))) {
+        issues.push(`roadmap reassessment ${ref} points at missing evidence ${evidenceRef}.`);
+      }
+    }
+  }
+
+  for (const fileName of listFiles(resolveRepoPath(root, LEARNING_PROCESS_DIR)).filter((entry) => entry.endsWith(".json"))) {
+    const ref = `${LEARNING_PROCESS_DIR}/${fileName}`;
+    const report = readJsonFile<unknown>(resolveRepoPath(root, ref));
+    validateProcessImprovementReport(report);
+    for (const evidenceRef of (report as { evidence_refs: string[] }).evidence_refs) {
+      if (!fileExists(resolveRepoPath(root, evidenceRef))) {
+        issues.push(`process improvement report ${ref} points at missing evidence ${evidenceRef}.`);
+      }
+    }
+  }
+
+  const knownSkills = new Set(listFiles(resolveRepoPath(root, "skills")).filter((name) => fileExists(resolveRepoPath(root, `skills/${name}/SKILL.md`))));
+  for (const runDir of listFiles(resolveRepoPath(root, ".supercodex/runs"))) {
+    const recordPath = resolveRepoPath(root, `.supercodex/runs/${runDir}/record.json`);
+    if (!fileExists(recordPath)) {
+      continue;
+    }
+
+    const runRecord = readJsonFile<{
+      run_id: string;
+      skills_used?: Array<{ skill_id: string }>;
+    }>(recordPath);
+    for (const skill of runRecord.skills_used ?? []) {
+      if (!knownSkills.has(skill.skill_id)) {
+        issues.push(`canonical run ${runRecord.run_id} references unknown project skill id ${skill.skill_id}.`);
+      }
+    }
+  }
+
+  if (typed.latest_skill_health_ref === null && listFiles(resolveRepoPath(root, LEARNING_SKILLS_DIR)).some((entry) => entry.endsWith(".json"))) {
+    issues.push("learning state is missing latest_skill_health_ref even though skill health artifacts exist.");
+  }
+
+  return issues;
+}
+
 export function runDoctor(root: string, placeholderFiles: string[]): DoctorResult {
   const issues: string[] = [];
 
@@ -349,6 +668,9 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
     ".supercodex/runtime/adapters.json",
     ".supercodex/runtime/routing.json",
     ".supercodex/runtime/policies.json",
+    PARALLEL_STATE_PATH,
+    INTEGRATION_STATE_PATH,
+    LEARNING_STATE_PATH,
     ".supercodex/prompts/dispatch.json",
     "vault/vision.md",
     "vault/roadmap.md",
@@ -360,9 +682,13 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
   }
 
   issues.push(...placeholderFiles.map((file) => `Placeholder content remains in ${file}`));
+  issues.push(...vaultMetadataDoctorIssues(root));
+  issues.push(...parallelDoctorIssues(root));
+  issues.push(...learningDoctorIssues(root));
 
   try {
     const current = loadCurrentState(root);
+    issues.push(...recoveryDoctorIssues(root, current));
     if (current.active_milestone) {
       for (const milestoneFile of [
         `vault/milestones/${current.active_milestone}/milestone.md`,

@@ -1,0 +1,79 @@
+{
+  "$id": "roadmap-reassessment.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "summary",
+    "recommendations",
+    "evidence_refs",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "target_unit_id",
+          "rationale",
+          "evidence_refs"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "keep",
+              "reorder",
+              "add_prerequisite",
+              "split",
+              "archive"
+            ]
+          },
+          "target_unit_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

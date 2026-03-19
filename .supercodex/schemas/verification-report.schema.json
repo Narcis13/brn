@@ -1,0 +1,167 @@
+{
+  "$id": "verification-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "implementation_run_id",
+    "verification_run_id",
+    "tdd_mode",
+    "tdd_justification",
+    "required_reviewers",
+    "ladder",
+    "tests_written",
+    "tests_run",
+    "evidence",
+    "summary",
+    "findings",
+    "followups",
+    "verdict",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verification_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "tdd_mode": {
+      "enum": [
+        "strict_tdd",
+        "brownfield_tdd",
+        "verification_first"
+      ]
+    },
+    "tdd_justification": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "required_reviewers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "ladder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "static",
+        "focused_tests",
+        "behavioral",
+        "slice_regression",
+        "milestone_regression",
+        "human_uat"
+      ],
+      "properties": {
+        "static": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "focused_tests": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "behavioral": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "slice_regression": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "milestone_regression": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "human_uat": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "tests_written": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "tests_run": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "blocked"
+      ]
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

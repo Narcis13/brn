@@ -47,7 +47,9 @@
           "status": {
             "enum": [
               "ready",
+              "active",
               "blocked",
+              "ready_to_integrate",
               "done"
             ]
           },

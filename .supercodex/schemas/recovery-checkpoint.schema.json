@@ -1,0 +1,137 @@
+{
+  "$id": "recovery-checkpoint.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "kind",
+    "unit_id",
+    "phase",
+    "runtime",
+    "state_ref",
+    "continuation_ref",
+    "git",
+    "summary",
+    "created_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "pre_dispatch",
+        "post_result",
+        "pre_reconcile"
+      ]
+    },
+    "unit_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "intake",
+        "clarify",
+        "map",
+        "research",
+        "plan",
+        "dispatch",
+        "implement",
+        "verify",
+        "review",
+        "integrate",
+        "complete_task",
+        "complete_slice",
+        "reassess",
+        "recover",
+        "awaiting_human",
+        "blocked",
+        "complete"
+      ]
+    },
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex",
+        null
+      ]
+    },
+    "state_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "continuation_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trunk_branch",
+        "milestone_branch",
+        "task_branch",
+        "worktree_path",
+        "base_commit",
+        "head_commit",
+        "dirty"
+      ],
+      "properties": {
+        "trunk_branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "milestone_branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "task_branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "worktree_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "head_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

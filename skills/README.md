@@ -10,3 +10,5 @@ When skills are added, each one should declare:
 - when not to trigger
 - which files to read first
 - its output contract
+
+`M008` tracks project-skill health for repo-local `skills/<name>/SKILL.md` entries only. Skill ids are the folder names, and learning telemetry must not auto-edit skill definitions.

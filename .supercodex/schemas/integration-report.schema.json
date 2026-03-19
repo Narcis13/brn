@@ -1,0 +1,106 @@
+{
+  "$id": "integration-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "worker_id",
+    "milestone_branch",
+    "task_branch",
+    "canonical_commit",
+    "base_commit",
+    "preflight",
+    "regressions",
+    "semantic_conflicts",
+    "summary",
+    "verdict",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "milestone_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "canonical_commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "preflight": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "regressions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "command",
+          "exit_code",
+          "stdout",
+          "stderr"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "exit_code": {
+            "type": "integer"
+          },
+          "stdout": {
+            "type": "string"
+          },
+          "stderr": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "semantic_conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verdict": {
+      "enum": [
+        "integrated",
+        "blocked"
+      ]
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

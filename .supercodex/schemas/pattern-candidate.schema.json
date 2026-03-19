@@ -1,0 +1,62 @@
+{
+  "$id": "pattern-candidate.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "candidate_id",
+    "source_unit_id",
+    "kind",
+    "status",
+    "summary",
+    "rationale",
+    "evidence_refs",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kind": {
+      "enum": [
+        "pattern_note",
+        "verification_checklist",
+        "skill_candidate",
+        "template_candidate"
+      ]
+    },
+    "status": {
+      "enum": [
+        "pending"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -10,6 +10,7 @@
     "session_id",
     "command",
     "args",
+    "artifact_root",
     "cwd",
     "packet_ref",
     "prompt_ref",
@@ -59,6 +60,10 @@
       "items": {
         "type": "string"
       }
+    },
+    "artifact_root": {
+      "type": "string",
+      "minLength": 1
     },
     "cwd": {
       "type": "string",

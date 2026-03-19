@@ -1,4 +1,6 @@
 import { readJsonFile, readTextIfExists, writeJsonFile, writeTextAtomic } from "../fs.js";
+import { runMemoryAudit, runPostmortem } from "../audit/index.js";
+import { recordLearningError, runLearningCycle } from "../learning/index.js";
 import {
   expectedArtifactsForUnit,
   isModernSlice,
@@ -8,6 +10,12 @@ import {
   validatePlanningUnit,
 } from "../planning/index.js";
 import { resolveRepoPath } from "../paths.js";
+import {
+  assessRecovery,
+  buildContinuationPacket,
+  saveContinuationArtifacts,
+  writeRecoveryCheckpoint,
+} from "../recovery/index.js";
 import { getRuntimeAdapter } from "../runtime/adapters.js";
 import { renderDispatchPrompt, renderResumePrompt } from "../runtime/prompts.js";
 import { createRunId, loadRuntimeRunHandle } from "../runtime/runs.js";
@@ -35,7 +43,6 @@ import {
   loadLatestCanonicalRunForUnit,
   saveCanonicalRunRecord,
   saveContextManifestFile,
-  saveContinuation,
   saveNextActionDecisionFile,
   savePromptFile,
   saveStateSnapshot,
@@ -627,6 +634,14 @@ function buildDispatchPacket(root: string, item: QueueItem, decision: NextAction
     verification_plan: verificationPlan,
     constraints,
     safety_class: safetyClass,
+    git_context: {
+      control_root: root,
+      workspace_root: root,
+      milestone_branch: loadCurrentState(root).git.milestone_branch,
+      task_branch: loadCurrentState(root).git.task_branch,
+      base_commit: loadCurrentState(root).git.base_commit,
+    },
+    owned_resources: taskArtifact?.likely_files.length ? [...taskArtifact.likely_files] : [],
     output_contract: {
       must_update_artifacts: true,
       must_produce_evidence: true,
@@ -667,6 +682,7 @@ function gitSnapshot(state: CurrentState): CanonicalRunGitSnapshot {
     milestone_branch: state.git.milestone_branch,
     task_branch: state.git.task_branch,
     worktree_path: state.git.worktree_path,
+    base_commit: state.git.base_commit,
     head_commit: state.git.head_commit,
     dirty: state.git.dirty,
   };
@@ -687,6 +703,7 @@ function nextActionForUnit(
   const override = routing.task_class_overrides[executionTarget.decision_unit_type] ?? {};
   const latestRun = loadLatestCanonicalRunForUnit(root, item.unit_id);
   const retryCount = countRetries(root, item.unit_id);
+  const recoveryAssessment = latestRun?.status === "interrupted" ? assessRecovery(root, latestRun.run_id) : null;
 
   if (current.current_run_id) {
     try {
@@ -712,7 +729,7 @@ function nextActionForUnit(
     }
   }
 
-  if (latestRun?.status === "interrupted" && getRuntimeAdapter(latestRun.runtime).supports(root, "resume")) {
+  if (latestRun?.status === "interrupted" && recoveryAssessment?.recommendation === "resume") {
     return {
       version: 1,
       action: "resume",
@@ -722,9 +739,52 @@ function nextActionForUnit(
       role: latestRun.role,
       runtime: latestRun.runtime,
       rationale: [
-        `Latest attempt ${latestRun.run_id} was interrupted and the runtime supports resume.`,
-        "Resume is preferred over creating a fresh attempt when the disk state still matches the same unit.",
-        ],
+        `Latest attempt ${latestRun.run_id} was interrupted and recovery assessment approved resume.`,
+        recoveryAssessment.summary,
+      ],
+      retry_count: retryCount,
+      selected_run_id: latestRun.run_id,
+      context_profile: current.context_profile,
+      reviewer_pass: executionTarget.reviewer_pass,
+    };
+  }
+
+  if (latestRun?.status === "interrupted" && recoveryAssessment?.recommendation === "await_human") {
+    return {
+      version: 1,
+      action: "escalate",
+      unit_id: item.unit_id,
+      unit_type: item.unit_type,
+      phase: current.phase,
+      role: null,
+      runtime: null,
+      rationale: [
+        recoveryAssessment.summary,
+        ...recoveryAssessment.drifts.map((entry) => entry.message),
+      ],
+      retry_count: retryCount,
+      selected_run_id: latestRun.run_id,
+      context_profile: current.context_profile,
+      reviewer_pass: executionTarget.reviewer_pass,
+    };
+  }
+
+  if (
+    latestRun?.status === "interrupted" &&
+    (recoveryAssessment?.recommendation === "replan" || recoveryAssessment?.recommendation === "restart")
+  ) {
+    return {
+      version: 1,
+      action: "none",
+      unit_id: item.unit_id,
+      unit_type: item.unit_type,
+      phase: current.phase,
+      role: null,
+      runtime: null,
+      rationale: [
+        recoveryAssessment.summary,
+        "Run `supercodex recover reconcile` to move the unit back to plan before dispatching again.",
+      ],
       retry_count: retryCount,
       selected_run_id: latestRun.run_id,
       context_profile: current.context_profile,
@@ -774,7 +834,10 @@ function nextActionForUnit(
   }
 
   const role = override.preferred_role ?? executionTarget.role;
-  const preferredRuntime = latestRun?.status === "failed" ? latestRun.runtime : override.preferred_runtime;
+  const preferredRuntime =
+    latestRun?.status === "failed" || recoveryAssessment?.recommendation === "dispatch"
+      ? latestRun?.runtime ?? override.preferred_runtime
+      : override.preferred_runtime;
   const runtime = chooseRuntime(registry, preferredRuntime, role);
 
   const decision: NextActionDecision = {
@@ -789,6 +852,8 @@ function nextActionForUnit(
       `Selected queue head ${item.unit_id} because it is the next eligible ready unit.`,
       latestRun?.status === "failed"
         ? `Retrying after failed attempt ${latestRun.run_id} within the configured retry budget.`
+        : recoveryAssessment?.recommendation === "dispatch"
+          ? `Recovery assessment for interrupted attempt ${latestRun?.run_id} requires a fresh dispatch instead of runtime resume.`
         : "No higher-priority retry or resume candidate exists for this unit.",
       runtime
         ? `Routed to ${runtime} for role ${role} using the current deterministic routing policy.`
@@ -891,42 +956,6 @@ function patchStateForRun(root: string, runId: string, runtime: RuntimeId, unitI
   return nextState;
 }
 
-function buildContinuation(
-  decision: NextActionDecision,
-  packet: DispatchPacket,
-  result: NormalizedResult | null,
-): string {
-  const completed = result?.summary ? [result.summary] : ["Dispatch packet was persisted and execution context was assembled."];
-  const remaining = result?.followups.length ? result.followups : ["Review the normalized result and continue with the next deterministic phase."];
-  const pitfalls = result?.blockers.length ? result.blockers : ["Do not treat this run as verified completion without explicit evidence."];
-
-  return [
-    "# Continue",
-    "",
-    `- Unit objective: ${packet.objective}`,
-    `- Action: ${decision.action}`,
-    `- Runtime: ${decision.runtime ?? "unassigned"}`,
-    "",
-    "## Completed",
-    ...completed.map((entry) => `- ${entry}`),
-    "",
-    "## Remaining",
-    ...remaining.map((entry) => `- ${entry}`),
-    "",
-    "## Current best hypothesis",
-    `- ${result?.summary ?? "The unit is ready for execution."}`,
-    "",
-    "## Exact first next step",
-    `- ${result?.status === "interrupted" ? "Resume the latest runtime session if still valid." : "Inspect the canonical run record and continue from the recorded evidence."}`,
-    "",
-    "## Files in play",
-    ...packet.files_in_scope.map((entry) => `- ${entry}`),
-    "",
-    "## Known pitfalls",
-    ...pitfalls.map((entry) => `- ${entry}`),
-  ].join("\n");
-}
-
 function updateMetrics(root: string, action: NextActionDecision["action"], result: NormalizedResult): void {
   const state = loadCurrentState(root);
   const nextState: CurrentState = {
@@ -973,9 +1002,17 @@ function completeTaskAndRefreshArtifacts(root: string, unitId: string): void {
     transitionState(root, "complete_slice", `All tasks in ${parsed.milestone_id}/${parsed.slice_id} are complete.`, unitId, "next-action");
     refreshSliceSummary(root, unitId);
     generateSliceUat(root, `${parsed.milestone_id}/${parsed.slice_id}`);
+    runMemoryAudit(root, `${parsed.milestone_id}/${parsed.slice_id}`, "slice_complete");
   }
 
   transitionState(root, "reassess", `Completion artifacts refreshed for ${unitId}.`, unitId, "next-action");
+  if (!remainingSliceTasks) {
+    try {
+      runLearningCycle(root, `${parsed.milestone_id}/${parsed.slice_id}`);
+    } catch (error) {
+      recordLearningError(root, error instanceof Error ? error.message : String(error));
+    }
+  }
   transitionState(root, "plan", `Ready to continue after completing ${unitId}.`, unitId, "next-action");
 }
 
@@ -1058,6 +1095,17 @@ function updateStateAfterResult(root: string, runId: string, decision: NextActio
 
   patchStateForRun(root, runId, decision.runtime!, unitId);
   updateMetrics(root, decision.action, result);
+
+  if (decision.action === "resume" && result.status === "success") {
+    runMemoryAudit(root, unitId, "recovery_resume");
+  }
+
+  if (result.status === "failed" && decision.unit_type) {
+    const maxRetries = MAX_RETRIES_BY_UNIT_TYPE[decision.unit_type as UnitType] ?? 1;
+    if (decision.retry_count + 1 >= maxRetries) {
+      runPostmortem(root, runId, "retry_exhausted");
+    }
+  }
 }
 
 function nextFeedbackId(content: string, prefix: "B" | "Q", dateStamp: string): string {
@@ -1136,6 +1184,8 @@ function createRunningRecord(
     verification_evidence: [],
     followups: [],
     reviewer_pass: decision.reviewer_pass,
+    skills_used: [],
+    usage: null,
   };
   saveCanonicalRunRecord(root, record);
   return record;
@@ -1172,7 +1222,15 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
   writeJsonFile(resolveRepoPath(root, paths.packet_ref), preview.packet);
   savePromptFile(root, runId, prompt);
   saveStateSnapshot(root, runId, loadCurrentState(root));
-  saveContinuation(root, runId, buildContinuation(preview.decision, preview.packet, null));
+  saveContinuationArtifacts(root, runId, buildContinuationPacket(runId, preview.decision, preview.packet, null));
+  writeRecoveryCheckpoint(
+    root,
+    runId,
+    "pre_dispatch",
+    `Prepared ${preview.decision.action} for ${preview.decision.unit_id}.`,
+    preview.decision.unit_id,
+    preview.decision.runtime,
+  );
 
   const current = loadCurrentState(root);
   if (current.phase !== "dispatch") {
@@ -1190,7 +1248,15 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
 
   writeJsonFile(resolveRepoPath(root, paths.handle_ref), dispatched.handle);
   writeJsonFile(resolveRepoPath(root, paths.normalized_ref), dispatched.result);
-  saveContinuation(root, runId, buildContinuation(preview.decision, preview.packet, dispatched.result));
+  saveContinuationArtifacts(root, runId, buildContinuationPacket(runId, preview.decision, preview.packet, dispatched.result));
+  writeRecoveryCheckpoint(
+    root,
+    runId,
+    "post_result",
+    `Captured ${dispatched.result.status} result for ${preview.decision.unit_id}.`,
+    preview.decision.unit_id,
+    preview.decision.runtime,
+  );
 
   record = {
     ...record,
@@ -1207,6 +1273,8 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
     verification_evidence: [...dispatched.result.verification_evidence],
     followups: [...dispatched.result.followups],
     reviewer_pass: preview.decision.reviewer_pass,
+    skills_used: [...(dispatched.result.skills_used ?? [])],
+    usage: dispatched.result.usage ?? null,
   };
   saveCanonicalRunRecord(root, record);
   updateStateAfterResult(root, runId, preview.decision, dispatched.result);

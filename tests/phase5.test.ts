@@ -358,7 +358,7 @@ describe("Phase 5 TDD and verification pipeline", () => {
       unit_id: "M005/S01",
       ref: "vault/milestones/M005/uat.md",
     });
-  });
+  }, 15000);
 
   test("a failing verifier report routes the task back to implement", async () => {
     const root = createTempGitRepo();

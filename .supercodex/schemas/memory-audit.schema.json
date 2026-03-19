@@ -1,0 +1,94 @@
+{
+  "$id": "memory-audit.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "unit_type",
+    "trigger",
+    "verdict",
+    "summary",
+    "findings",
+    "refs",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "trigger": {
+      "enum": [
+        "manual",
+        "slice_complete",
+        "recovery_resume"
+      ]
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "severity",
+          "code",
+          "message",
+          "ref"
+        ],
+        "properties": {
+          "severity": {
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$id": "continuation-packet.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "run_id",
+    "unit_id",
+    "action",
+    "runtime",
+    "status",
+    "objective",
+    "completed",
+    "remaining",
+    "best_hypothesis",
+    "first_next_step",
+    "files_in_play",
+    "known_pitfalls",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex",
+        null
+      ]
+    },
+    "status": {
+      "enum": [
+        "success",
+        "failed",
+        "blocked",
+        "interrupted",
+        "pending"
+      ]
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "remaining": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "best_hypothesis": {
+      "type": "string",
+      "minLength": 1
+    },
+    "first_next_step": {
+      "type": "string",
+      "minLength": 1
+    },
+    "files_in_play": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "known_pitfalls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

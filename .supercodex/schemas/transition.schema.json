@@ -70,6 +70,9 @@
     "unit_id": {
       "type": "string"
     },
+    "worker_id": {
+      "type": "string"
+    },
     "queue_head": {
       "type": [
         "string",

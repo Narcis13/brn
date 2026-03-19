@@ -31,6 +31,8 @@
     "Do not require Phase 3 next-action synthesis for manual dispatch"
   ],
   "safety_class": "reversible",
+  "git_context": null,
+  "owned_resources": [],
   "output_contract": {
     "must_update_artifacts": true,
     "must_produce_evidence": true,

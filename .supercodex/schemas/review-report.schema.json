@@ -1,0 +1,68 @@
+{
+  "$id": "review-report.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "persona",
+    "verification_run_id",
+    "review_run_id",
+    "summary",
+    "findings",
+    "followups",
+    "verdict",
+    "generated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "persona": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verification_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "followups": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verdict": {
+      "enum": [
+        "green",
+        "changes_requested",
+        "blocked"
+      ]
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

@@ -545,6 +545,10 @@ function mergeQueueItem(existing: QueueItem | undefined, draft: QueueItemDraft):
 }
 
 function planningStatus(validation: PlanningValidationResult, existing?: QueueItem): QueueStatus {
+  if (existing?.status === "active" || existing?.status === "ready_to_integrate") {
+    return existing.status;
+  }
+
   if (validation.ok) {
     return "done";
   }
@@ -559,6 +563,10 @@ function planningStatus(validation: PlanningValidationResult, existing?: QueueIt
 function taskStatus(existing?: QueueItem, allowReady = true): QueueStatus {
   if (existing?.status === "done") {
     return "done";
+  }
+
+  if (existing?.status === "active" || existing?.status === "ready_to_integrate") {
+    return existing.status;
   }
 
   if (existing?.status === "blocked") {

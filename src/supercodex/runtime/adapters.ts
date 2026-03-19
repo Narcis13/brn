@@ -22,14 +22,16 @@ import type {
   RuntimeProbeResult,
   RuntimeRegistryEntry,
   RuntimeRunHandle,
+  RuntimeUsage,
+  SkillUsageRecord,
 } from "./types.js";
 
 export interface RuntimeAdapter {
   readonly id: RuntimeId;
   readonly display_name: string;
   probe(root: string): Promise<RuntimeProbeResult>;
-  dispatch(root: string, packet: DispatchPacket, nextRunId?: string): Promise<RuntimeDispatchResult>;
-  resume(root: string, runId: string, prompt?: string, nextRunId?: string): Promise<RuntimeDispatchResult>;
+  dispatch(root: string, packet: DispatchPacket, nextRunId?: string, options?: RuntimeExecutionOptions): Promise<RuntimeDispatchResult>;
+  resume(root: string, runId: string, prompt?: string, nextRunId?: string, options?: RuntimeExecutionOptions): Promise<RuntimeDispatchResult>;
   cancel(root: string, runId: string): Promise<boolean>;
   collect(root: string, runId: string): RuntimeCollectResult;
   supports(root: string, capability: RuntimeCapability): boolean;
@@ -46,6 +48,10 @@ interface CommandOutput {
   stderr: string;
   exit_code: number;
   signal: NodeJS.Signals | null;
+}
+
+export interface RuntimeExecutionOptions {
+  execution_cwd?: string;
 }
 
 function gitAvailable(root: string): boolean {
@@ -92,6 +98,53 @@ function coerceStringArray(value: unknown): string[] {
   }
 
   return value.map((item) => String(item).trim()).filter(Boolean);
+}
+
+function coerceSkillsUsed(value: unknown): SkillUsageRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((entry): SkillUsageRecord | null => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const candidate = entry as Record<string, unknown>;
+      const skill_id = typeof candidate.skill_id === "string" ? candidate.skill_id.trim() : "";
+      const outcome = typeof candidate.outcome === "string" ? candidate.outcome.trim() : "";
+      if (!skill_id || !["helpful", "neutral", "failed"].includes(outcome)) {
+        return null;
+      }
+
+      return {
+        skill_id,
+        outcome: outcome as SkillUsageRecord["outcome"],
+        note: typeof candidate.note === "string" && candidate.note.trim() ? candidate.note.trim() : null,
+      };
+    })
+    .filter((entry): entry is SkillUsageRecord => entry !== null);
+}
+
+function coerceUsage(value: unknown): RuntimeUsage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const coerceCount = (field: unknown): number | null => {
+    if (typeof field === "number" && Number.isFinite(field) && field >= 0) {
+      return Math.floor(field);
+    }
+    return null;
+  };
+
+  return {
+    input_tokens: coerceCount(candidate.input_tokens),
+    output_tokens: coerceCount(candidate.output_tokens),
+    total_tokens: coerceCount(candidate.total_tokens),
+  };
 }
 
 function looksLikeModelResponse(value: unknown): value is RuntimeModelResponse {
@@ -161,6 +214,8 @@ function tryParseModelResponse(...texts: string[]): RuntimeModelResponse | null 
         assumptions: coerceStringArray(next.assumptions),
         blockers: coerceStringArray(next.blockers),
         followups: coerceStringArray(next.followups),
+        skills_used: coerceSkillsUsed(next.skills_used),
+        usage: coerceUsage(next.usage),
       };
 
       validateRuntimeModelResponse(response);
@@ -270,6 +325,8 @@ function normalizeResult(params: {
     started_at: params.started_at,
     completed_at: params.completed_at,
     session_id: params.session_id,
+    skills_used: candidate?.skills_used ?? [],
+    usage: candidate?.usage ?? null,
   };
 
   validateNormalizedResult(normalized);
@@ -335,11 +392,17 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     return cancelled;
   }
 
-  async dispatch(root: string, packet: DispatchPacket, nextRunId?: string): Promise<RuntimeDispatchResult> {
-    return await this.execute(root, packet, null, renderDispatchPrompt(packet), null, nextRunId);
+  async dispatch(root: string, packet: DispatchPacket, nextRunId?: string, options?: RuntimeExecutionOptions): Promise<RuntimeDispatchResult> {
+    return await this.execute(root, packet, null, renderDispatchPrompt(packet), null, nextRunId, options);
   }
 
-  async resume(root: string, runId: string, prompt?: string, nextRunId?: string): Promise<RuntimeDispatchResult> {
+  async resume(
+    root: string,
+    runId: string,
+    prompt?: string,
+    nextRunId?: string,
+    options?: RuntimeExecutionOptions,
+  ): Promise<RuntimeDispatchResult> {
     const handle = loadRuntimeRunHandle(root, runId);
     if (handle.runtime !== this.id) {
       throw new Error(`Run ${runId} belongs to ${handle.runtime}, not ${this.id}.`);
@@ -350,7 +413,9 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     }
 
     const packet = loadDispatchPacket(resolveRunRef(root, handle.packet_ref));
-    return await this.execute(root, packet, runId, renderResumePrompt(packet, prompt), handle.session_id, nextRunId);
+    return await this.execute(root, packet, runId, renderResumePrompt(packet, prompt), handle.session_id, nextRunId, {
+      execution_cwd: options?.execution_cwd ?? handle.cwd,
+    });
   }
 
   protected abstract buildDispatchPlan(
@@ -360,6 +425,7 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     runPaths: ReturnType<typeof getRuntimeRunPaths>,
     sessionId: string | null,
     isResume: boolean,
+    executionRoot: string,
   ): AdapterExecutionPlan;
 
   private async execute(
@@ -369,14 +435,16 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     prompt: string,
     resumeSessionId: string | null = null,
     nextRunId?: string,
+    options?: RuntimeExecutionOptions,
   ): Promise<RuntimeDispatchResult> {
     validateDispatchPacket(packet);
     const entry = resolveEntry(root, this.id);
     const started_at = new Date().toISOString();
     const run_id = nextRunId ?? createRunId(this.id, packet.unit_id, started_at);
     const runPaths = ensureRunDirectory(root, run_id);
-    const plan = this.buildDispatchPlan(root, entry, prompt, runPaths, resumeSessionId, parentRunId !== null);
-    const beforeDirty = listDirtyPaths(root);
+    const executionRoot = options?.execution_cwd ?? root;
+    const plan = this.buildDispatchPlan(root, entry, prompt, runPaths, resumeSessionId, parentRunId !== null, executionRoot);
+    const beforeDirty = listDirtyPaths(executionRoot);
 
     writeJsonFile(resolveRunRef(root, runPaths.packet_ref), packet);
     writeTextAtomic(resolveRunRef(root, runPaths.prompt_ref), `${prompt}\n`);
@@ -390,7 +458,8 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
       session_id: plan.session_id,
       command: entry.command,
       args: plan.args,
-      cwd: root,
+      artifact_root: root,
+      cwd: executionRoot,
       packet_ref: runPaths.packet_ref,
       prompt_ref: runPaths.prompt_ref,
       response_ref: runPaths.response_ref,
@@ -410,7 +479,7 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
       commandOutput = await runCommand({
         command: entry.command,
         args: plan.args,
-        cwd: root,
+        cwd: executionRoot,
         run_id,
         on_spawn: (pid) => {
           handle = {
@@ -436,7 +505,7 @@ abstract class BaseRuntimeAdapter implements RuntimeAdapter {
     writeTextAtomic(resolveRunRef(root, runPaths.response_ref), responseText);
 
     const session_id = plan.session_id ?? extractSessionId(commandOutput.stdout, responseText, commandOutput.stderr);
-    const files_changed = difference(listDirtyPaths(root), beforeDirty);
+    const files_changed = difference(listDirtyPaths(executionRoot), beforeDirty);
     const result = normalizeResult({
       run_id,
       runtime: this.id,
@@ -481,8 +550,9 @@ class CodexAdapter extends BaseRuntimeAdapter {
     runPaths: ReturnType<typeof getRuntimeRunPaths>,
     sessionId: string | null,
     isResume: boolean,
+    executionRoot: string,
   ): AdapterExecutionPlan {
-    const baseArgs = ["-C", root, ...(entry.default_args ?? []), "exec"];
+    const baseArgs = ["-C", executionRoot, ...(entry.default_args ?? []), "exec"];
     const execArgs = isResume
       ? [
           "resume",
@@ -524,6 +594,7 @@ class ClaudeAdapter extends BaseRuntimeAdapter {
     _runPaths: ReturnType<typeof getRuntimeRunPaths>,
     sessionId: string | null,
     isResume: boolean,
+    _executionRoot: string,
   ): AdapterExecutionPlan {
     const effectiveSessionId = sessionId ?? randomUUID();
     const args = [

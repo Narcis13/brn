@@ -1,0 +1,48 @@
+{
+  "$id": "parallel-state.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "max_workers",
+    "last_dispatch_at",
+    "milestone_branch",
+    "milestone_worktree_path",
+    "worker_ids"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_workers": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "last_dispatch_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "milestone_branch": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "milestone_worktree_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worker_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

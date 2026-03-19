@@ -1,4 +1,12 @@
-import type { DispatchPacket, NormalizedResult, NormalizedStatus, RuntimeId, RuntimeRunHandle } from "../runtime/types.js";
+import type {
+  DispatchPacket,
+  NormalizedResult,
+  NormalizedStatus,
+  RuntimeId,
+  RuntimeRunHandle,
+  RuntimeUsage,
+  SkillUsageRecord,
+} from "../runtime/types.js";
 import type { CurrentState, Phase } from "../types.js";
 
 export const NEXT_ACTION_TYPES = ["dispatch", "retry", "resume", "escalate", "none"] as const;
@@ -40,6 +48,7 @@ export interface CanonicalRunGitSnapshot {
   milestone_branch: string | null;
   task_branch: string | null;
   worktree_path: string | null;
+  base_commit: string | null;
   head_commit: string | null;
   dirty: boolean;
 }
@@ -74,6 +83,8 @@ export interface CanonicalRunRecord {
   verification_evidence: string[];
   followups: string[];
   reviewer_pass: string | null;
+  skills_used?: SkillUsageRecord[];
+  usage?: RuntimeUsage | null;
 }
 
 export interface NextActionShowResult {

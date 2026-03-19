@@ -1,0 +1,47 @@
+{
+  "$id": "completion-record.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "unit_id",
+    "implementation_run_id",
+    "verification_run_id",
+    "review_run_ids",
+    "summary",
+    "completed_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "implementation_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verification_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_run_ids": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

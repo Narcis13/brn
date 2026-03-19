@@ -9,9 +9,36 @@ import type {
   RuntimeRegistry,
   RuntimeRunHandle,
 } from "./types.js";
-import { NORMALIZED_STATUSES, RUNTIME_CAPABILITIES, RUNTIME_IDS, RUNTIME_RUN_STATUSES } from "./types.js";
+import { NORMALIZED_STATUSES, RUNTIME_CAPABILITIES, RUNTIME_IDS, RUNTIME_RUN_STATUSES, SKILL_OUTCOMES } from "./types.js";
 
 type Schema = Record<string, unknown>;
+
+const skillUsageSchema: Schema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["skill_id", "outcome"],
+  properties: {
+    skill_id: { type: "string", minLength: 1 },
+    outcome: { enum: [...SKILL_OUTCOMES] },
+    note: { type: ["string", "null"] },
+  },
+};
+
+const runtimeUsageSchema: Schema = {
+  anyOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["input_tokens", "output_tokens", "total_tokens"],
+      properties: {
+        input_tokens: { type: ["integer", "null"], minimum: 0 },
+        output_tokens: { type: ["integer", "null"], minimum: 0 },
+        total_tokens: { type: ["integer", "null"], minimum: 0 },
+      },
+    },
+    { type: "null" },
+  ],
+};
 
 const dispatchPacketSchema: Schema = {
   $id: "dispatch.schema.json",
@@ -30,6 +57,8 @@ const dispatchPacketSchema: Schema = {
     "verification_plan",
     "constraints",
     "safety_class",
+    "git_context",
+    "owned_resources",
     "output_contract",
     "stop_conditions",
     "artifacts_to_update",
@@ -65,6 +94,32 @@ const dispatchPacketSchema: Schema = {
       items: { type: "string", minLength: 1 },
     },
     safety_class: { type: "string", minLength: 1 },
+    git_context: {
+      anyOf: [
+        {
+          type: "object",
+          additionalProperties: false,
+          required: ["control_root", "workspace_root", "milestone_branch", "task_branch", "base_commit"],
+          properties: {
+            control_root: { type: "string", minLength: 1 },
+            workspace_root: { type: "string", minLength: 1 },
+            milestone_branch: { type: ["string", "null"] },
+            task_branch: { type: ["string", "null"] },
+            base_commit: { type: ["string", "null"] },
+          },
+        },
+        { type: "null" },
+      ],
+    },
+    owned_resources: {
+      anyOf: [
+        {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+        },
+        { type: "null" },
+      ],
+    },
     output_contract: {
       type: "object",
       additionalProperties: false,
@@ -135,6 +190,11 @@ export const runtimeModelResponseSchema: Schema = {
       type: "array",
       items: { type: "string", minLength: 1 },
     },
+    skills_used: {
+      type: "array",
+      items: skillUsageSchema,
+    },
+    usage: runtimeUsageSchema,
   },
 };
 
@@ -198,6 +258,11 @@ const normalizedResultSchema: Schema = {
     started_at: { type: "string", minLength: 1 },
     completed_at: { type: "string", minLength: 1 },
     session_id: { type: ["string", "null"] },
+    skills_used: {
+      type: "array",
+      items: skillUsageSchema,
+    },
+    usage: runtimeUsageSchema,
   },
 };
 
@@ -300,6 +365,7 @@ const runtimeRunHandleSchema: Schema = {
     "session_id",
     "command",
     "args",
+    "artifact_root",
     "cwd",
     "packet_ref",
     "prompt_ref",
@@ -324,6 +390,7 @@ const runtimeRunHandleSchema: Schema = {
       type: "array",
       items: { type: "string" },
     },
+    artifact_root: { type: "string", minLength: 1 },
     cwd: { type: "string", minLength: 1 },
     packet_ref: { type: "string", minLength: 1 },
     prompt_ref: { type: "string", minLength: 1 },

@@ -14,6 +14,9 @@ export interface CanonicalRunPaths {
   prompt_ref: string;
   state_ref: string;
   continuation_ref: string;
+  continuation_json_ref: string;
+  recovery_ref: string;
+  checkpoints_dir: string;
   handle_ref: string;
   normalized_ref: string;
 }
@@ -29,6 +32,9 @@ export function getCanonicalRunPaths(runId: string): CanonicalRunPaths {
     prompt_ref: `${dir}/prompt.md`,
     state_ref: `${dir}/state.json`,
     continuation_ref: `${dir}/continue.md`,
+    continuation_json_ref: `${dir}/continuation.json`,
+    recovery_ref: `${dir}/recovery.json`,
+    checkpoints_dir: `${dir}/checkpoints`,
     handle_ref: `${dir}/handle.json`,
     normalized_ref: `${dir}/normalized.json`,
   };

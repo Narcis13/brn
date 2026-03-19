@@ -26,6 +26,34 @@
       "type": "string",
       "minLength": 1
     },
+    "lock_kind": {
+      "enum": [
+        "resource",
+        "integration",
+        "workspace"
+      ]
+    },
+    "worker_id": {
+      "type": "string"
+    },
+    "unit_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "base_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "worktree_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "acquired_at": {
       "type": "string",
       "minLength": 1

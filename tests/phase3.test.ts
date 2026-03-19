@@ -145,6 +145,14 @@ describe("Phase 3 next-action synthesis", () => {
       normalized_ref: `.supercodex/runs/${payload.handle.run_id}/normalized.json`,
     });
     expect(readText(root, `.supercodex/runs/${payload.handle.run_id}/prompt.md`)).toContain("SUPER_CODEX dispatch packet");
+    expect(readJson(root, `.supercodex/runs/${payload.handle.run_id}/continuation.json`)).toMatchObject({
+      run_id: payload.handle.run_id,
+      status: "success",
+      unit_id: "M002/S01",
+    });
+    expect(readText(root, `.supercodex/runs/${payload.handle.run_id}/continue.md`)).toContain("Status: success");
+    expect(readText(root, `.supercodex/runs/${payload.handle.run_id}/checkpoints/001-pre-dispatch.json`)).toContain("\"kind\": \"pre_dispatch\"");
+    expect(readText(root, `.supercodex/runs/${payload.handle.run_id}/checkpoints/002-post-result.json`)).toContain("\"kind\": \"post_result\"");
 
     const current = readJson<CurrentState>(root, ".supercodex/state/current.json");
     expect(current.phase).toBe("implement");

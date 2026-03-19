@@ -15,6 +15,7 @@ Current navigation:
 - Feedback answers: [feedback/ANSWERS.md](/Users/narcisbrindusescu/newme/brn/vault/feedback/ANSWERS.md)
 - Active milestone: [milestones/M002/milestone.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M002/milestone.md)
 - Active boundary map: [milestones/M002/boundary-map.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M002/boundary-map.md)
+- Milestone docs: `M001`, `M002`, `M003`, `M004`, `M005`, `M006`, `M007`, `M008`
 
 Status:
 
@@ -26,9 +27,14 @@ Current queue head:
 
 - `M002/S01`
 
-Phase 2 notes:
+Repository status notes:
 
 - `M001` is complete and leaves behind the vault, state schemas, queue protocol, locks, and CLI scaffold.
 - `M002` is the active implementation milestone for runtime adapters, normalized dispatch, and result handling.
-- `M003` is now decomposed in `vault/milestones/M003/` as the next milestone for deterministic selection, context assembly, retry policy, and canonical run persistence.
-- Next-action synthesis, canonical run persistence, and autonomous routing remain future milestones.
+- `M003` is decomposed in `vault/milestones/M003/` and implemented in source as next-action synthesis plus canonical run persistence.
+- `M004` is decomposed in `vault/milestones/M004/` and implemented in source as the planning and slice engine.
+- `M005` is tracked in `vault/milestones/M005/` and implemented in source as the TDD and verification pipeline.
+- `M006` is now tracked in `vault/milestones/M006/` for recovery checkpoints, continuation packets, reconciliation, audits, and postmortems.
+- `M007` is now tracked in `vault/milestones/M007/` and implemented in source as worker-aware parallel dispatch, isolated task worktrees, serialized integration, and integration conflict reporting.
+- `M008` is now tracked in `vault/milestones/M008/` for skill telemetry, pattern candidates, roadmap reassessment reports, and process improvement artifacts.
+- The default init scaffold remains anchored at `M002` so the earlier milestone regression suite can still start from a stable phase-by-phase baseline.

@@ -17,7 +17,7 @@
     "task_branch": null,
     "worktree_path": null,
     "base_commit": null,
-    "head_commit": "ae495902644dbd6aad9568206eb12d405931fa0e",
+    "head_commit": "364826afe05f38a4620e2dec5fd830383d55b749",
     "dirty": true
   },
   "last_transition_at": "2026-03-18T12:00:00.000Z",
@@ -27,6 +27,17 @@
     "human_interventions": 0,
     "completed_tasks": 0,
     "failed_attempts": 0,
-    "recovered_runs": 0
+    "recovered_runs": 0,
+    "recovery_mismatches": 0,
+    "memory_audits": 0,
+    "postmortems_generated": 0,
+    "parallel_dispatches": 0,
+    "integrated_tasks": 0,
+    "integration_conflicts": 0,
+    "learning_cycles": 0,
+    "skill_health_refreshes": 0,
+    "pattern_candidates_generated": 0,
+    "roadmap_reassessments": 0,
+    "process_reports_generated": 0
   }
 }

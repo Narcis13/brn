@@ -1,0 +1,110 @@
+{
+  "$id": "next-action.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "action",
+    "unit_id",
+    "unit_type",
+    "phase",
+    "role",
+    "runtime",
+    "rationale",
+    "retry_count",
+    "selected_run_id",
+    "context_profile",
+    "reviewer_pass"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "action": {
+      "enum": [
+        "dispatch",
+        "retry",
+        "resume",
+        "escalate",
+        "none"
+      ]
+    },
+    "unit_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "unit_type": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "phase": {
+      "enum": [
+        "intake",
+        "clarify",
+        "map",
+        "research",
+        "plan",
+        "dispatch",
+        "implement",
+        "verify",
+        "review",
+        "integrate",
+        "complete_task",
+        "complete_slice",
+        "reassess",
+        "recover",
+        "awaiting_human",
+        "blocked",
+        "complete"
+      ]
+    },
+    "role": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex",
+        null
+      ]
+    },
+    "rationale": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "retry_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "selected_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "context_profile": {
+      "enum": [
+        "budget",
+        "balanced",
+        "quality"
+      ]
+    },
+    "reviewer_pass": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

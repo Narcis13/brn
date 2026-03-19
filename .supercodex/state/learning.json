@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "processed_slice_unit_ids": [],
+  "processed_postmortem_run_ids": [],
+  "latest_skill_health_ref": null,
+  "latest_roadmap_report_ref": null,
+  "latest_process_report_ref": null,
+  "latest_pattern_candidate_refs": [],
+  "pending_pattern_candidates": 0,
+  "last_error": null,
+  "updated_at": null
+}

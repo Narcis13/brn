@@ -1,0 +1,78 @@
+{
+  "$id": "learning-state.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "processed_slice_unit_ids",
+    "processed_postmortem_run_ids",
+    "latest_skill_health_ref",
+    "latest_roadmap_report_ref",
+    "latest_process_report_ref",
+    "latest_pattern_candidate_refs",
+    "pending_pattern_candidates",
+    "last_error",
+    "updated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "processed_slice_unit_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "processed_postmortem_run_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "latest_skill_health_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_roadmap_report_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_process_report_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest_pattern_candidate_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "pending_pattern_candidates": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "last_error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

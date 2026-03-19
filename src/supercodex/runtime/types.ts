@@ -18,6 +18,21 @@ export type NormalizedStatus = (typeof NORMALIZED_STATUSES)[number];
 export const RUNTIME_RUN_STATUSES = ["running", "completed", "failed", "cancelled"] as const;
 export type RuntimeRunStatus = (typeof RUNTIME_RUN_STATUSES)[number];
 
+export const SKILL_OUTCOMES = ["helpful", "neutral", "failed"] as const;
+export type SkillOutcome = (typeof SKILL_OUTCOMES)[number];
+
+export interface SkillUsageRecord {
+  skill_id: string;
+  outcome: SkillOutcome;
+  note?: string | null;
+}
+
+export interface RuntimeUsage {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+}
+
 export interface RuntimeProbeSnapshot {
   available: boolean;
   path: string | null;
@@ -58,6 +73,14 @@ export interface DispatchPacketOutputContract {
   notes?: string[];
 }
 
+export interface DispatchPacketGitContext {
+  control_root: string;
+  workspace_root: string;
+  milestone_branch: string | null;
+  task_branch: string | null;
+  base_commit: string | null;
+}
+
 export interface DispatchPacket {
   version: number;
   unit_id: string;
@@ -71,6 +94,8 @@ export interface DispatchPacket {
   verification_plan: string[];
   constraints: string[];
   safety_class: string;
+  git_context: DispatchPacketGitContext | null;
+  owned_resources: string[] | null;
   output_contract: DispatchPacketOutputContract;
   stop_conditions: string[];
   artifacts_to_update: string[];
@@ -85,6 +110,8 @@ export interface RuntimeModelResponse {
   assumptions: string[];
   blockers: string[];
   followups: string[];
+  skills_used?: SkillUsageRecord[];
+  usage?: RuntimeUsage | null;
 }
 
 export interface NormalizedResult extends RuntimeModelResponse {
@@ -106,6 +133,7 @@ export interface RuntimeRunHandle {
   session_id: string | null;
   command: string;
   args: string[];
+  artifact_root: string;
   cwd: string;
   packet_ref: string;
   prompt_ref: string;

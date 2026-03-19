@@ -1,0 +1,144 @@
+{
+  "$id": "worker.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "worker_id",
+    "unit_id",
+    "phase",
+    "status",
+    "milestone_id",
+    "slice_id",
+    "task_id",
+    "runtime",
+    "role",
+    "reviewer_pass",
+    "milestone_branch",
+    "task_branch",
+    "worktree_path",
+    "base_commit",
+    "current_run_id",
+    "last_run_id",
+    "canonical_commit",
+    "queue_status",
+    "owned_resources",
+    "assigned_at",
+    "updated_at"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "worker_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "unit_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "phase": {
+      "enum": [
+        "implement",
+        "verify",
+        "review",
+        "recover",
+        "blocked",
+        "ready_to_integrate"
+      ]
+    },
+    "status": {
+      "enum": [
+        "active",
+        "blocked",
+        "ready_to_integrate"
+      ]
+    },
+    "milestone_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "slice_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "runtime": {
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewer_pass": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "milestone_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "worktree_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "base_commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "last_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "canonical_commit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "queue_status": {
+      "enum": [
+        "active",
+        "blocked",
+        "ready_to_integrate"
+      ]
+    },
+    "owned_resources": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "assigned_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

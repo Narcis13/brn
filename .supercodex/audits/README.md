@@ -1,3 +1,6 @@
 # Audits
 
-Memory fidelity audits, recovery audits, and related reports will live here in later phases.
+Memory fidelity audits, recovery assessments, and postmortem reports live here.
+
+- `memory/` stores unit-scoped memory fidelity reports.
+- `postmortems/` stores failed-run and recovery-replan postmortems.

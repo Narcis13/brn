@@ -1,0 +1,92 @@
+{
+  "$id": "skill-health.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generated_at",
+    "generated_from_runs",
+    "skills"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_from_runs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "skill_id",
+          "skill_ref",
+          "usage_count",
+          "success_rate",
+          "helpful_rate",
+          "failure_rate",
+          "average_total_tokens",
+          "last_used_at",
+          "stale",
+          "correlated_with_failures"
+        ],
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "skill_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "usage_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "success_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "helpful_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "failure_rate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "average_total_tokens": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "correlated_with_failures": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

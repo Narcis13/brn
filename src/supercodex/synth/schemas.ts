@@ -2,10 +2,37 @@ import Ajv2020Module from "ajv/dist/2020.js";
 
 import type { ContextManifest, NextActionDecision, CanonicalRunRecord } from "./types.js";
 import { NEXT_ACTION_TYPES } from "./types.js";
-import { NORMALIZED_STATUSES, RUNTIME_IDS } from "../runtime/types.js";
+import { NORMALIZED_STATUSES, RUNTIME_IDS, SKILL_OUTCOMES } from "../runtime/types.js";
 import { PHASES } from "../types.js";
 
 type Schema = Record<string, unknown>;
+
+const skillUsageSchema: Schema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["skill_id", "outcome"],
+  properties: {
+    skill_id: { type: "string", minLength: 1 },
+    outcome: { enum: [...SKILL_OUTCOMES] },
+    note: { type: ["string", "null"] },
+  },
+};
+
+const runtimeUsageSchema: Schema = {
+  anyOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["input_tokens", "output_tokens", "total_tokens"],
+      properties: {
+        input_tokens: { type: ["integer", "null"], minimum: 0 },
+        output_tokens: { type: ["integer", "null"], minimum: 0 },
+        total_tokens: { type: ["integer", "null"], minimum: 0 },
+      },
+    },
+    { type: "null" },
+  ],
+};
 
 const contextProfiles = ["budget", "balanced", "quality"] as const;
 
@@ -82,6 +109,7 @@ const gitSnapshotSchema: Schema = {
     "milestone_branch",
     "task_branch",
     "worktree_path",
+    "base_commit",
     "head_commit",
     "dirty",
   ],
@@ -90,6 +118,7 @@ const gitSnapshotSchema: Schema = {
     milestone_branch: { type: ["string", "null"] },
     task_branch: { type: ["string", "null"] },
     worktree_path: { type: ["string", "null"] },
+    base_commit: { type: ["string", "null"] },
     head_commit: { type: ["string", "null"] },
     dirty: { type: "boolean" },
   },
@@ -177,6 +206,11 @@ const canonicalRunRecordSchema: Schema = {
       items: { type: "string", minLength: 1 },
     },
     reviewer_pass: { type: ["string", "null"] },
+    skills_used: {
+      type: "array",
+      items: skillUsageSchema,
+    },
+    usage: runtimeUsageSchema,
   },
 };
 

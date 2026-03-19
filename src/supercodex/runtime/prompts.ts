@@ -14,6 +14,8 @@ export function renderDispatchPrompt(packet: DispatchPacket): string {
     "- `assumptions`: array of assumptions made",
     "- `blockers`: array of blockers encountered",
     "- `followups`: array of follow-up actions",
+    "- `skills_used`: optional array of `{ skill_id, outcome, note? }` for repo-local project skills actually used",
+    "- `usage`: optional object `{ input_tokens, output_tokens, total_tokens }` when the runtime can provide token usage",
     "",
     "Dispatch packet:",
     JSON.stringify(packet, null, 2),

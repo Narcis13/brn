@@ -51,7 +51,17 @@ export const CURRENT_STATE_PATH = ".supercodex/state/current.json";
 export const QUEUE_STATE_PATH = ".supercodex/state/queue.json";
 export const TRANSITIONS_PATH = ".supercodex/state/transitions.jsonl";
 export const LOCKS_DIR = ".supercodex/state/locks";
+export const WORKERS_DIR = ".supercodex/state/workers";
+export const PARALLEL_STATE_PATH = ".supercodex/state/parallel.json";
+export const INTEGRATION_STATE_PATH = ".supercodex/state/integration.json";
+export const LEARNING_STATE_PATH = ".supercodex/state/learning.json";
 export const SCHEMAS_DIR = ".supercodex/schemas";
+export const WORKTREES_DIR = ".supercodex-worktrees";
+export const LEARNING_DIR = ".supercodex/learning";
+export const LEARNING_SKILLS_DIR = `${LEARNING_DIR}/skills`;
+export const LEARNING_PATTERNS_DIR = `${LEARNING_DIR}/patterns`;
+export const LEARNING_ROADMAP_DIR = `${LEARNING_DIR}/roadmap`;
+export const LEARNING_PROCESS_DIR = `${LEARNING_DIR}/process`;
 
 export function findPackageRoot(startPath: string): string {
   let current = dirname(startPath);
