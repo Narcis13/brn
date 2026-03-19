@@ -8,15 +8,16 @@ Current status:
 
 Use this file for structured human input requests when safe defaults are not acceptable.
 
-## Q-YYYY-MM-DD-001
+Entry contract:
 
-- Scope:
-- Severity:
-- Type:
-- Issue:
-- Why blocked:
-- Options:
-  - A:
-  - B:
-- Recommended default:
-- Latest responsible pause point:
+- `## Q-YYYY-MM-DD-001`
+- `- Scope:`
+- `- Severity:`
+- `- Type:`
+- `- Issue:`
+- `- Why blocked:`
+- `- Options:` with nested bullets when relevant
+- `- Recommended default:`
+- `- Latest responsible pause point:`
+- `- Status: open|resolved`
+- `- Answered by:`

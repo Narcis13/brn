@@ -405,6 +405,14 @@ function usesPhaseFiveVerification(unitId: string): boolean {
   return !!match && Number.parseInt(match[1], 10) >= 5;
 }
 
+function shouldEnforceGitSnapshot(current: CurrentState): boolean {
+  return (
+    current.current_run_id !== null ||
+    current.recovery_ref !== null ||
+    ["dispatch", "implement", "verify", "review", "integrate", "recover", "blocked", "awaiting_human"].includes(current.phase)
+  );
+}
+
 function recoveryRunIdFromRef(recoveryRef: string | null): string | null {
   if (!recoveryRef) {
     return null;
@@ -768,14 +776,16 @@ export function runDoctor(root: string, placeholderFiles: string[]): DoctorResul
     loadRuntimeRegistry(root);
     loadDispatchTemplate(root);
     const reconciled = buildReconciledState(root);
-    if (reconciled.git.dirty !== current.git.dirty) {
-      issues.push(`git dirty mismatch: current=${current.git.dirty} expected=${reconciled.git.dirty}`);
-    }
+    if (shouldEnforceGitSnapshot(current)) {
+      if (reconciled.git.dirty !== current.git.dirty) {
+        issues.push(`git dirty mismatch: current=${current.git.dirty} expected=${reconciled.git.dirty}`);
+      }
 
-    if (reconciled.git.head_commit !== current.git.head_commit) {
-      issues.push(
-        `git head commit mismatch: current=${String(current.git.head_commit)} expected=${String(reconciled.git.head_commit)}`,
-      );
+      if (reconciled.git.head_commit !== current.git.head_commit) {
+        issues.push(
+          `git head commit mismatch: current=${String(current.git.head_commit)} expected=${String(reconciled.git.head_commit)}`,
+        );
+      }
     }
 
     if (!fileExists(resolveRepoPath(root, ".git"))) {

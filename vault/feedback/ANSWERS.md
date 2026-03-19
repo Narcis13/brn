@@ -8,10 +8,13 @@ Current status:
 
 Use this file to resolve entries from `QUESTIONS.md` or unblock paused work.
 
-## A-YYYY-MM-DD-001
+Entry contract:
 
-- Responds to:
-- Decision:
-- Reason:
-- Entered by:
-- Entered at:
+- `## A-YYYY-MM-DD-001`
+- `- Responds to:`
+- `- Decision:`
+- `- Reason:`
+- `- Entered by:`
+- `- Entered at:`
+- `- Status: pending|ingested`
+- `- Ingested at:`

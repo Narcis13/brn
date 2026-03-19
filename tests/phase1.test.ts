@@ -167,4 +167,32 @@ describe("Phase 1 CLI", () => {
     expect(doctor.code).toBe(1);
     expect(doctor.stdout).toContain("current phase verify does not match latest transition plan");
   });
+
+  test("doctor tolerates git drift while the repo is idle in planning state", async () => {
+    const root = createTempGitRepo();
+    await invokeCli(root, ["init"]);
+
+    writeFileSync(join(root, "README.md"), "# temp repo\n\nchanged\n", "utf8");
+
+    const current = readJson<CurrentState>(root, ".supercodex/state/current.json");
+    writeFileSync(
+      join(root, ".supercodex/state/current.json"),
+      JSON.stringify(
+        {
+          ...current,
+          git: {
+            ...current.git,
+            dirty: false,
+            head_commit: "stale-head",
+          },
+        },
+        null,
+        2,
+      ) + "\n",
+      "utf8",
+    );
+
+    const doctor = await invokeCli(root, ["doctor"]);
+    expect(doctor.code).toBe(0);
+  });
 });

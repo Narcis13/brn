@@ -68,6 +68,50 @@ export interface PlanningQueueSyncResult {
   validations: PlanningValidationResult[];
 }
 
+export interface RoadmapMilestoneDraft {
+  milestone_id: string;
+  title: string;
+  summary: string;
+}
+
+export interface GenerateRoadmapParams {
+  milestones: RoadmapMilestoneDraft[];
+  active_milestone?: string | null;
+}
+
+export interface GenerateMilestoneParams {
+  milestone_id: string;
+  title: string;
+  objective: string;
+  why_now: string;
+  exit_criteria: string[];
+  activate?: boolean;
+  replace_queue?: boolean;
+}
+
+export interface GenerateSliceParams {
+  unit_id: string;
+  title: string;
+  demo_sentence: string;
+  objective?: string;
+  acceptance_criteria?: string[];
+  likely_files?: string[];
+}
+
+export interface GenerateTasksParams {
+  unit_id: string;
+  count?: number;
+  likely_files?: string[];
+  verification_plan?: string[];
+}
+
+export interface PlanningGenerationResult {
+  unit_id: string;
+  refs: string[];
+  state_updated: boolean;
+  queue_reset: boolean;
+}
+
 export interface QueueItemDraft {
   unit_id: string;
   unit_type: UnitType;

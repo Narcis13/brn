@@ -1,4 +1,4 @@
-import { listFiles, readJsonFile, writeJsonFile, writeTextAtomic, fileExists, readText } from "../fs.js";
+import { listFiles, readJsonFile, writeJsonFile, writeTextAtomic, fileExists, readText, readTextIfExists } from "../fs.js";
 import { resolveRepoPath } from "../paths.js";
 import { validateCanonicalRunRecord, validateContextManifest, validateNextActionDecision } from "./schemas.js";
 import type { CanonicalRunRecord, ContextManifest, NextActionDecision } from "./types.js";
@@ -12,6 +12,8 @@ export interface CanonicalRunPaths {
   context_ref: string;
   packet_ref: string;
   prompt_ref: string;
+  transcript_ref: string;
+  events_ref: string;
   state_ref: string;
   continuation_ref: string;
   continuation_json_ref: string;
@@ -30,6 +32,8 @@ export function getCanonicalRunPaths(runId: string): CanonicalRunPaths {
     context_ref: `${dir}/context.json`,
     packet_ref: `${dir}/packet.json`,
     prompt_ref: `${dir}/prompt.md`,
+    transcript_ref: `${dir}/transcript.md`,
+    events_ref: `${dir}/events.jsonl`,
     state_ref: `${dir}/state.json`,
     continuation_ref: `${dir}/continue.md`,
     continuation_json_ref: `${dir}/continuation.json`,
@@ -57,6 +61,19 @@ export function saveContextManifestFile(root: string, runId: string, manifest: C
 export function savePromptFile(root: string, runId: string, prompt: string): string {
   const ref = getCanonicalRunPaths(runId).prompt_ref;
   writeTextAtomic(resolveRepoPath(root, ref), `${prompt}\n`);
+  return ref;
+}
+
+export function saveTranscriptFile(root: string, runId: string, transcript: string): string {
+  const ref = getCanonicalRunPaths(runId).transcript_ref;
+  writeTextAtomic(resolveRepoPath(root, ref), `${transcript.trimEnd()}\n`);
+  return ref;
+}
+
+export function appendRunEvent(root: string, runId: string, event: Record<string, unknown>): string {
+  const ref = getCanonicalRunPaths(runId).events_ref;
+  const current = readTextIfExists(resolveRepoPath(root, ref)) ?? "";
+  writeTextAtomic(resolveRepoPath(root, ref), `${current}${JSON.stringify(event)}\n`);
   return ref;
 }
 

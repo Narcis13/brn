@@ -1,5 +1,7 @@
-import { readJsonFile, readTextIfExists, writeJsonFile, writeTextAtomic } from "../fs.js";
+import { readJsonFile, readTextIfExists, writeJsonFile } from "../fs.js";
+import { appendAssumptions } from "../assumptions/index.js";
 import { runMemoryAudit, runPostmortem } from "../audit/index.js";
+import { createBlocker } from "../feedback/index.js";
 import { recordLearningError, runLearningCycle } from "../learning/index.js";
 import {
   expectedArtifactsForUnit,
@@ -41,10 +43,12 @@ import {
 import {
   getCanonicalRunPaths,
   loadLatestCanonicalRunForUnit,
+  appendRunEvent,
   saveCanonicalRunRecord,
   saveContextManifestFile,
   saveNextActionDecisionFile,
   savePromptFile,
+  saveTranscriptFile,
   saveStateSnapshot,
   listCanonicalRunRecordsForUnit,
 } from "./runs.js";
@@ -143,17 +147,38 @@ function extractObjective(text: string): string | null {
   return null;
 }
 
+function inlineCodeSpans(text: string): string[] {
+  const spans: string[] = [];
+  const sanitized = text.replace(/```[\s\S]*?```/g, "\n");
+  const regex = /`([^`\n]{1,160})`/g;
+
+  for (const match of sanitized.matchAll(regex)) {
+    const value = match[1]?.trim();
+    if (value) {
+      spans.push(value);
+    }
+  }
+
+  return spans;
+}
+
+function isLikelyPathRef(value: string): boolean {
+  if (value.includes(" ") || /["'<>]/.test(value)) {
+    return false;
+  }
+
+  if (!/^[A-Za-z0-9._/@-]+$/.test(value)) {
+    return false;
+  }
+
+  return value.includes("/") || /\.(?:md|json|ts|tsx|js|mjs|cjs|sh|yml|yaml)$/.test(value);
+}
+
 function extractCodeRefs(text: string): string[] {
   const refs: string[] = [];
-  const regex = /`([^`]+)`/g;
 
-  for (const match of text.matchAll(regex)) {
-    const value = match[1]?.trim();
-    if (!value) {
-      continue;
-    }
-
-    if (value.includes("/") || /\.(?:md|json|ts|tsx|js|mjs|cjs|sh)$/.test(value)) {
+  for (const value of inlineCodeSpans(text)) {
+    if (isLikelyPathRef(value)) {
       refs.push(value);
     }
   }
@@ -163,15 +188,9 @@ function extractCodeRefs(text: string): string[] {
 
 function extractCommands(text: string): string[] {
   const commands: string[] = [];
-  const regex = /`([^`]+)`/g;
 
-  for (const match of text.matchAll(regex)) {
-    const value = match[1]?.trim();
-    if (!value) {
-      continue;
-    }
-
-    if (/^(pnpm|npm|npx|vitest|tsx)\b/.test(value) || /\btest\b/.test(value)) {
+  for (const value of inlineCodeSpans(text)) {
+    if (/^(pnpm|npm|npx|vitest|tsx|node|git|supercodex)\b/.test(value)) {
       commands.push(value);
     }
   }
@@ -457,7 +476,6 @@ function buildDispatchPacket(root: string, item: QueueItem, decision: NextAction
   const role = decision.role ?? "implementer";
   const resolved = resolveUnitArtifacts(root, item);
   const parsed = parseUnitId(item.unit_id);
-  const texts = manifest.refs.map((ref) => readMarkdown(root, ref));
   const unitTexts = resolved.unit.map((ref) => readMarkdown(root, ref));
   const milestoneTexts = resolved.milestone.map((ref) => readMarkdown(root, ref));
 
@@ -472,6 +490,7 @@ function buildDispatchPacket(root: string, item: QueueItem, decision: NextAction
   const planText = planRef ? readMarkdown(root, planRef) : "";
   const reviewText = reviewRef ? readMarkdown(root, reviewRef) : "";
   const boundaryText = milestoneTexts.join("\n");
+  const extractionTexts = unique([planText, reviewText, ...unitTexts, ...milestoneTexts]).filter(Boolean);
   const planningRole = role === "strategist" || role === "slice-planner" || role === "task-framer";
   const verificationState = parsed.kind === "task" ? getTaskVerificationState(root, item.unit_id) : null;
   const verificationPaths = parsed.kind === "task" ? getTaskVerificationPaths(item.unit_id) : null;
@@ -506,7 +525,7 @@ function buildDispatchPacket(root: string, item: QueueItem, decision: NextAction
     taskArtifact
       ? [...taskArtifact.likely_files, ...resolved.unit, ...resolved.milestone, ...implementationRefs]
       : [
-          ...texts.flatMap(extractCodeRefs),
+          ...extractionTexts.flatMap(extractCodeRefs),
           ...resolved.unit,
           ...resolved.milestone,
           ...(planningRole ? expectedArtifactsForUnit(root, item.unit_id) : []),
@@ -516,7 +535,7 @@ function buildDispatchPacket(root: string, item: QueueItem, decision: NextAction
   let tests = unique(
     taskArtifact
       ? taskArtifact.verification_plan.filter((entry) => /^(pnpm|npm|npx|vitest|tsx)\b/.test(entry))
-      : texts.flatMap(extractCommands),
+      : extractionTexts.flatMap(extractCommands),
   );
   let verificationPlan = unique(
     taskArtifact
@@ -674,6 +693,72 @@ function buildPromptPreview(decision: NextActionDecision, packet: DispatchPacket
   }
 
   return renderDispatchPrompt(packet);
+}
+
+function renderTranscript(
+  decision: NextActionDecision,
+  prompt: string,
+  handle: RuntimeRunHandle | null,
+  result: NormalizedResult | null,
+): string {
+  const lines = [
+    "# Transcript",
+    "",
+    "## Dispatch",
+    "",
+    `- Action: ${decision.action}`,
+    `- Unit: ${decision.unit_id ?? "unknown"}`,
+    `- Runtime: ${decision.runtime ?? "unknown"}`,
+    `- Role: ${decision.role ?? "unknown"}`,
+    "",
+    "## Prompt",
+    "",
+    "```md",
+    prompt.trimEnd(),
+    "```",
+    "",
+  ];
+
+  if (handle) {
+    lines.push(
+      "## Runtime Handle",
+      "",
+      `- Run ID: ${handle.run_id}`,
+      `- Status: ${handle.status}`,
+      `- Session ID: ${handle.session_id ?? "none"}`,
+      "",
+    );
+  }
+
+  if (result) {
+    lines.push(
+      "## Result",
+      "",
+      `- Status: ${result.status}`,
+      `- Summary: ${result.summary}`,
+      `- Started at: ${result.started_at}`,
+      `- Completed at: ${result.completed_at}`,
+      "",
+      "### Tests Run",
+      "",
+      ...(result.tests_run.length > 0 ? result.tests_run.map((entry) => `- ${entry}`) : ["- none"]),
+      "",
+      "### Assumptions",
+      "",
+      ...(result.assumptions.length > 0 ? result.assumptions.map((entry) => `- ${entry}`) : ["- none"]),
+      "",
+      "### Blockers",
+      "",
+      ...(result.blockers.length > 0 ? result.blockers.map((entry) => `- ${entry}`) : ["- none"]),
+      "",
+      "### Followups",
+      "",
+      ...(result.followups.length > 0 ? result.followups.map((entry) => `- ${entry}`) : ["- none"]),
+      "",
+    );
+  }
+
+  return lines.join("\n");
 }
 
 function gitSnapshot(state: CurrentState): CanonicalRunGitSnapshot {
@@ -1108,42 +1193,15 @@ function updateStateAfterResult(root: string, runId: string, decision: NextActio
   }
 }
 
-function nextFeedbackId(content: string, prefix: "B" | "Q", dateStamp: string): string {
-  const regex = new RegExp(`## ${prefix}-${dateStamp}-(\\d{3})`, "g");
-  let max = 0;
-  for (const match of content.matchAll(regex)) {
-    const value = Number.parseInt(match[1] ?? "0", 10);
-    if (value > max) {
-      max = value;
-    }
-  }
-
-  return `${prefix}-${dateStamp}-${String(max + 1).padStart(3, "0")}`;
-}
-
 function appendBlocker(root: string, decision: NextActionDecision, runId: string, result: NormalizedResult | null): void {
-  const ref = "vault/feedback/BLOCKERS.md";
-  const path = resolveRepoPath(root, ref);
-  const current = readTextIfExists(path) ?? "# Blockers\n";
-  const dateStamp = new Date().toISOString().slice(0, 10);
-  const blockerId = nextFeedbackId(current, "B", dateStamp);
-  const cleaned = current.replace("- No active blockers.\n", "");
-  const content = [
-    cleaned.trimEnd(),
-    "",
-    `## ${blockerId}`,
-    "",
-    `- Scope: ${decision.unit_id ?? "unknown"}`,
-    `- Type: ${result?.status === "blocked" ? "runtime_blocker" : "routing_escalation"}`,
-    `- Blocker: ${(result?.blockers[0] ?? decision.rationale[0] ?? "Human intervention is required.").trim()}`,
-    "- Required human action: Review the canonical run record and decide whether to unblock, replan, or answer through `vault/feedback/ANSWERS.md`.",
-    "- Prepared artifacts:",
-    `  - .supercodex/runs/${runId}/record.json`,
-    `  - .supercodex/runs/${runId}/continue.md`,
-    "- Resume condition: A human resolves the blocker or records a new decision in the feedback files.",
-    "",
-  ].join("\n");
-  writeTextAtomic(path, `${content.trimEnd()}\n`);
+  createBlocker(root, {
+    scope: decision.unit_id ?? "unknown",
+    type: result?.status === "blocked" ? "runtime_blocker" : "routing_escalation",
+    blocker: (result?.blockers[0] ?? decision.rationale[0] ?? "Human intervention is required.").trim(),
+    required_human_action: "Review the canonical run record and decide whether to unblock, replan, or answer through `vault/feedback/ANSWERS.md`.",
+    prepared_artifacts: [`.supercodex/runs/${runId}/record.json`, `.supercodex/runs/${runId}/continue.md`],
+    resume_condition: "A human resolves the blocker or records a new decision in the feedback files.",
+  });
 }
 
 function createRunningRecord(
@@ -1221,6 +1279,7 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
   saveContextManifestFile(root, runId, preview.context_manifest);
   writeJsonFile(resolveRepoPath(root, paths.packet_ref), preview.packet);
   savePromptFile(root, runId, prompt);
+  saveTranscriptFile(root, runId, renderTranscript(preview.decision, prompt, null, null));
   saveStateSnapshot(root, runId, loadCurrentState(root));
   saveContinuationArtifacts(root, runId, buildContinuationPacket(runId, preview.decision, preview.packet, null));
   writeRecoveryCheckpoint(
@@ -1239,6 +1298,14 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
   patchStateForRun(root, runId, preview.decision.runtime, preview.decision.unit_id!);
 
   let record = createRunningRecord(root, runId, preview.decision, preview.packet);
+  appendRunEvent(root, runId, {
+    timestamp: record.started_at,
+    type: "run.created",
+    run_id: runId,
+    unit_id: preview.decision.unit_id,
+    runtime: preview.decision.runtime,
+    action: preview.decision.action,
+  });
 
   const adapter = getRuntimeAdapter(preview.decision.runtime);
   const dispatched =
@@ -1248,6 +1315,7 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
 
   writeJsonFile(resolveRepoPath(root, paths.handle_ref), dispatched.handle);
   writeJsonFile(resolveRepoPath(root, paths.normalized_ref), dispatched.result);
+  saveTranscriptFile(root, runId, renderTranscript(preview.decision, prompt, dispatched.handle, dispatched.result));
   saveContinuationArtifacts(root, runId, buildContinuationPacket(runId, preview.decision, preview.packet, dispatched.result));
   writeRecoveryCheckpoint(
     root,
@@ -1257,6 +1325,23 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
     preview.decision.unit_id,
     preview.decision.runtime,
   );
+  appendRunEvent(root, runId, {
+    timestamp: dispatched.handle.started_at,
+    type: "runtime.dispatched",
+    run_id: runId,
+    unit_id: preview.decision.unit_id,
+    runtime: dispatched.handle.runtime,
+    session_id: dispatched.handle.session_id,
+  });
+  appendRunEvent(root, runId, {
+    timestamp: dispatched.result.completed_at,
+    type: "runtime.completed",
+    run_id: runId,
+    unit_id: preview.decision.unit_id,
+    runtime: dispatched.result.runtime,
+    status: dispatched.result.status,
+    summary: dispatched.result.summary,
+  });
 
   record = {
     ...record,
@@ -1277,6 +1362,14 @@ export async function dispatchNextAction(root: string): Promise<NextActionDispat
     usage: dispatched.result.usage ?? null,
   };
   saveCanonicalRunRecord(root, record);
+  appendAssumptions(
+    root,
+    dispatched.result.assumptions.map((assumption) => ({
+      scope: preview.decision.unit_id ?? "unknown",
+      assumption,
+      timestamp: dispatched.result.completed_at,
+    })),
+  );
   updateStateAfterResult(root, runId, preview.decision, dispatched.result);
 
   if (dispatched.result.status === "blocked") {

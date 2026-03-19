@@ -8,12 +8,14 @@ Current status:
 
 Use this file for blockers that require human action before safe continuation.
 
-## B-YYYY-MM-DD-001
+Entry contract:
 
-- Scope:
-- Type:
-- Blocker:
-- Required human action:
-- Prepared artifacts:
-  - path/to/artifact
-- Resume condition:
+- `## B-YYYY-MM-DD-001`
+- `- Scope:`
+- `- Type:`
+- `- Blocker:`
+- `- Required human action:`
+- `- Prepared artifacts:` with nested bullets
+- `- Resume condition:`
+- `- Status: open|resolved`
+- `- Answered by:`

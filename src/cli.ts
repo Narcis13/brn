@@ -4,9 +4,10 @@ import { pathToFileURL } from "node:url";
 
 import { hasGitRepository } from "./supercodex/git.js";
 import { createProcessImprovementReport, listPatternCandidates, loadLearningState, runLearningCycle, showLearning } from "./supercodex/learning/index.js";
-import { syncPlanningQueue, validatePlanningSurface } from "./supercodex/planning/index.js";
+import { generateMilestone, generateRoadmap, generateSlice, generateTasks, syncPlanningQueue, validatePlanningSurface } from "./supercodex/planning/index.js";
 import { dispatchParallel, runIntegration, showIntegration, showParallel } from "./supercodex/parallel/index.js";
 import { runMemoryAudit, runPostmortem } from "./supercodex/audit/index.js";
+import { createBlocker, createQuestion, ingestAnswers } from "./supercodex/feedback/index.js";
 import { assessRecovery, reconcileRecovery } from "./supercodex/recovery/index.js";
 import { getRuntimeAdapter } from "./supercodex/runtime/adapters.js";
 import { resolvePacketPath, listRuntimeRegistry, loadDispatchPacket, probeRuntimes } from "./supercodex/runtime/registry.js";
@@ -37,6 +38,7 @@ import { validateCurrentState } from "./supercodex/schemas.js";
 import { PHASES, QUEUE_STATUSES, UNIT_TYPES } from "./supercodex/types.js";
 import type { CurrentState, LockRecord, Phase, QueueItem, QueueStatus, TransitionRecord, UnitType } from "./supercodex/types.js";
 import type { RuntimeId } from "./supercodex/runtime/types.js";
+import type { RoadmapMilestoneDraft } from "./supercodex/planning/types.js";
 
 interface CliOptions {
   cwd?: string;
@@ -76,6 +78,13 @@ function usage(): string {
     "  supercodex learning patterns",
     "  supercodex plan sync",
     "  supercodex plan validate [--unit <unit_id>]",
+    "  supercodex plan generate-roadmap --milestones <M101:Title|M102:Title> [--active-milestone <M###>]",
+    "  supercodex plan generate-milestone --milestone <M###> --title <text> --objective <text> --why-now <text> --exit-criteria <a|b> [--activate] [--replace-queue]",
+    "  supercodex plan generate-slice --unit <M###/S##> --title <text> --demo <text> [--objective <text>] [--acceptance <a|b>] [--likely-files <a|b>]",
+    "  supercodex plan generate-tasks --unit <M###/S##> [--count <n>] [--likely-files <a|b>] [--verification <a|b>]",
+    "  supercodex feedback ask --scope <scope> --issue <text> --why-blocked <text> [--severity <level>] [--type <kind>] [--options <a|b>] [--recommended <text>] [--pause-point <text>]",
+    "  supercodex feedback block --scope <scope> --blocker <text> --required-human-action <text> --resume-condition <text> [--type <kind>] [--prepared-artifacts <a|b>]",
+    "  supercodex feedback ingest",
     "  supercodex parallel show",
     "  supercodex parallel dispatch [--workers <n>]",
     "  supercodex integrate show",
@@ -123,6 +132,57 @@ function parseDependsOn(value?: string): string[] {
     .split(",")
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function parsePipeList(value?: string): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split("|")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, received ${value}.`);
+  }
+
+  return parsed;
+}
+
+function parseMilestoneDrafts(value: string | undefined): RoadmapMilestoneDraft[] {
+  const drafts = parsePipeList(value).map((entry) => {
+    const separator = entry.indexOf(":");
+    if (separator === -1) {
+      throw new Error(`Milestone entry must look like M101:Title, received ${entry}.`);
+    }
+
+    const milestone_id = entry.slice(0, separator).trim();
+    const title = entry.slice(separator + 1).trim();
+    if (!milestone_id || !title) {
+      throw new Error(`Milestone entry must include both id and title, received ${entry}.`);
+    }
+
+    return {
+      milestone_id,
+      title,
+      summary: `Deliver ${title.toLowerCase()} as a deterministic, testable milestone.`,
+    };
+  });
+
+  if (drafts.length === 0) {
+    throw new Error("At least one milestone entry is required.");
+  }
+
+  return drafts;
 }
 
 function isPhase(value: string): value is Phase {
@@ -426,7 +486,103 @@ function handlePlan(args: string[], root: string, writeOut: (text: string) => vo
     return validations.every((validation) => validation.ok) ? 0 : 1;
   }
 
+  if (subcommand === "generate-roadmap") {
+    const result = generateRoadmap(root, {
+      milestones: parseMilestoneDrafts(getOption(args, "--milestones")),
+      active_milestone: getOption(args, "--active-milestone"),
+    });
+    writeJson(writeOut, result);
+    return 0;
+  }
+
+  if (subcommand === "generate-milestone") {
+    const result = generateMilestone(root, {
+      milestone_id: requireOption(args, "--milestone"),
+      title: requireOption(args, "--title"),
+      objective: requireOption(args, "--objective"),
+      why_now: requireOption(args, "--why-now"),
+      exit_criteria: parsePipeList(getOption(args, "--exit-criteria")),
+      activate: args.includes("--activate"),
+      replace_queue: args.includes("--replace-queue"),
+    });
+    writeJson(writeOut, result);
+    return 0;
+  }
+
+  if (subcommand === "generate-slice") {
+    const result = generateSlice(root, {
+      unit_id: requireOption(args, "--unit"),
+      title: requireOption(args, "--title"),
+      demo_sentence: requireOption(args, "--demo"),
+      objective: getOption(args, "--objective"),
+      acceptance_criteria: parsePipeList(getOption(args, "--acceptance")),
+      likely_files: parsePipeList(getOption(args, "--likely-files")),
+    });
+    writeJson(writeOut, result);
+    return 0;
+  }
+
+  if (subcommand === "generate-tasks") {
+    const result = generateTasks(root, {
+      unit_id: requireOption(args, "--unit"),
+      count: parsePositiveInteger(getOption(args, "--count"), 2),
+      likely_files: parsePipeList(getOption(args, "--likely-files")),
+      verification_plan: parsePipeList(getOption(args, "--verification")),
+    });
+    writeJson(writeOut, result);
+    return 0;
+  }
+
   throw new Error(`Unknown plan subcommand: ${subcommand ?? "<missing>"}`);
+}
+
+function handleFeedback(args: string[], root: string, writeOut: (text: string) => void): number {
+  const subcommand = args[0];
+
+  if (subcommand === "ask") {
+    const result = createQuestion(root, {
+      scope: requireOption(args, "--scope"),
+      issue: requireOption(args, "--issue"),
+      why_blocked: requireOption(args, "--why-blocked"),
+      severity: getOption(args, "--severity"),
+      type: getOption(args, "--type"),
+      options: parsePipeList(getOption(args, "--options")),
+      recommended_default: getOption(args, "--recommended"),
+      latest_pause_point: getOption(args, "--pause-point"),
+    });
+    writeJson(writeOut, result);
+    return 0;
+  }
+
+  if (subcommand === "block") {
+    const scope = requireOption(args, "--scope");
+    const result = createBlocker(root, {
+      scope,
+      blocker: requireOption(args, "--blocker"),
+      required_human_action: requireOption(args, "--required-human-action"),
+      resume_condition: requireOption(args, "--resume-condition"),
+      type: getOption(args, "--type"),
+      prepared_artifacts: parsePipeList(getOption(args, "--prepared-artifacts")),
+    });
+    const scopedUnit = /^M\d{3}(?:\/S\d{2}(?:\/T\d{2})?)?$/.test(scope) ? scope : undefined;
+    const state =
+      result.state.phase === "blocked"
+        ? result.state
+        : transitionState(root, "blocked", `Feedback blocker ${result.id} requires human action.`, scopedUnit, "feedback");
+    writeJson(writeOut, {
+      ...result,
+      state,
+    });
+    return 0;
+  }
+
+  if (subcommand === "ingest") {
+    const result = ingestAnswers(root);
+    writeJson(writeOut, result);
+    return result.ok ? 0 : 1;
+  }
+
+  throw new Error(`Unknown feedback subcommand: ${subcommand ?? "<missing>"}`);
 }
 
 function handleParallel(args: string[], root: string, writeOut: (text: string) => void): Promise<number> | number {
@@ -630,6 +786,8 @@ export async function runCli(argv: string[], options: CliOptions = {}): Promise<
         return handleLearning(rest, cwd, writeOut);
       case "plan":
         return handlePlan(rest, cwd, writeOut);
+      case "feedback":
+        return handleFeedback(rest, cwd, writeOut);
       case "parallel":
         return await handleParallel(rest, cwd, writeOut);
       case "integrate":

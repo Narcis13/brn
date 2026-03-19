@@ -1,17 +1,23 @@
 import { readdirSync } from "node:fs";
 
-import { fileExists, readJsonFile, readText, readTextIfExists, writeJsonFile } from "../fs.js";
+import { fileExists, readJsonFile, readText, readTextIfExists, writeJsonFile, writeTextAtomic } from "../fs.js";
 import { CURRENT_STATE_PATH, QUEUE_STATE_PATH, isPlaceholderContent, resolveRepoPath } from "../paths.js";
 import { validateCurrentState, validateQueueState } from "../schemas.js";
 import type { CurrentState, QueueItem, QueueState, QueueStatus, UnitType } from "../types.js";
 import type {
+  GenerateMilestoneParams,
+  GenerateRoadmapParams,
+  GenerateSliceParams,
+  GenerateTasksParams,
   ParsedTaskArtifact,
   ParsedUnitId,
   PlanningMode,
+  PlanningGenerationResult,
   PlanningQueueSyncResult,
   PlanningValidationResult,
   QueueItemDraft,
   QueueMergeResult,
+  RoadmapMilestoneDraft,
   TaskTddMode,
   VerificationPlanBuckets,
 } from "./types.js";
@@ -811,6 +817,558 @@ export function syncPlanningQueue(root: string): PlanningQueueSyncResult {
     added: unique(added),
     updated: unique(updated),
     validations,
+  };
+}
+
+function assertMilestoneId(milestoneId: string): string {
+  if (!MILESTONE_DIR_RE.test(milestoneId)) {
+    throw new Error(`Unsupported milestone id: ${milestoneId}`);
+  }
+
+  return milestoneId;
+}
+
+function assertSliceUnitId(unitId: string): ParsedUnitId {
+  const parsed = assertSupportedUnitId(unitId);
+  if (parsed.kind !== "slice") {
+    throw new Error(`Expected a slice unit id, received ${unitId}.`);
+  }
+
+  return parsed;
+}
+
+function cleanSentence(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  return trimmed || fallback;
+}
+
+function insertMilestoneLine(document: string, line: string, matcher: RegExp, anchor: RegExp): string {
+  const normalized = document.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  const existingIndex = lines.findIndex((entry) => matcher.test(entry));
+
+  if (existingIndex !== -1) {
+    lines[existingIndex] = line;
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  const anchorIndex = lines.findIndex((entry) => anchor.test(entry));
+  if (anchorIndex !== -1) {
+    lines.splice(anchorIndex, 0, line);
+    return `${lines.join("\n").trimEnd()}\n`;
+  }
+
+  return `${normalized.trimEnd()}\n${line}\n`;
+}
+
+function replaceOrAppend(document: string, matcher: RegExp, replacement: string): string {
+  const normalized = document.replace(/\r\n/g, "\n");
+  if (matcher.test(normalized)) {
+    return `${normalized.replace(matcher, replacement).trimEnd()}\n`;
+  }
+
+  return `${normalized.trimEnd()}\n${replacement}\n`;
+}
+
+function updateRoadmapActiveMilestone(document: string, milestoneId: string, title: string): string {
+  return replaceOrAppend(
+    document,
+    /- Active milestone: `M\d{3}` \/ .+/,
+    `- Active milestone: \`${milestoneId}\` / ${title}`,
+  );
+}
+
+function updateMilestoneReadme(content: string, milestoneId: string, title: string, active: boolean): string {
+  const inserted = insertMilestoneLine(
+    content,
+    `- \`${milestoneId}/\` / ${title}`,
+    new RegExp(`^- \`${milestoneId}/\` / .+$`),
+    /^Current active milestone:/,
+  );
+
+  if (!active) {
+    return inserted;
+  }
+
+  return replaceOrAppend(inserted, /Current active milestone: `M\d{3}`/, `Current active milestone: \`${milestoneId}\``);
+}
+
+function updateVaultIndex(root: string, content: string, milestoneId: string, title: string, clearQueueHead: boolean): string {
+  let next = content.replace(/\r\n/g, "\n");
+  const milestoneAbsPath = resolveRepoPath(root, `vault/milestones/${milestoneId}/milestone.md`);
+  const boundaryAbsPath = resolveRepoPath(root, `vault/milestones/${milestoneId}/boundary-map.md`);
+  next = replaceOrAppend(
+    next,
+    /- Active milestone: \[milestones\/M\d{3}\/milestone\.md\]\([^)]+\)/,
+    `- Active milestone: [milestones/${milestoneId}/milestone.md](${milestoneAbsPath})`,
+  );
+  next = replaceOrAppend(
+    next,
+    /- Active boundary map: \[milestones\/M\d{3}\/boundary-map\.md\]\([^)]+\)/,
+    `- Active boundary map: [milestones/${milestoneId}/boundary-map.md](${boundaryAbsPath})`,
+  );
+  next = replaceOrAppend(next, /- Active milestone: M\d{3}/, `- Active milestone: ${milestoneId}`);
+  if (clearQueueHead) {
+    next = replaceOrAppend(next, /- `M\d{3}\/S\d{2}`|- none/, "- none");
+  }
+
+  const docsMatch = next.match(/- Milestone docs: .+/);
+  if (docsMatch && !docsMatch[0].includes(`\`${milestoneId}\``)) {
+    next = next.replace(docsMatch[0], `${docsMatch[0]}, \`${milestoneId}\``);
+  }
+
+  if (!next.includes(`\`${milestoneId}\``)) {
+    next = `${next.trimEnd()}\n- \`${milestoneId}\` is now tracked in \`vault/milestones/${milestoneId}/\` as ${title}.\n`;
+  }
+
+  return `${next.trimEnd()}\n`;
+}
+
+function roadmapIntent(root: string): string {
+  const vision = readTextIfExists(resolveRepoPath(root, "vault/vision.md")) ?? "";
+  const sections = parseSections(vision);
+  return (
+    readScalarSection(sections, "Project") ||
+    "Build the project in milestone order so each milestone leaves behind a usable, testable control-plane capability."
+  );
+}
+
+function loadExistingRoadmapDraft(root: string, milestoneId: string): RoadmapMilestoneDraft {
+  const milestoneRef = resolveRepoPath(root, `vault/milestones/${milestoneId}/milestone.md`);
+  const milestoneText = readTextIfExists(milestoneRef) ?? "";
+  const heading = milestoneText.split("\n").find((entry) => entry.trim().startsWith("# "));
+  const title = heading?.replace(/^#\s+M\d{3}:\s*/, "").trim() || `Milestone ${milestoneId}`;
+  const sections = parseSections(milestoneText);
+  const summary = readScalarSection(sections, "Objective") || `Deliver ${title.toLowerCase()} in a shippable increment.`;
+  return {
+    milestone_id: milestoneId,
+    title,
+    summary,
+  };
+}
+
+function mergeRoadmapDrafts(root: string, drafts: RoadmapMilestoneDraft[]): RoadmapMilestoneDraft[] {
+  const byId = new Map<string, RoadmapMilestoneDraft>();
+  for (const milestoneId of listMilestoneIds(root)) {
+    byId.set(milestoneId, loadExistingRoadmapDraft(root, milestoneId));
+  }
+  for (const draft of drafts) {
+    byId.set(draft.milestone_id, draft);
+  }
+  return [...byId.values()].sort((left, right) => left.milestone_id.localeCompare(right.milestone_id));
+}
+
+function renderRoadmap(root: string, params: GenerateRoadmapParams): string {
+  const milestones = mergeRoadmapDrafts(root, params.milestones);
+  const activeMilestone = params.active_milestone ?? milestones[0]?.milestone_id ?? "M001";
+  const activeTitle = milestones.find((entry) => entry.milestone_id === activeMilestone)?.title ?? milestones[0]?.title ?? "Planned milestone";
+
+  return [
+    "# Roadmap",
+    "",
+    "## Intent",
+    "",
+    roadmapIntent(root),
+    "",
+    "## Current Status",
+    "",
+    `- Active milestone: \`${activeMilestone}\` / ${activeTitle}`,
+    "",
+    "## Milestones",
+    "",
+    ...milestones.flatMap((entry) => [`- \`${entry.milestone_id}\` / ${entry.title}`, `  ${entry.summary}`]),
+    "",
+  ].join("\n");
+}
+
+function renderMilestoneDoc(params: GenerateMilestoneParams): string {
+  return [
+    `# ${params.milestone_id}: ${params.title}`,
+    "",
+    "## Objective",
+    "",
+    params.objective.trim(),
+    "",
+    "## Why Now",
+    "",
+    params.why_now.trim(),
+    "",
+    "## Exit Criteria",
+    "",
+    ...params.exit_criteria.map((entry) => `- ${entry}`),
+    "",
+  ].join("\n");
+}
+
+function renderMilestoneBoundary(params: GenerateMilestoneParams): string {
+  return [
+    `# ${params.milestone_id} Boundary Map`,
+    "",
+    "## In Scope",
+    "",
+    `- Artifacts under \`vault/milestones/${params.milestone_id}/\``,
+    `- Slice scaffolds that realize ${params.title}`,
+    `- Queueable contracts that the conductor can validate from disk`,
+    "",
+    "## Out Of Scope",
+    "",
+    "- Unplanned follow-on milestones.",
+    "- Runtime-specific implementation details beyond what this milestone needs to prove.",
+    "",
+    "## Deterministic Guarantees",
+    "",
+    `- ${params.milestone_id} can be validated from disk alone.`,
+    "- Generated slice and task artifacts remain Git-friendly and machine-parseable.",
+    "",
+  ].join("\n");
+}
+
+function renderMilestoneSummary(params: GenerateMilestoneParams): string {
+  return [
+    `# ${params.milestone_id} Summary`,
+    "",
+    "Status: planned",
+    "",
+    `This milestone is scoped to ${params.title.toLowerCase()}.`,
+    "",
+  ].join("\n");
+}
+
+function renderMilestoneUat(milestoneId: string): string {
+  return [
+    `# ${milestoneId} UAT`,
+    "",
+    "1. Run `pnpm cli plan validate --unit " + milestoneId + "` and confirm the milestone artifacts validate cleanly.",
+    "2. Generate at least one slice and one task set under the milestone.",
+    "3. Run `pnpm cli plan sync` and confirm queueable task units are created deterministically.",
+    "",
+  ].join("\n");
+}
+
+function renderSliceDoc(params: GenerateSliceParams): string {
+  const objective = params.objective?.trim() || params.demo_sentence.trim();
+  const acceptance = params.acceptance_criteria?.filter(Boolean) ?? [];
+
+  return [
+    `# ${assertSliceUnitId(params.unit_id).slice_id}: ${params.title}`,
+    "",
+    `Demo sentence: ${params.demo_sentence.trim()}`,
+    "",
+    "## Objective",
+    "",
+    objective,
+    "",
+    ...(acceptance.length > 0 ? ["## Acceptance Criteria", "", ...acceptance.map((entry) => `- ${entry}`), ""] : []),
+  ].join("\n");
+}
+
+function renderSliceBoundary(unitId: string, title: string, likelyFiles: string[]): string {
+  return [
+    `# ${unitId} Boundary Map`,
+    "",
+    "## In Scope",
+    "",
+    `- ${title}`,
+    ...likelyFiles.map((entry) => `- \`${entry}\``),
+    "",
+    "## Out Of Scope",
+    "",
+    "- Unrelated slices or milestone-wide refactors.",
+    "",
+  ].join("\n");
+}
+
+function renderSliceResearch(unitId: string, title: string): string {
+  return [
+    `# ${unitId} Research`,
+    "",
+    `- Confirm the existing conventions that should shape ${title.toLowerCase()}.`,
+    "- Capture implementation pitfalls before task generation begins.",
+    "",
+  ].join("\n");
+}
+
+function renderSlicePlan(unitId: string, acceptanceCriteria: string[]): string {
+  const criteria = acceptanceCriteria.length > 0 ? acceptanceCriteria : ["Produce bounded task files that cover the slice objective."];
+  return [
+    `# ${unitId} Plan`,
+    "",
+    ...criteria.map((entry) => `- ${entry}`),
+    "- Run `pnpm cli plan validate --unit " + unitId + "` after task generation.",
+    "",
+  ].join("\n");
+}
+
+function renderSliceReview(unitId: string): string {
+  return [
+    `# ${unitId} Review`,
+    "",
+    "- Confirm the slice contract is small enough for one clean reasoning window.",
+    "- Confirm generated tasks preserve clear acceptance and verification boundaries.",
+    "",
+  ].join("\n");
+}
+
+function renderSliceSummary(unitId: string): string {
+  return [
+    `# ${unitId} Summary`,
+    "",
+    "Status: planned",
+    "",
+    "Pending.",
+    "",
+  ].join("\n");
+}
+
+function renderTaskDoc(params: {
+  unit_id: string;
+  title: string;
+  objective: string;
+  why_now: string;
+  acceptance_criteria: string[];
+  likely_files: string[];
+  verification_plan: string[];
+  dependency: string | null;
+}): string {
+  return [
+    `# ${params.unit_id.split("/").at(-1)}: ${params.title}`,
+    "",
+    "## Objective",
+    "",
+    params.objective,
+    "",
+    "## Why Now",
+    "",
+    params.why_now,
+    "",
+    "## Acceptance Criteria",
+    "",
+    ...params.acceptance_criteria.map((entry) => `- ${entry}`),
+    "",
+    "## TDD Mode",
+    "",
+    "strict_tdd",
+    "",
+    "## Likely Files",
+    "",
+    ...params.likely_files.map((entry) => `- \`${entry}\``),
+    "",
+    "## Verification Plan",
+    "",
+    ...params.verification_plan.map((entry) => `- ${entry}`),
+    "",
+    "## Dependencies",
+    "",
+    `- ${params.dependency ?? "none"}`,
+    "",
+    "## Safety Class",
+    "",
+    "reversible",
+    "",
+    "## Status",
+    "",
+    "planned",
+    "",
+    "## Summary",
+    "",
+    "Pending.",
+    "",
+  ].join("\n");
+}
+
+function sliceTitle(root: string, milestoneId: string, sliceId: string): string {
+  const text = readTextIfExists(resolveRepoPath(root, `vault/milestones/${milestoneId}/slices/${sliceId}/slice.md`)) ?? "";
+  const firstLine = text.split("\n").find((entry) => entry.trim().startsWith("# "));
+  return firstLine?.replace(/^#\s+S\d{2}:\s*/, "").trim() || `${milestoneId}/${sliceId}`;
+}
+
+function activateMilestone(root: string, milestoneId: string, replaceQueue: boolean): void {
+  const current = loadCurrentStateFile(root);
+  writeJsonFile(resolveRepoPath(root, CURRENT_STATE_PATH), {
+    ...current,
+    active_milestone: milestoneId,
+    active_slice: null,
+    active_task: null,
+    queue_head: null,
+    phase: "plan",
+    active_runtime: null,
+    blocked: false,
+    awaiting_human: false,
+    current_run_id: null,
+    recovery_ref: null,
+  });
+
+  if (replaceQueue) {
+    const queue = loadQueueStateFile(root);
+    writeJsonFile(resolveRepoPath(root, QUEUE_STATE_PATH), {
+      ...queue,
+      items: [],
+    });
+  }
+}
+
+function ensureMilestoneListedInRoadmap(root: string, draft: RoadmapMilestoneDraft, active: boolean): void {
+  const roadmapRef = resolveRepoPath(root, "vault/roadmap.md");
+  if (!fileExists(roadmapRef)) {
+    writeTextAtomic(
+      roadmapRef,
+      renderRoadmap(root, {
+        milestones: [draft],
+        active_milestone: active ? draft.milestone_id : draft.milestone_id,
+      }),
+    );
+    return;
+  }
+
+  let content = readText(roadmapRef);
+  const bullet = `- \`${draft.milestone_id}\` / ${draft.title}\n  ${draft.summary}`;
+  if (!content.includes(`\`${draft.milestone_id}\``)) {
+    content = `${content.trimEnd()}\n${bullet}\n`;
+  }
+  if (active) {
+    content = updateRoadmapActiveMilestone(content, draft.milestone_id, draft.title);
+  }
+  writeTextAtomic(roadmapRef, `${content.trimEnd()}\n`);
+}
+
+export function generateRoadmap(root: string, params: GenerateRoadmapParams): PlanningGenerationResult {
+  if (params.milestones.length === 0) {
+    throw new Error("generateRoadmap requires at least one milestone.");
+  }
+
+  params.milestones.forEach((entry) => assertMilestoneId(entry.milestone_id));
+  const ref = "vault/roadmap.md";
+  writeTextAtomic(resolveRepoPath(root, ref), `${renderRoadmap(root, params).trimEnd()}\n`);
+  return {
+    unit_id: ROADMAP_UNIT_ID,
+    refs: [ref],
+    state_updated: false,
+    queue_reset: false,
+  };
+}
+
+export function generateMilestone(root: string, params: GenerateMilestoneParams): PlanningGenerationResult {
+  const milestoneId = assertMilestoneId(params.milestone_id);
+  const refs = [
+    `vault/milestones/${milestoneId}/milestone.md`,
+    `vault/milestones/${milestoneId}/boundary-map.md`,
+    `vault/milestones/${milestoneId}/summary.md`,
+    `vault/milestones/${milestoneId}/uat.md`,
+  ];
+
+  writeTextAtomic(resolveRepoPath(root, refs[0]), `${renderMilestoneDoc(params).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[1]), `${renderMilestoneBoundary(params).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[2]), `${renderMilestoneSummary(params).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[3]), `${renderMilestoneUat(milestoneId).trimEnd()}\n`);
+
+  const draft: RoadmapMilestoneDraft = {
+    milestone_id: milestoneId,
+    title: params.title,
+    summary: cleanSentence(params.objective, `Deliver ${params.title.toLowerCase()}.`),
+  };
+  ensureMilestoneListedInRoadmap(root, draft, params.activate ?? false);
+
+  const readmeRef = resolveRepoPath(root, "vault/milestones/README.md");
+  if (fileExists(readmeRef)) {
+    writeTextAtomic(readmeRef, updateMilestoneReadme(readText(readmeRef), milestoneId, params.title, params.activate ?? false));
+  }
+
+  const indexRef = resolveRepoPath(root, "vault/index.md");
+  if (fileExists(indexRef)) {
+    writeTextAtomic(indexRef, updateVaultIndex(root, readText(indexRef), milestoneId, params.title, params.activate ?? false));
+  }
+
+  if (params.activate) {
+    activateMilestone(root, milestoneId, params.replace_queue ?? false);
+  }
+
+  return {
+    unit_id: milestoneId,
+    refs,
+    state_updated: params.activate ?? false,
+    queue_reset: params.activate ? (params.replace_queue ?? false) : false,
+  };
+}
+
+export function generateSlice(root: string, params: GenerateSliceParams): PlanningGenerationResult {
+  const parsed = assertSliceUnitId(params.unit_id);
+  const milestoneId = parsed.milestone_id!;
+  const sliceId = parsed.slice_id!;
+  const base = `vault/milestones/${milestoneId}/slices/${sliceId}`;
+  const refs = relativeRefs(base, MODERN_SLICE_FILES);
+  const acceptanceCriteria = unique(params.acceptance_criteria ?? []);
+  const likelyFiles = unique(params.likely_files ?? []);
+
+  writeTextAtomic(resolveRepoPath(root, refs[0]), `${renderSliceDoc(params).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[1]), `${renderSliceBoundary(params.unit_id, params.title, likelyFiles).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[2]), `${renderSliceResearch(params.unit_id, params.title).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[3]), `${renderSlicePlan(params.unit_id, acceptanceCriteria).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[4]), `${renderSliceReview(params.unit_id).trimEnd()}\n`);
+  writeTextAtomic(resolveRepoPath(root, refs[5]), `${renderSliceSummary(params.unit_id).trimEnd()}\n`);
+
+  return {
+    unit_id: params.unit_id,
+    refs,
+    state_updated: false,
+    queue_reset: false,
+  };
+}
+
+export function generateTasks(root: string, params: GenerateTasksParams): PlanningGenerationResult {
+  const parsed = assertSliceUnitId(params.unit_id);
+  const milestoneId = parsed.milestone_id!;
+  const sliceId = parsed.slice_id!;
+  const count = Math.max(1, Math.min(params.count ?? 2, 9));
+  const files = unique(params.likely_files ?? ["README.md"]);
+  const verificationPlan = unique(
+    params.verification_plan ?? [`pnpm cli plan validate --unit ${params.unit_id}`, "pnpm test"],
+  );
+  const title = sliceTitle(root, milestoneId, sliceId);
+  const refs: string[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const taskId = `T${String(index + 1).padStart(2, "0")}`;
+    const unitId = `${params.unit_id}/${taskId}`;
+    const dependency = index === 0 ? null : `${params.unit_id}/T${String(index).padStart(2, "0")}`;
+    const taskTitle =
+      count === 1
+        ? `Implement ${title}`
+        : index === 0
+          ? `Frame ${title}`
+          : index === count - 1
+            ? `Finish ${title}`
+            : `Advance ${title} step ${index + 1}`;
+    const ref = `vault/milestones/${milestoneId}/slices/${sliceId}/tasks/${taskId}.md`;
+    refs.push(ref);
+    writeTextAtomic(
+      resolveRepoPath(root, ref),
+      `${renderTaskDoc({
+        unit_id: unitId,
+        title: taskTitle,
+        objective:
+          index === 0
+            ? `Create the first bounded implementation task for ${title}.`
+            : `Move ${title} forward through a discrete, verifiable step.`,
+        why_now:
+          index === 0
+            ? `The conductor needs task files before it can dispatch ${params.unit_id}.`
+            : `Breaking ${title} into explicit steps keeps the slice within a clean reasoning window.`,
+        acceptance_criteria: [
+          `Keep ${unitId} valid against the modern task contract.`,
+          `Advance ${title} without expanding the slice boundary.`,
+        ],
+        likely_files: files,
+        verification_plan: verificationPlan,
+        dependency,
+      }).trimEnd()}\n`,
+    );
+  }
+
+  return {
+    unit_id: params.unit_id,
+    refs,
+    state_updated: false,
+    queue_reset: false,
   };
 }
 

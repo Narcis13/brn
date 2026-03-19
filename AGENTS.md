@@ -43,4 +43,4 @@ Project skills:
 
 Current milestone:
 
-- `M001` / Vault and State Engine. Start from [vault/milestones/M001/milestone.md](/Users/narcisbrindusescu/newme/brn/vault/milestones/M001/milestone.md) and [vault/index.md](/Users/narcisbrindusescu/newme/brn/vault/index.md).
+- Follow the active milestone recorded in [.supercodex/state/current.json](/Users/narcisbrindusescu/newme/brn/.supercodex/state/current.json) and summarized in [vault/index.md](/Users/narcisbrindusescu/newme/brn/vault/index.md).
