@@ -4,4 +4,4 @@ status: complete
 ---
 
 ## What Was Built
-Task completed successfully.
+Password & JWT Utilities
