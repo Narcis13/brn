@@ -10,12 +10,18 @@ const mockAuthContext: AuthContext = { userId: "user123", email: "test@example.c
 // Create mock functions
 const mockCreateBoard = vi.fn();
 const mockFindBoardsByUserId = vi.fn();
+const mockFindBoardById = vi.fn();
+const mockUpdateBoard = vi.fn();
+const mockDeleteBoard = vi.fn();
 const mockGetDb = vi.fn(() => "mock-db-instance");
 
 // Mock modules
 mock.module("../boards/board.repo", () => ({
   createBoard: mockCreateBoard,
-  findBoardsByUserId: mockFindBoardsByUserId
+  findBoardsByUserId: mockFindBoardsByUserId,
+  findBoardById: mockFindBoardById,
+  updateBoard: mockUpdateBoard,
+  deleteBoard: mockDeleteBoard
 }));
 
 mock.module("../db", () => ({
@@ -195,6 +201,217 @@ describe("Board Routes", () => {
       expect(data).toEqual(currentUserBoards);
       expect(mockFindBoardsByUserId).toHaveBeenCalledWith("mock-db-instance", mockAuthContext.userId);
       expect(mockFindBoardsByUserId).not.toHaveBeenCalledWith("mock-db-instance", "otherUserId");
+    });
+  });
+
+  describe("GET /api/boards/:id", () => {
+    test("returns board when user owns it", async () => {
+      const board: Board = {
+        id: "board123",
+        name: "My Board",
+        userId: mockAuthContext.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(board);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${validToken}` }
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual(board);
+      expect(mockFindBoardById).toHaveBeenCalledWith("mock-db-instance", "board123");
+    });
+
+    test("returns 404 when board not found", async () => {
+      mockFindBoardById.mockResolvedValue(null);
+
+      const res = await app.request("/api/boards/nonexistent", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${validToken}` }
+      });
+
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data).toHaveProperty("error");
+    });
+
+    test("returns 404 when user doesn't own board", async () => {
+      const otherUserBoard: Board = {
+        id: "board123",
+        name: "Other User Board",
+        userId: "otheruser456",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(otherUserBoard);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${validToken}` }
+      });
+
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data).toHaveProperty("error");
+    });
+
+    test("requires authentication", async () => {
+      const res = await app.request("/api/boards/board123", {
+        method: "GET"
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockFindBoardById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("PUT /api/boards/:id", () => {
+    test("updates board name", async () => {
+      const existingBoard: Board = {
+        id: "board123",
+        name: "Old Name",
+        userId: mockAuthContext.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      const updatedBoard: Board = {
+        ...existingBoard,
+        name: "New Name",
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(existingBoard);
+      mockUpdateBoard.mockResolvedValue(updatedBoard);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${validToken}`
+        },
+        body: JSON.stringify({ name: "New Name" })
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data).toEqual(updatedBoard);
+      expect(mockUpdateBoard).toHaveBeenCalledWith("mock-db-instance", "board123", {
+        name: "New Name"
+      });
+    });
+
+    test("validates new name", async () => {
+      const existingBoard: Board = {
+        id: "board123",
+        name: "Current Name",
+        userId: mockAuthContext.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(existingBoard);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${validToken}`
+        },
+        body: JSON.stringify({ name: "" })
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data).toHaveProperty("error");
+      expect(mockUpdateBoard).not.toHaveBeenCalled();
+    });
+
+    test("returns 404 when user doesn't own board", async () => {
+      const otherUserBoard: Board = {
+        id: "board123",
+        name: "Other User Board",
+        userId: "otheruser456",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(otherUserBoard);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${validToken}`
+        },
+        body: JSON.stringify({ name: "New Name" })
+      });
+
+      expect(res.status).toBe(404);
+      expect(mockUpdateBoard).not.toHaveBeenCalled();
+    });
+
+    test("requires authentication", async () => {
+      const res = await app.request("/api/boards/board123", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New Name" })
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockFindBoardById).not.toHaveBeenCalled();
+      expect(mockUpdateBoard).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("DELETE /api/boards/:id", () => {
+    test("removes board", async () => {
+      const board: Board = {
+        id: "board123",
+        name: "To Delete",
+        userId: mockAuthContext.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(board);
+      mockDeleteBoard.mockResolvedValue(undefined);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${validToken}` }
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockDeleteBoard).toHaveBeenCalledWith("mock-db-instance", "board123");
+    });
+
+    test("returns 404 when user doesn't own board", async () => {
+      const otherUserBoard: Board = {
+        id: "board123",
+        name: "Other User Board",
+        userId: "otheruser456",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      mockFindBoardById.mockResolvedValue(otherUserBoard);
+
+      const res = await app.request("/api/boards/board123", {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${validToken}` }
+      });
+
+      expect(res.status).toBe(404);
+      expect(mockDeleteBoard).not.toHaveBeenCalled();
+    });
+
+    test("requires authentication", async () => {
+      const res = await app.request("/api/boards/board123", {
+        method: "DELETE"
+      });
+
+      expect(res.status).toBe(401);
+      expect(mockFindBoardById).not.toHaveBeenCalled();
+      expect(mockDeleteBoard).not.toHaveBeenCalled();
     });
   });
 });

@@ -59,3 +59,104 @@ boardRoutes.get("/", async (c: Context) => {
     return c.json({ error: "Internal server error" }, 500);
   }
 });
+
+// GET /api/boards/:id - Get a specific board
+boardRoutes.get("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const boardId = c.req.param("id");
+    if (!boardId) {
+      return c.json({ error: "Board ID is required" }, 400);
+    }
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    const board = await boardRepo.findBoardById(db, boardId);
+
+    // Board not found or user doesn't own it
+    if (!board || board.userId !== authContext.userId) {
+      return c.json({ error: "Board not found" }, 404);
+    }
+
+    return c.json(board);
+  } catch (error) {
+    console.error("Error fetching board:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// PUT /api/boards/:id - Update a board
+boardRoutes.put("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const boardId = c.req.param("id");
+    if (!boardId) {
+      return c.json({ error: "Board ID is required" }, 400);
+    }
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    
+    // Check if board exists and user owns it
+    const existingBoard = await boardRepo.findBoardById(db, boardId);
+    if (!existingBoard || existingBoard.userId !== authContext.userId) {
+      return c.json({ error: "Board not found" }, 404);
+    }
+
+    const body = await c.req.json();
+    const { name } = body;
+
+    // Validate board name
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return c.json({ error: "Board name is required" }, 400);
+    }
+
+    if (name.length > 100) {
+      return c.json({ error: "Board name must be 100 characters or less" }, 400);
+    }
+
+    // Update the board
+    const updatedBoard = await boardRepo.updateBoard(db, boardId, {
+      name: name.trim()
+    });
+
+    return c.json(updatedBoard);
+  } catch (error) {
+    console.error("Error updating board:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// DELETE /api/boards/:id - Delete a board
+boardRoutes.delete("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const boardId = c.req.param("id");
+    if (!boardId) {
+      return c.json({ error: "Board ID is required" }, 400);
+    }
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    
+    // Check if board exists and user owns it
+    const existingBoard = await boardRepo.findBoardById(db, boardId);
+    if (!existingBoard || existingBoard.userId !== authContext.userId) {
+      return c.json({ error: "Board not found" }, 404);
+    }
+
+    // Delete the board
+    await boardRepo.deleteBoard(db, boardId);
+
+    return c.body(null, 204);
+  } catch (error) {
+    console.error("Error deleting board:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
