@@ -8,23 +8,25 @@ export const app = new Hono();
 // Health check endpoint
 app.get("/health", (c) => c.json({ status: "ok" }));
 
-// Server start function with proper initialization
+// Server start function that actually starts the server
 export async function startServer(): Promise<void> {
   // Server configuration
   const port = Number(Bun.env.PORT ?? 3000);
   const dbPath = Bun.env.DB_PATH ?? "./data/app.db";
 
-  // Initialize database and run migrations
+  // Initialize database - only when actually starting
   const db = getDb(dbPath);
-  await Promise.resolve(runMigrations(db));
+  // Run migrations synchronously to ensure DB is ready
+  runMigrations(db);
 
   // Start the server only if not in test environment
   if (!import.meta.env?.TEST && !process.env.BUN_TEST) {
     console.log(`Starting server on port ${port}...`);
-    Bun.serve({
+    const server = Bun.serve({
       port,
       fetch: app.fetch,
     });
+    console.log(`Server running at http://localhost:${server.port}`);
   }
 }
 
@@ -36,8 +38,10 @@ if (import.meta.main) {
   });
 }
 
-// Export server configuration for testing
-export default {
+// Export server configuration for testing with explicit return type
+const serverConfig: Partial<Serve> = {
   port: Number(Bun.env.PORT ?? 3000),
   fetch: app.fetch,
-} satisfies Partial<Serve>;
+};
+
+export default serverConfig;

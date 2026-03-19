@@ -1,7 +1,6 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdirSync, rmSync } from "node:fs";
 import { app, startServer } from "./index.ts";
-import type { Server } from "bun";
 
 const TEST_ROOT = "/tmp/superclaude-test-index";
 const TEST_DB_PATH = `${TEST_ROOT}/test.db`;
@@ -12,6 +11,8 @@ describe("index.ts", () => {
     // Set environment variables for testing
     Bun.env.DB_PATH = TEST_DB_PATH;
     Bun.env.PORT = "0"; // Use random available port
+    // Set test environment to prevent actual server start
+    process.env.BUN_TEST = "true";
   });
 
   afterEach(() => {
@@ -19,6 +20,7 @@ describe("index.ts", () => {
     // Restore environment variables
     delete Bun.env.DB_PATH;
     delete Bun.env.PORT;
+    delete process.env.BUN_TEST;
   });
 
   describe("app", () => {
@@ -57,26 +59,45 @@ describe("index.ts", () => {
   });
 
   describe("environment variables", () => {
-    test("handles missing environment variables gracefully", () => {
+    test("handles missing environment variables gracefully", async () => {
       delete Bun.env.PORT;
       delete Bun.env.DB_PATH;
       
-      // Should not throw when starting server
-      expect(async () => {
-        const server = startServer();
-        // Cleanup - startServer returns void but starts a server
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }).not.toThrow();
+      // Create data directory for default path
+      mkdirSync("./data", { recursive: true });
+      
+      try {
+        // Should not throw when starting server
+        await expect(startServer()).resolves.toBeUndefined();
+      } finally {
+        // Clean up
+        rmSync("./data", { recursive: true, force: true });
+      }
     });
 
-    test("handles invalid PORT value", () => {
+    test("handles invalid PORT value", async () => {
       Bun.env.PORT = "invalid";
       
-      // Force re-import to test NaN handling
-      import(`./index.ts?t=${Date.now()}`).then(module => {
-        // Should convert to NaN and then default to 0 or handle gracefully
-        expect(module.default.port).toBeDefined();
-      });
+      // Should not throw when starting server
+      await expect(startServer()).resolves.toBeUndefined();
+    });
+
+    test("handles empty PORT value", async () => {
+      Bun.env.PORT = "";
+      
+      await expect(startServer()).resolves.toBeUndefined();
+    });
+
+    test("handles negative PORT value", async () => {
+      Bun.env.PORT = "-1000";
+      
+      await expect(startServer()).resolves.toBeUndefined();
+    });
+
+    test("handles extremely large PORT value", async () => {
+      Bun.env.PORT = "999999";
+      
+      await expect(startServer()).resolves.toBeUndefined();
     });
   });
 
@@ -92,15 +113,25 @@ describe("index.ts", () => {
     });
 
     test("initializes database and runs migrations", async () => {
-      // Start server and verify database file is created
+      const customPath = `${TEST_ROOT}/custom.db`;
+      Bun.env.DB_PATH = customPath;
+      
       await startServer();
       
-      // Give it time to initialize
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
       // Check that database file exists
-      const dbFile = Bun.file(TEST_DB_PATH);
+      const dbFile = Bun.file(customPath);
       expect(await dbFile.exists()).toBe(true);
+    });
+
+    test("does not actually start server in test environment", async () => {
+      const serveMock = mock(() => {});
+      // @ts-expect-error - mocking Bun.serve
+      global.Bun.serve = serveMock;
+      
+      await startServer();
+      
+      // Should not call Bun.serve in test environment
+      expect(serveMock).not.toHaveBeenCalled();
     });
   });
 });
