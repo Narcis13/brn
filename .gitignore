@@ -34,7 +34,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 # SUPER_CLAUDE ephemeral state
-.superclaude/state/STATE.md
 .superclaude/state/auto.lock
 .superclaude/state/milestones/**/CONTINUE.md
 
