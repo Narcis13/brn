@@ -10,7 +10,10 @@ import {
   findNextTask,
   isSliceComplete,
   isMilestoneComplete,
+  discoverSlicesFromRoadmap,
+  discoverTasksFromPlan,
 } from "./milestone-manager.ts";
+import { scaffoldSlice, scaffoldTask } from "./scaffold.ts";
 import { isDiscussNeeded, isResearchNeeded, isPhaseArtifactComplete } from "./phase-handlers.ts";
 import { shouldSkipPhase, type PressurePolicy } from "./budget-pressure.ts";
 
@@ -184,7 +187,16 @@ export async function determineNextActionEnhanced(
         const complete = await isPhaseArtifactComplete(projectRoot, "PLAN_MILESTONE", state.currentMilestone);
         if (complete) {
           // Find first slice to plan
-          const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+          let nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+          if (!nextSlice) {
+            // No slice directories yet — scaffold them from ROADMAP.md
+            const roadmapSlices = await discoverSlicesFromRoadmap(projectRoot, state.currentMilestone);
+            for (const s of roadmapSlices) {
+              await scaffoldSlice(projectRoot, state.currentMilestone, s.id, s.demoSentence);
+            }
+            // Retry finding a slice now that directories exist
+            nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+          }
           if (nextSlice) {
             return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Milestone planned — plan slice ${nextSlice}`, slice: nextSlice };
           }
@@ -192,8 +204,38 @@ export async function determineNextActionEnhanced(
       }
       return { phase: "PLAN_MILESTONE", tddSubPhase: null, description: "Plan milestone" };
 
-    case "PLAN_SLICE":
+    case "PLAN_SLICE": {
+      // Check if slice plan is filled (not template) and scaffold task dirs
+      const planSliceId = state.currentSlice;
+      if (state.currentMilestone && planSliceId) {
+        const planPath = `${projectRoot}/${PATHS.slicePath(state.currentMilestone, planSliceId)}/PLAN.md`;
+        const planFile = Bun.file(planPath);
+        if (await planFile.exists()) {
+          const planContent = await planFile.text();
+          if (!planContent.includes("_To be planned during PLAN_SLICE phase._")) {
+            // Plan is filled — find or scaffold tasks
+            let nextTask = await findNextTask(projectRoot, state.currentMilestone, planSliceId);
+            if (!nextTask) {
+              const planTasks = await discoverTasksFromPlan(projectRoot, state.currentMilestone, planSliceId);
+              for (const t of planTasks) {
+                await scaffoldTask(projectRoot, state.currentMilestone, planSliceId, t.id, t.goal);
+              }
+              nextTask = await findNextTask(projectRoot, state.currentMilestone, planSliceId);
+            }
+            if (nextTask) {
+              return {
+                phase: "EXECUTE_TASK",
+                tddSubPhase: "RED",
+                description: `Slice planned — execute ${planSliceId}/${nextTask}`,
+                slice: planSliceId,
+                task: nextTask,
+              };
+            }
+          }
+        }
+      }
       return { phase: "PLAN_SLICE", tddSubPhase: null, description: "Plan slice" };
+    }
 
     case "EXECUTE_TASK":
       return handleExecuteTask(state);

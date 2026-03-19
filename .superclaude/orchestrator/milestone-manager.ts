@@ -291,6 +291,106 @@ export async function isMilestoneComplete(
   return slices.every((s) => s.status === "complete");
 }
 
+// ─── Roadmap Parsing ─────────────────────────────────────────────
+
+/**
+ * Parse ROADMAP.md to discover declared slice IDs.
+ * This is needed after PLAN_MILESTONE creates the roadmap but before
+ * slice directories exist on disk. Without this, findNextSlice() returns
+ * null and the state machine loops on PLAN_MILESTONE forever.
+ *
+ * Looks for patterns like: S01, S02, S03 in headings, list items, or
+ * frontmatter-style references within the ROADMAP.md content.
+ */
+export async function discoverSlicesFromRoadmap(
+  projectRoot: string,
+  milestoneId: string
+): Promise<Array<{ id: string; demoSentence: string }>> {
+  const roadmapPath = `${projectRoot}/${PATHS.milestonePath(milestoneId)}/ROADMAP.md`;
+  const file = Bun.file(roadmapPath);
+  if (!(await file.exists())) return [];
+
+  const content = await file.text();
+  const slices: Array<{ id: string; demoSentence: string }> = [];
+  const seen = new Set<string>();
+
+  // Match slice IDs in various formats:
+  // "### S01: Description" or "## Slice S01 — Description" or "- S01: Description"
+  // Also: "S01 —" "S01:" "**S01**" etc.
+  const slicePattern = /\bS(\d{2,3})\b/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = slicePattern.exec(content)) !== null) {
+    const id = `S${match[1]}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    // Try to extract a demo sentence from the same line or next line
+    const lineStart = content.lastIndexOf("\n", match.index) + 1;
+    const lineEnd = content.indexOf("\n", match.index);
+    const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+
+    // Strip the slice ID prefix and common separators to get the description
+    const desc = line
+      .replace(/^[#\-*\s]*/, "")
+      .replace(/\bS\d{2,3}\b\s*[:—\-|]?\s*/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+
+    slices.push({ id, demoSentence: desc || `Slice ${id}` });
+  }
+
+  return slices.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+/**
+ * Parse a slice PLAN.md to discover declared task IDs.
+ * Same problem as discoverSlicesFromRoadmap: after PLAN_SLICE,
+ * task directories don't exist yet, so findNextTask() returns null.
+ */
+export async function discoverTasksFromPlan(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string
+): Promise<Array<{ id: string; goal: string }>> {
+  const planPath = `${projectRoot}/${PATHS.slicePath(milestoneId, sliceId)}/PLAN.md`;
+  const file = Bun.file(planPath);
+  if (!(await file.exists())) return [];
+
+  const content = await file.text();
+
+  // Skip if it's still the template
+  if (content.includes("_To be planned during PLAN_SLICE phase._")) return [];
+
+  const tasks: Array<{ id: string; goal: string }> = [];
+  const seen = new Set<string>();
+
+  // Match task IDs: T01, T02, etc.
+  const taskPattern = /\bT(\d{2,3})\b/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = taskPattern.exec(content)) !== null) {
+    const id = `T${match[1]}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+
+    // Extract goal from same line
+    const lineStart = content.lastIndexOf("\n", match.index) + 1;
+    const lineEnd = content.indexOf("\n", match.index);
+    const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+
+    const goal = line
+      .replace(/^[#\-*\s]*/, "")
+      .replace(/\bT\d{2,3}\b\s*[:—\-|]?\s*/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+
+    tasks.push({ id, goal: goal || `Task ${id}` });
+  }
+
+  return tasks.sort((a, b) => a.id.localeCompare(b.id));
+}
+
 // ─── Next Milestone ID ─────────────────────────────────────────
 
 /**

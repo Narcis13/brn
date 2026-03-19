@@ -37,7 +37,7 @@ describe("buildPrompt", () => {
     const prompt = buildPrompt(state, ctx);
     expect(prompt).toContain("DISCUSS");
     expect(prompt).toContain("Architect");
-    expect(prompt).toContain("Gray Area");
+    expect(prompt).toContain("gray areas");
     expect(prompt).toContain("Build an auth system");
   });
 

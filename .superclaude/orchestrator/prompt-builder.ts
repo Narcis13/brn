@@ -4,6 +4,7 @@
  */
 
 import type { ContextPayload, Phase, ProjectState, TDDSubPhase } from "./types.ts";
+import { PATHS } from "./types.ts";
 
 // ─── Prompt Builder ──────────────────────────────────────────────
 
@@ -16,21 +17,21 @@ export function buildPrompt(
 
   switch (phase) {
     case "DISCUSS":
-      return buildDiscussPrompt(context);
+      return buildDiscussPrompt(state, context);
     case "RESEARCH":
-      return buildResearchPrompt(context);
+      return buildResearchPrompt(state, context);
     case "PLAN_MILESTONE":
-      return buildPlanMilestonePrompt(context);
+      return buildPlanMilestonePrompt(state, context);
     case "PLAN_SLICE":
-      return buildPlanSlicePrompt(context);
+      return buildPlanSlicePrompt(state, context);
     case "EXECUTE_TASK":
       return buildExecuteTaskPrompt(tddSubPhase, context);
     case "COMPLETE_SLICE":
-      return buildCompleteSlicePrompt(context);
+      return buildCompleteSlicePrompt(state, context);
     case "REASSESS":
-      return buildReassessPrompt(context);
+      return buildReassessPrompt(state, context);
     case "COMPLETE_MILESTONE":
-      return buildCompleteMilestonePrompt(context);
+      return buildCompleteMilestonePrompt(state, context);
     default:
       return "No prompt for phase: " + phase;
   }
@@ -38,7 +39,11 @@ export function buildPrompt(
 
 // ─── Phase-Specific Prompts ──────────────────────────────────────
 
-function buildDiscussPrompt(ctx: ContextPayload): string {
+function buildDiscussPrompt(state: ProjectState, ctx: ContextPayload): string {
+  const outputPath = state.currentMilestone
+    ? `${PATHS.milestonePath(state.currentMilestone)}/CONTEXT.md`
+    : ".superclaude/state/CONTEXT.md";
+
   return `# DISCUSS PHASE
 
 You are the Architect sub-agent. Your job is to identify gray areas in the requirements and ask structured questions to clarify them.
@@ -50,11 +55,21 @@ ${ctx.taskPlan}
 1. Read the project requirements carefully
 2. Identify all ambiguous areas where multiple reasonable approaches exist
 3. For each gray area, formulate a specific question
-4. Output your questions in structured markdown
+4. Write the output to the file path specified below
+
+## CRITICAL: Output File
+You MUST write your output to this exact path using the Write tool:
+**${outputPath}**
 
 ## Output Format
+Write a file with this structure:
 \`\`\`markdown
-## Gray Areas
+---
+milestone: ${state.currentMilestone ?? "unknown"}
+created: [ISO date]
+---
+
+## Decisions
 
 ### 1. [Topic]
 **Options:** A) ... B) ... C) ...
@@ -68,7 +83,11 @@ ${ctx.taskPlan}
 - ONLY identify decisions that need to be made`;
 }
 
-function buildResearchPrompt(ctx: ContextPayload): string {
+function buildResearchPrompt(state: ProjectState, ctx: ContextPayload): string {
+  const outputPath = state.currentMilestone
+    ? `${PATHS.milestonePath(state.currentMilestone)}/RESEARCH.md`
+    : ".superclaude/state/RESEARCH.md";
+
   return `# RESEARCH PHASE
 
 You are the Researcher sub-agent. Scout the codebase and relevant documentation.
@@ -83,7 +102,11 @@ ${formatCodeFiles(ctx.codeFiles)}
 1. Scan the codebase for relevant existing patterns
 2. Identify libraries that should be used (not hand-rolled)
 3. Identify common pitfalls with the relevant technologies
-4. Output compressed, actionable findings
+4. Write the output to the file path specified below
+
+## CRITICAL: Output File
+You MUST write your output to this exact path using the Write tool:
+**${outputPath}**
 
 ## Output Format
 \`\`\`markdown
@@ -106,10 +129,13 @@ ${formatCodeFiles(ctx.codeFiles)}
 - ONLY research and report findings`;
 }
 
-function buildPlanMilestonePrompt(ctx: ContextPayload): string {
+function buildPlanMilestonePrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const outputPath = `${PATHS.milestonePath(milestoneId)}/ROADMAP.md`;
+
   return `# PLAN_MILESTONE PHASE
 
-You are the Architect sub-agent. Decompose the milestone into ordered, demoable vertical slices.
+You are the Architect sub-agent. Decompose milestone ${milestoneId} into ordered, demoable vertical slices.
 
 ## Context
 ${ctx.taskPlan}
@@ -118,16 +144,20 @@ ${ctx.upstreamSummaries.length > 0 ? `## Prior Decisions\n${ctx.upstreamSummarie
 
 ## Instructions
 1. Read the requirements and any discuss-phase decisions
-2. Decompose into 4-10 vertical slices
+2. Decompose into 3-8 vertical slices (use S01, S02, S03... naming)
 3. Each slice MUST pass the demo sentence test: "After this, the user can ___"
 4. Define boundary maps between slices (what each produces/consumes)
 5. Assess risk per slice
 
+## CRITICAL: Output File
+You MUST write the roadmap to this exact path using the Write tool:
+**${outputPath}**
+
 ## Output Format
-Write a ROADMAP.md with this structure:
+The file MUST use this exact structure (the orchestrator parses S01, S02 etc. from it):
 \`\`\`markdown
 ---
-milestone: [ID]
+milestone: ${milestoneId}
 status: planned
 ---
 
@@ -141,19 +171,31 @@ status: planned
 **Consumes:** [from upstream slices]
 
 ### S02: [Name]
+**Demo:** After this, the user can ___
+**Depends on:** S01
+**Risk:** low | medium | high
+**Produces:** [files, exports]
+**Consumes:** [from upstream slices]
+
+### S03: [Name]
 ...
 \`\`\`
 
 ## Scope Guard
 - DO NOT plan task-level details (that's PLAN_SLICE)
 - DO NOT write implementation code
-- Each slice must be a VERTICAL capability, not a horizontal layer`;
+- Each slice must be a VERTICAL capability, not a horizontal layer
+- Use S01, S02, S03 etc. as slice IDs — the orchestrator depends on this format`;
 }
 
-function buildPlanSlicePrompt(ctx: ContextPayload): string {
+function buildPlanSlicePrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const sliceId = state.currentSlice ?? "S01";
+  const outputPath = `${PATHS.slicePath(milestoneId, sliceId)}/PLAN.md`;
+
   return `# PLAN_SLICE PHASE
 
-You are the Architect sub-agent. Decompose this slice into context-window-sized tasks with TDD sequences.
+You are the Architect sub-agent. Decompose slice ${sliceId} into context-window-sized tasks with TDD sequences.
 
 ## Slice Plan
 ${ctx.taskPlan}
@@ -165,18 +207,51 @@ ${ctx.boundaryContracts.join("\n\n")}
 ${ctx.upstreamSummaries.join("\n\n")}
 
 ## Instructions
-1. Break the slice into 1-7 tasks
+1. Break the slice into 1-7 tasks (use T01, T02, T03... naming)
 2. Each task must fit in one context window
 3. Define TDD sequence: what tests to write first, then implementation
-4. Define must-haves: truths, artifacts, key links
+4. Define must-haves: truths, artifacts (with file paths, min lines, required exports), key links
 5. Define must-NOT-haves: explicit scope boundaries
 
+## CRITICAL: Output File
+You MUST write the plan to this exact path using the Write tool:
+**${outputPath}**
+
 ## Output Format
-Write a PLAN.md for the slice with task definitions.
+The file MUST use this structure (the orchestrator parses T01, T02 etc. from it):
+\`\`\`markdown
+---
+slice: ${sliceId}
+milestone: ${milestoneId}
+status: planned
+---
+
+## Tasks
+
+### T01: [Task Name]
+**Goal:** [One sentence]
+
+#### TDD Sequence
+- Test file(s): [paths]
+- Test cases: [list]
+- Implementation file(s): [paths]
+
+#### Must-Haves
+**Truths:** [observable behaviors]
+**Artifacts:** [file path — description, min lines, exports]
+**Key Links:** [file A imports X from file B]
+
+#### Must-NOT-Haves
+- [explicit scope boundaries]
+
+### T02: [Task Name]
+...
+\`\`\`
 
 ## Scope Guard
 - DO NOT implement anything
 - Each task must be small enough for one agent session
+- Use T01, T02, T03 etc. as task IDs — the orchestrator depends on this format
 - If you need more than 7 tasks, the slice is too big — flag it`;
 }
 
@@ -304,10 +379,15 @@ ${ctx.taskPlan}
 Report pass/fail for each must-have item.`;
 }
 
-function buildCompleteSlicePrompt(ctx: ContextPayload): string {
+function buildCompleteSlicePrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const sliceId = state.currentSlice ?? "S01";
+  const summaryPath = `${PATHS.slicePath(milestoneId, sliceId)}/SUMMARY.md`;
+  const uatPath = `${PATHS.slicePath(milestoneId, sliceId)}/UAT.md`;
+
   return `# COMPLETE_SLICE PHASE
 
-You are the Scribe sub-agent. Summarize what was built in this slice.
+You are the Scribe sub-agent. Summarize what was built in slice ${sliceId}.
 
 ## Task Summaries
 ${ctx.upstreamSummaries.join("\n\n")}
@@ -319,11 +399,16 @@ ${ctx.taskPlan}
 1. Write SUMMARY.md — what was built, decisions, patterns
 2. Write UAT.md — human-readable acceptance test script with copy-pasteable commands
 
-## Output Format
-Write both files following the templates in the spec.`;
+## CRITICAL: Output Files
+You MUST write these files using the Write tool:
+- **${summaryPath}**
+- **${uatPath}**`;
 }
 
-function buildReassessPrompt(ctx: ContextPayload): string {
+function buildReassessPrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const roadmapPath = `${PATHS.milestonePath(milestoneId)}/ROADMAP.md`;
+
   return `# REASSESS PHASE
 
 Review the roadmap in light of what was learned during the completed slice.
@@ -337,13 +422,17 @@ ${ctx.taskPlan}
 ## Instructions
 1. Does the roadmap still make sense?
 2. Should any slices be reordered, added, removed, or modified?
-3. Output any recommended changes.`;
+3. If changes are needed, update the roadmap file at: **${roadmapPath}**
+4. If no changes needed, output "No changes to roadmap."`;
 }
 
-function buildCompleteMilestonePrompt(ctx: ContextPayload): string {
+function buildCompleteMilestonePrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const summaryPath = `${PATHS.milestonePath(milestoneId)}/SUMMARY.md`;
+
   return `# COMPLETE_MILESTONE PHASE
 
-Summarize the entire milestone.
+Summarize milestone ${milestoneId}.
 
 ## Slice Summaries
 ${ctx.upstreamSummaries.join("\n\n")}
@@ -351,7 +440,11 @@ ${ctx.upstreamSummaries.join("\n\n")}
 ## Instructions
 1. Write a milestone summary
 2. List all capabilities delivered
-3. Note any known limitations or deferred work`;
+3. Note any known limitations or deferred work
+
+## CRITICAL: Output File
+You MUST write the summary to this exact path using the Write tool:
+**${summaryPath}**`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────
