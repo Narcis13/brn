@@ -3,6 +3,7 @@ import { createUser, findUserByEmail } from "../user.repo";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { generateToken } from "../auth/jwt";
 import { getDb } from "../db";
+import { authMiddleware, getAuthContext } from "../auth/middleware";
 
 export const authRoutes = new Hono();
 
@@ -69,4 +70,16 @@ authRoutes.post("/login", async (c) => {
   const token = generateToken({ userId: user.id, email: user.email });
 
   return c.json({ token }, 200);
+});
+
+authRoutes.get("/me", authMiddleware, (c) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  
+  return c.json({
+    userId: authContext.userId,
+    email: authContext.email
+  });
 });

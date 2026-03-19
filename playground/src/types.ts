@@ -23,3 +23,14 @@ export interface NewUser {
   /** Pre-hashed password (hashing should happen before repo layer) */
   passwordHash: string;
 }
+
+/**
+ * Authentication context extracted from JWT token.
+ * Set on Hono context after successful authentication.
+ */
+export interface AuthContext {
+  /** User's unique identifier */
+  userId: string;
+  /** User's email address */
+  email: string;
+}
