@@ -1,12 +1,16 @@
 import { Hono } from "hono";
 import { getDb, runMigrations } from "./db.ts";
 import type { Serve } from "bun";
+import { authRoutes } from "./routes/auth";
 
 // Initialize Hono application
 export const app = new Hono();
 
 // Health check endpoint
 app.get("/health", (c) => c.json({ status: "ok" }));
+
+// Mount auth routes
+app.route("/api/auth", authRoutes);
 
 // Server start function that actually starts the server
 export async function startServer(): Promise<void> {
