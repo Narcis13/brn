@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { authMiddleware, getAuthContext } from "../auth/middleware";
-import * as boardRepo from "../boards/board.repo";
+import * as boardService from "../boards/board.service";
 import { getDb } from "../db";
 import type { Context } from "hono";
 
@@ -20,25 +20,18 @@ boardRoutes.post("/", async (c: Context) => {
     const body = await c.req.json();
     const { name } = body;
 
-    // Validate board name
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return c.json({ error: "Board name is required" }, 400);
-    }
-
-    if (name.length > 100) {
-      return c.json({ error: "Board name must be 100 characters or less" }, 400);
-    }
-
-    // Create the board
     const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
-    const board = await boardRepo.createBoard(db, {
-      name: name.trim(),
+    const board = await boardService.createBoard(db, {
+      name,
       userId: authContext.userId
     });
 
     return c.json(board, 201);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating board:", error);
+    if (error.message === "Board name is required" || error.message === "Board name must be 100 characters or less") {
+      return c.json({ error: error.message }, 400);
+    }
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -52,7 +45,7 @@ boardRoutes.get("/", async (c: Context) => {
 
   try {
     const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
-    const boards = await boardRepo.findBoardsByUserId(db, authContext.userId);
+    const boards = await boardService.getBoardsByUserId(db, authContext.userId);
     return c.json(boards);
   } catch (error) {
     console.error("Error fetching boards:", error);
@@ -73,10 +66,9 @@ boardRoutes.get("/:id", async (c: Context) => {
       return c.json({ error: "Board ID is required" }, 400);
     }
     const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
-    const board = await boardRepo.findBoardById(db, boardId);
+    const board = await boardService.getBoardById(db, boardId, authContext.userId);
 
-    // Board not found or user doesn't own it
-    if (!board || board.userId !== authContext.userId) {
+    if (!board) {
       return c.json({ error: "Board not found" }, 404);
     }
 
@@ -99,34 +91,24 @@ boardRoutes.put("/:id", async (c: Context) => {
     if (!boardId) {
       return c.json({ error: "Board ID is required" }, 400);
     }
-    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
     
-    // Check if board exists and user owns it
-    const existingBoard = await boardRepo.findBoardById(db, boardId);
-    if (!existingBoard || existingBoard.userId !== authContext.userId) {
-      return c.json({ error: "Board not found" }, 404);
-    }
-
     const body = await c.req.json();
     const { name } = body;
 
-    // Validate board name
-    if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return c.json({ error: "Board name is required" }, 400);
-    }
-
-    if (name.length > 100) {
-      return c.json({ error: "Board name must be 100 characters or less" }, 400);
-    }
-
-    // Update the board
-    const updatedBoard = await boardRepo.updateBoard(db, boardId, {
-      name: name.trim()
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    const updatedBoard = await boardService.updateBoard(db, boardId, authContext.userId, {
+      name
     });
 
     return c.json(updatedBoard);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating board:", error);
+    if (error.message === "Board not found") {
+      return c.json({ error: error.message }, 404);
+    }
+    if (error.message === "Board name is required" || error.message === "Board name must be 100 characters or less") {
+      return c.json({ error: error.message }, 400);
+    }
     return c.json({ error: "Internal server error" }, 500);
   }
 });
@@ -143,20 +125,16 @@ boardRoutes.delete("/:id", async (c: Context) => {
     if (!boardId) {
       return c.json({ error: "Board ID is required" }, 400);
     }
-    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
     
-    // Check if board exists and user owns it
-    const existingBoard = await boardRepo.findBoardById(db, boardId);
-    if (!existingBoard || existingBoard.userId !== authContext.userId) {
-      return c.json({ error: "Board not found" }, 404);
-    }
-
-    // Delete the board
-    await boardRepo.deleteBoard(db, boardId);
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    await boardService.deleteBoard(db, boardId, authContext.userId);
 
     return c.body(null, 204);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error deleting board:", error);
+    if (error.message === "Board not found") {
+      return c.json({ error: error.message }, 404);
+    }
     return c.json({ error: "Internal server error" }, 500);
   }
 });
