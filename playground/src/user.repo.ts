@@ -1,15 +1,29 @@
 import type { Database } from "bun:sqlite";
 import type { User, NewUser } from "./types.ts";
 
-/** Insert a new user and return the full User record. */
+// Database row type for user table
+interface UserRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  created_at: string;
+}
+
+/**
+ * Insert a new user and return the full User record.
+ * @param db - Database instance
+ * @param newUser - User data to insert (email and passwordHash)
+ * @returns Created user with generated ID and timestamp
+ */
 export function createUser(db: Database, newUser: NewUser): User {
   const id = crypto.randomUUID();
   const createdAt = new Date().toISOString();
 
-  db.run(
-    "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-    [id, newUser.email, newUser.passwordHash, createdAt]
+  const statement = db.prepare(
+    "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)"
   );
+  
+  statement.run(id, newUser.email, newUser.passwordHash, createdAt);
 
   return {
     id,
@@ -19,20 +33,22 @@ export function createUser(db: Database, newUser: NewUser): User {
   };
 }
 
-interface UserRow {
-  id: string;
-  email: string;
-  password_hash: string;
-  created_at: string;
-}
-
-/** Find a user by exact email match. Returns null if not found. */
+/**
+ * Find a user by exact email match.
+ * @param db - Database instance
+ * @param email - Email to search for
+ * @returns User if found, null otherwise
+ */
 export function findUserByEmail(db: Database, email: string): User | null {
-  const row = db
-    .query<UserRow, [string]>("SELECT * FROM users WHERE email = ?")
-    .get(email);
+  const statement = db.prepare<UserRow, [string]>(
+    "SELECT * FROM users WHERE email = ?"
+  );
+  
+  const row = statement.get(email);
 
-  if (!row) return null;
+  if (!row) {
+    return null;
+  }
 
   return {
     id: row.id,

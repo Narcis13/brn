@@ -8,7 +8,8 @@
     "types": ["bun-types", "@types/react", "@types/react-dom"],
     "noEmit": true,
     "skipLibCheck": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "allowImportingTsExtensions": true
   },
   "include": ["src/**/*"]
 }

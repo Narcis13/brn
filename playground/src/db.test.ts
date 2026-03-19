@@ -88,10 +88,10 @@ describe("Database", () => {
       // Verify at least one unique index covers the email column
       const emailIndexed = uniqueIndices.some((idx) => {
         const info = db
-          .query<{ name: string }, [string]>(
-            "PRAGMA index_info(?)"
+          .query<{ name: string }, []>(
+            `PRAGMA index_info(${idx.name})`
           )
-          .all(idx.name);
+          .all();
         return info.some((col) => col.name === "email");
       });
 
