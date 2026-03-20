@@ -318,6 +318,69 @@ No frontmatter plan
     expect(plan.tddSequence.testFiles).toEqual(["src/test.test.ts"]);
   });
 
+  test("defaults strategy to tdd-strict when not specified", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+---
+
+## Goal
+Some goal
+`);
+
+    expect(plan.strategy).toBe("tdd-strict");
+  });
+
+  test("parses strategy from frontmatter", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+strategy: test-after
+---
+
+## Goal
+Some goal
+`);
+
+    expect(plan.strategy).toBe("test-after");
+  });
+
+  test("parses verify-only strategy", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+strategy: verify-only
+---
+
+## Goal
+Infrastructure setup
+`);
+
+    expect(plan.strategy).toBe("verify-only");
+  });
+
+  test("defaults to tdd-strict for invalid strategy values", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+strategy: invalid-value
+---
+
+## Goal
+Some goal
+`);
+
+    expect(plan.strategy).toBe("tdd-strict");
+  });
+
   test("strips parenthetical annotations from file paths", () => {
     const plan = parseTaskPlan(`## Goal
 Extend existing tests
@@ -332,5 +395,64 @@ Extend existing tests
       "playground/src/routes/cards.ts",
       "playground/src/routes/boards.ts",
     ]);
+  });
+
+  test("defaults complexity to standard when not specified", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+---
+
+## Goal
+Some goal
+`);
+    expect(plan.complexity).toBe("standard");
+  });
+
+  test("parses complexity from frontmatter", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+complexity: simple
+---
+
+## Goal
+Simple task
+`);
+    expect(plan.complexity).toBe("simple");
+  });
+
+  test("parses complex complexity", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+complexity: complex
+---
+
+## Goal
+Complex auth
+`);
+    expect(plan.complexity).toBe("complex");
+  });
+
+  test("defaults to standard for invalid complexity values", () => {
+    const plan = parseTaskPlan(`---
+task: T01
+slice: S01
+milestone: M001
+status: pending
+complexity: invalid
+---
+
+## Goal
+Goal
+`);
+    expect(plan.complexity).toBe("standard");
   });
 });

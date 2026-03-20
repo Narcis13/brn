@@ -12,7 +12,7 @@
  *   Total injected context: ~80,000 tokens
  */
 
-import { PATHS, type ContextPayload, type ProjectState } from "./types.ts";
+import { PATHS, type ContextPayload, type ProjectState, type TaskComplexity } from "./types.ts";
 import { listSpecs } from "./milestone-manager.ts";
 
 /**
@@ -62,7 +62,7 @@ const BASE_CONTEXT_BUDGET: ContextBudgetValues = {
  * @param multiplier - 1.0 = full budget, 0.5 = half budget (from PressurePolicy.contextBudgetMultiplier)
  */
 export function getScaledBudget(multiplier: number): ContextBudgetValues {
-  if (multiplier >= 1.0) return BASE_CONTEXT_BUDGET;
+  if (multiplier === 1.0) return BASE_CONTEXT_BUDGET;
   return {
     taskPlan: Math.ceil(BASE_CONTEXT_BUDGET.taskPlan * multiplier),
     codeFiles: Math.ceil(BASE_CONTEXT_BUDGET.codeFiles * multiplier),
@@ -153,10 +153,19 @@ export async function loadCodeFilesForTask(
 
 // ─── Context Assembly ────────────────────────────────────────────
 
+/**
+ * Assemble context for a phase invocation.
+ *
+ * @param budgetMultiplier - Pressure-based budget scaling (1.0 = full, 0.5 = half)
+ * @param extraContext - Additional context strings to inject (e.g., test output from prior attempts).
+ *   These are appended to upstreamSummaries and count toward the token budget.
+ */
 export async function assembleContext(
   projectRoot: string,
   state: ProjectState,
-  budgetMultiplier: number = 1.0
+  budgetMultiplier: number = 1.0,
+  extraContext: string[] = [],
+  complexity: TaskComplexity = "standard"
 ): Promise<ContextPayload> {
   const payload: ContextPayload = {
     taskPlan: "",
@@ -222,23 +231,22 @@ export async function assembleContext(
           payload.taskPlan += "\n\n## Review Feedback (MUST FIX)\n" + reviewFeedback;
         }
 
-        // Load upstream task summaries from same slice (not current task's)
-        // Falls back to loading upstream task plans if no summaries exist yet
-        payload.upstreamSummaries = await loadUpstreamTaskSummaries(projectRoot, m, s, t);
-        if (payload.upstreamSummaries.length === 0) {
-          payload.upstreamSummaries = await loadUpstreamTaskPlans(projectRoot, m, s, t);
+        // Load upstream task summaries (skip for simple tasks)
+        if (complexity !== "simple") {
+          payload.upstreamSummaries = await loadUpstreamTaskSummaries(projectRoot, m, s, t);
+          if (payload.upstreamSummaries.length === 0) {
+            payload.upstreamSummaries = await loadUpstreamTaskPlans(projectRoot, m, s, t);
+          }
         }
 
-        // Load relevant vault docs referenced in task plan
-        payload.vaultDocs = await loadRelevantVaultDocs(projectRoot, payload.taskPlan);
-
-        // Auto-load ALL vault learnings (short, high-value — RETROSPECTIVE phase feeds these)
-        const learnings = await loadAllVaultByType(projectRoot, "learnings");
-        payload.vaultDocs.push(...learnings);
-
-        // Auto-load playbooks tagged with current technologies
-        const playbooks = await loadAllVaultByType(projectRoot, "playbooks");
-        payload.vaultDocs.push(...playbooks);
+        // Load vault docs (skip for simple tasks)
+        if (complexity !== "simple") {
+          payload.vaultDocs = await loadRelevantVaultDocs(projectRoot, payload.taskPlan);
+          const learnings = await loadAllVaultByType(projectRoot, "learnings");
+          payload.vaultDocs.push(...learnings);
+          const playbooks = await loadAllVaultByType(projectRoot, "playbooks");
+          payload.vaultDocs.push(...playbooks);
+        }
 
         // Load code files referenced in task plan
         payload.codeFiles = await loadCodeFilesForTask(projectRoot, payload.taskPlan);
@@ -293,6 +301,11 @@ export async function assembleContext(
         payload.upstreamSummaries = await loadAllSliceSummaries(projectRoot, m);
       }
       break;
+  }
+
+  // Inject extra context (e.g., test output from prior retry attempts)
+  if (extraContext.length > 0) {
+    payload.upstreamSummaries.push(...extraContext);
   }
 
   // Apply token budget enforcement (scaled by pressure multiplier — GAP-11)

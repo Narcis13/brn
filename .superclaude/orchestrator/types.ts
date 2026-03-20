@@ -19,7 +19,20 @@ export type Phase =
 
 export type TDDSubPhase = "IMPLEMENT";
 
-export type TaskStatus = "pending" | "in_progress" | "complete" | "failed" | "blocked";
+export type VerificationStrategy = "tdd-strict" | "test-after" | "verify-only";
+
+export type TaskComplexity = "simple" | "standard" | "complex";
+
+export type TaskStatus = "pending" | "in_progress" | "complete" | "failed" | "blocked" | "deferred";
+
+export interface DeferredTask {
+  taskKey: string;               // e.g. "S01/T02"
+  milestone: string;
+  slice: string;
+  task: string;
+  reason: string;                // why it was deferred
+  failureContext: string;        // error/diagnostic info for retry
+}
 export type SliceStatus = "pending" | "in_progress" | "complete" | "failed";
 export type MilestoneStatus = "pending" | "in_progress" | "complete";
 
@@ -44,6 +57,8 @@ export interface TaskPlan {
   mustHaves: MustHaves;
   mustNotHaves: string[];
   tddSequence: TDDSequence;
+  strategy: VerificationStrategy;
+  complexity: TaskComplexity;
 }
 
 export interface MustHaves {

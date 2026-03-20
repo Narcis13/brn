@@ -6,7 +6,7 @@
  * must-not-haves, and TDD sequence from a PLAN.md file.
  */
 
-import type { TaskPlan, TaskStatus, ArtifactSpec, MustHaves, TDDSequence } from "./types.ts";
+import type { TaskPlan, TaskStatus, ArtifactSpec, MustHaves, TDDSequence, VerificationStrategy, TaskComplexity } from "./types.ts";
 
 // ─── Placeholder patterns (skip these) ──────────────────────────
 
@@ -23,6 +23,8 @@ interface Frontmatter {
   slice: string;
   milestone: string;
   status: TaskStatus;
+  strategy: VerificationStrategy;
+  complexity: TaskComplexity;
 }
 
 function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: string } {
@@ -30,7 +32,7 @@ function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: st
 
   if (!fmMatch?.[1]) {
     return {
-      frontmatter: { task: "", slice: "", milestone: "", status: "pending" },
+      frontmatter: { task: "", slice: "", milestone: "", status: "pending", strategy: "tdd-strict", complexity: "standard" },
       body: content,
     };
   }
@@ -43,12 +45,26 @@ function parseFrontmatter(content: string): { frontmatter: Frontmatter; body: st
     return match?.[1]?.trim() ?? "";
   };
 
+  const rawStrategy = get("strategy");
+  const validStrategies: VerificationStrategy[] = ["tdd-strict", "test-after", "verify-only"];
+  const strategy: VerificationStrategy = validStrategies.includes(rawStrategy as VerificationStrategy)
+    ? (rawStrategy as VerificationStrategy)
+    : "tdd-strict";
+
+  const rawComplexity = get("complexity");
+  const validComplexities: TaskComplexity[] = ["simple", "standard", "complex"];
+  const complexity: TaskComplexity = validComplexities.includes(rawComplexity as TaskComplexity)
+    ? (rawComplexity as TaskComplexity)
+    : "standard";
+
   return {
     frontmatter: {
       task: get("task"),
       slice: get("slice"),
       milestone: get("milestone"),
       status: (get("status") || "pending") as TaskStatus,
+      strategy,
+      complexity,
     },
     body,
   };
@@ -251,6 +267,8 @@ export function parseTaskPlan(content: string): TaskPlan {
     },
     mustNotHaves: parseBulletList(mustNotHavesSection),
     tddSequence: parseTDDSequence(tddSection),
+    strategy: frontmatter.strategy,
+    complexity: frontmatter.complexity,
   };
 }
 

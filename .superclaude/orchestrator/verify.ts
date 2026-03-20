@@ -370,6 +370,114 @@ export async function runCommandVerification(
   return [typeCheck, lint];
 }
 
+// ─── Pre-flight Validation ──────────────────────────────────────
+
+export interface AutoFix {
+  type: "path-prefix";
+  original: string;
+  fixed: string;
+  description: string;
+}
+
+export interface PreflightResult {
+  ok: boolean;
+  fixes: AutoFix[];
+  blockers: string[];
+}
+
+/**
+ * Run fast deterministic checks before Claude invocation.
+ * Catches plan errors before spending tokens. Auto-fixes common path prefix issues.
+ */
+export async function preflight(
+  projectRoot: string,
+  state: import("./types.ts").ProjectState,
+  taskPlan: import("./types.ts").TaskPlan
+): Promise<PreflightResult> {
+  const fixes: AutoFix[] = [];
+  const blockers: string[] = [];
+
+  const { currentMilestone: m, currentSlice: s, currentTask: t } = state;
+
+  // 1. Check upstream task SUMMARYs exist (dependency check)
+  if (m && s && t) {
+    const { PATHS } = await import("./types.ts");
+    const tasksDir = `${projectRoot}/${PATHS.slicePath(m, s)}/tasks`;
+    const taskNum = parseInt(t.replace("T", ""), 10);
+
+    for (let i = 1; i < taskNum; i++) {
+      const upstreamId = `T${String(i).padStart(2, "0")}`;
+      const summaryPath = `${tasksDir}/${upstreamId}/SUMMARY.md`;
+      const exists = await Bun.file(summaryPath).exists();
+      if (!exists) {
+        // Not a blocker — upstream might be deferred. Just warn.
+        blockers.push(`Upstream ${upstreamId} SUMMARY.md missing — task may depend on incomplete work`);
+      }
+    }
+  }
+
+  // 2. Check artifact parent directories exist
+  for (const artifact of taskPlan.mustHaves.artifacts) {
+    const absPath = `${projectRoot}/${artifact.path}`;
+    const parentDir = absPath.substring(0, absPath.lastIndexOf("/"));
+    const parentExists = await Bun.file(parentDir).exists().catch(() => false);
+
+    if (!parentExists) {
+      // Try auto-fix: prepend "playground/" if bare "src/" path
+      if (artifact.path.startsWith("src/") && !artifact.path.startsWith("playground/")) {
+        const playgroundPath = `playground/${artifact.path}`;
+        const playgroundParent = `${projectRoot}/${playgroundPath}`.substring(0, `${projectRoot}/${playgroundPath}`.lastIndexOf("/"));
+        const pgExists = await Bun.file(playgroundParent).exists().catch(() => false);
+        if (pgExists) {
+          fixes.push({
+            type: "path-prefix",
+            original: artifact.path,
+            fixed: playgroundPath,
+            description: `Auto-fixed path: ${artifact.path} → ${playgroundPath}`,
+          });
+          continue;
+        }
+      }
+      // Parent dir doesn't exist — not necessarily a blocker (will be created)
+    }
+  }
+
+  // 3. Check TDD sequence test paths consistency with artifacts
+  for (const testFile of taskPlan.tddSequence.testFiles) {
+    if (testFile.startsWith("src/") && !testFile.startsWith("playground/")) {
+      // Check if playground prefix is needed
+      const hasPlaygroundArtifact = taskPlan.mustHaves.artifacts.some(
+        (a) => a.path.startsWith("playground/")
+      );
+      if (hasPlaygroundArtifact) {
+        fixes.push({
+          type: "path-prefix",
+          original: testFile,
+          fixed: `playground/${testFile}`,
+          description: `Test path inconsistent with artifacts: ${testFile} → playground/${testFile}`,
+        });
+      }
+    }
+  }
+
+  // 4. Check vault docs referenced in plan exist
+  const vaultRefs = taskPlan.steps.join("\n").match(/\[\[([^\]]+)\]\]/g) ?? [];
+  for (const ref of vaultRefs) {
+    const docPath = ref.slice(2, -2);
+    const fullPath = `${projectRoot}/.superclaude/vault/${docPath}.md`;
+    const exists = await Bun.file(fullPath).exists();
+    if (!exists) {
+      blockers.push(`Referenced vault doc not found: [[${docPath}]]`);
+    }
+  }
+
+  return {
+    ok: blockers.length === 0,
+    fixes,
+    blockers,
+  };
+}
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 interface ParsedKeyLink {

@@ -194,6 +194,75 @@ function parseSessionReport(content: string, sessionId: string): SessionReport {
   return report;
 }
 
+// ─── Session Continuity ──────────────────────────────────────────
+
+/**
+ * Write session continuity CONTINUE.md for the current task.
+ * Called at end of every session (not just crashes) so next session has context.
+ */
+export async function writeSessionContinue(
+  projectRoot: string,
+  state: import("./types.ts").ProjectState,
+  session: SessionReport
+): Promise<void> {
+  const { currentMilestone: m, currentSlice: s, currentTask: t } = state;
+  if (!m || !s || !t) return;
+
+  const continuePath = `${projectRoot}/${PATHS.taskPath(m, s, t)}/CONTINUE.md`;
+
+  // Don't overwrite if task is complete (CONTINUE.md already cleaned up)
+  const summaryPath = `${projectRoot}/${PATHS.taskPath(m, s, t)}/SUMMARY.md`;
+  if (await Bun.file(summaryPath).exists()) return;
+
+  const lines: string[] = [
+    "---",
+    `task: ${t}`,
+    `slice: ${s}`,
+    `milestone: ${m}`,
+    `session: ${session.session}`,
+    `phase: ${state.phase}`,
+    `tdd_sub_phase: ${state.tddSubPhase ?? "none"}`,
+    "---",
+    "",
+    "## What Was Accomplished This Session",
+  ];
+
+  if (session.tasksCompleted.length > 0) {
+    for (const task of session.tasksCompleted) {
+      lines.push(`- ${task}`);
+    }
+  } else {
+    lines.push("- No tasks completed");
+  }
+
+  lines.push("");
+  lines.push("## What Was Attempted But Failed");
+
+  if (session.issuesEncountered.length > 0) {
+    for (const issue of session.issuesEncountered) {
+      lines.push(`- ${issue}`);
+    }
+  } else {
+    lines.push("- No failures");
+  }
+
+  lines.push("");
+  lines.push("## What Next Session Should Try");
+
+  if (session.blockedItems.length > 0) {
+    lines.push("- Address blocked items:");
+    for (const item of session.blockedItems) {
+      lines.push(`  - ${item}`);
+    }
+  } else {
+    lines.push("- Continue from current state");
+  }
+
+  await Bun.write(continuePath, lines.join("\n"));
+}
+
+// ─── Parsing ────────────────────────────────────────────────────
+
 function parseListItems(section: string, pattern: RegExp): string[] {
   const items: string[] = [];
   let match: RegExpExecArray | null;

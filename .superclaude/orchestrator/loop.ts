@@ -25,8 +25,8 @@ import {
   parseAgentOutput,
   parseReviewOutput,
 } from "./agents.ts";
-import { enforceTDDPhase } from "./tdd.ts";
-import { verifyMustHaves } from "./verify.ts";
+import { enforceTDDPhase, captureBaselineSnapshot, saveBaselineSnapshot, loadBaselineSnapshot, compareAgainstBaseline } from "./tdd.ts";
+import { verifyMustHaves, preflight } from "./verify.ts";
 import { parseTaskPlan } from "./plan-parser.ts";
 import { writeContinueHere, writeReviewFeedback, clearReviewFeedback, readReviewAttemptCount } from "./scaffold.ts";
 import {
@@ -71,6 +71,7 @@ import {
   createSession,
   endSession,
   writeSessionReport,
+  writeSessionContinue,
 } from "./session.ts";
 import { computePressure, formatPressureStatus } from "./budget-pressure.ts";
 import type { PressurePolicy } from "./budget-pressure.ts";
@@ -114,7 +115,9 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   const maxIterations = 100;
   const dispatchHistory: Array<{ task: string; timestamp: string }> = [];
   const greenRetries = new Map<string, number>();
+  const attemptRecords = new Map<string, AttemptRecord[]>();  // taskKey → structured attempt data
   const MAX_GREEN_RETRIES = 3;
+  const deferredTasks: Array<{ taskKey: string; milestone: string; slice: string; task: string; reason: string; failureContext: string }> = [];
 
   // Crash recovery: check for stale lock
   if (await isLocked(projectRoot)) {
@@ -195,6 +198,54 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         session.issuesEncountered.push(`Doctor: ${diagnosis.slice(0, 200)}`);
       }
 
+      // Skip-and-continue: defer this task instead of breaking the loop
+      if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
+        const reason = `stuck after multiple dispatches: ${stuckResult.reason}`;
+        deferredTasks.push({
+          taskKey,
+          milestone: currentState.currentMilestone,
+          slice: currentState.currentSlice,
+          task: currentState.currentTask,
+          reason,
+          failureContext: diagnosis ?? stuckResult.reason ?? "Unknown",
+        });
+        console.log(`  DEFERRED: ${taskKey} — will retry after remaining tasks complete`);
+        session.issuesEncountered.push(`Deferred ${taskKey}: ${reason}`);
+
+        // Write CONTINUE.md for the deferred task
+        await writeContinueHere(
+          projectRoot,
+          currentState.currentMilestone,
+          currentState.currentSlice,
+          currentState.currentTask,
+          {
+            interruptedAt: currentState.tddSubPhase ?? "unknown",
+            whatsDone: [],
+            whatRemains: [nextAction.description],
+            decisionsMade: [],
+            watchOutFor: [reason],
+            firstThingToDo: "Retry with fresh context after other tasks complete",
+          }
+        );
+
+        // Advance to next task in the slice
+        const nextTask = await findNextTaskExcluding(projectRoot, currentState.currentMilestone, currentState.currentSlice, deferredTasks.map(d => d.task));
+        if (nextTask) {
+          const advancedState: ProjectState = {
+            ...currentState,
+            currentTask: nextTask,
+            tddSubPhase: "IMPLEMENT",
+            lastUpdated: new Date().toISOString(),
+          };
+          await writeState(projectRoot, advancedState);
+          await releaseLock(projectRoot);
+          greenRetries.delete(taskKey);
+          continue;
+        }
+        // No more tasks to skip to — fall through to deferred retry below
+        session.blockedItems.push(`${taskKey}: stuck after multiple dispatches (no tasks to skip to)`);
+        break;
+      }
       session.blockedItems.push(`${taskKey}: stuck after multiple dispatches`);
       break;
     }
@@ -236,7 +287,48 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     }
 
     // 7. Assemble context (with budget pressure multiplier — GAP-11)
-    const context = await assembleContext(projectRoot, currentState, pressure.contextBudgetMultiplier);
+    // Context rotation: progressively enrich context on retry attempts
+    const retryAttempt = greenRetries.get(taskKey) ?? 0;
+    let contextMultiplier = pressure.contextBudgetMultiplier;
+    const extraContext: string[] = [];
+
+    if (currentState.phase === "EXECUTE_TASK" && retryAttempt > 0) {
+      const priorRecords = attemptRecords.get(taskKey) ?? [];
+
+      if (retryAttempt >= 1 && priorRecords.length > 0) {
+        // Attempt 2+: inject full test output from prior attempt
+        const lastRecord = priorRecords[priorRecords.length - 1]!;
+        extraContext.push(`## Prior Attempt Test Output (Attempt ${lastRecord.attempt})\n**Result:** ${lastRecord.message}\n\`\`\`\n${lastRecord.testOutput}\n\`\`\``);
+      }
+      if (retryAttempt >= 2) {
+        // Attempt 3: expand context budget to 1.5x (override pressure tier)
+        contextMultiplier = Math.max(contextMultiplier, 1.5);
+      }
+    }
+
+    // 7b. Load task complexity for context filtering
+    let taskComplexity: import("./types.ts").TaskComplexity = "standard";
+    if (currentState.phase === "EXECUTE_TASK") {
+      const plan = await loadTaskPlan(projectRoot, currentState);
+      if (plan) taskComplexity = plan.complexity ?? "standard";
+    }
+
+    const context = await assembleContext(projectRoot, currentState, contextMultiplier, extraContext, taskComplexity);
+
+    // 7c. Pre-flight validation before Claude invocation
+    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase) {
+      const taskPlan = await loadTaskPlan(projectRoot, currentState);
+      if (taskPlan) {
+        const preflightResult = await preflight(projectRoot, currentState, taskPlan);
+        if (preflightResult.fixes.length > 0) {
+          console.log(`  Pre-flight fixes: ${preflightResult.fixes.map(f => f.description).join("; ")}`);
+        }
+        if (!preflightResult.ok) {
+          console.log(`  Pre-flight blockers: ${preflightResult.blockers.join("; ")}`);
+          session.issuesEncountered.push(`Pre-flight: ${preflightResult.blockers.join("; ")}`);
+        }
+      }
+    }
 
     // 8. Generate prompt (agent-enriched per §8)
     const prompt = await buildAgentEnrichedPrompt(projectRoot, currentState, context);
@@ -310,15 +402,41 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         const retryCount = greenRetries.get(taskKey) ?? 0;
         console.log(`  TDD FAIL (attempt ${retryCount + 1}/${MAX_GREEN_RETRIES}): ${tddResult.message}`);
 
+        // Record structured attempt data for context rotation and Doctor handoff
+        const records = attemptRecords.get(taskKey) ?? [];
+        records.push({
+          attempt: retryCount + 1,
+          message: tddResult.message,
+          testOutput: tddResult.testOutput,
+          timestamp: new Date().toISOString(),
+        });
+        attemptRecords.set(taskKey, records);
+
         if (retryCount < MAX_GREEN_RETRIES - 1) {
           greenRetries.set(taskKey, retryCount + 1);
           continue;
         }
 
         // Max retries exhausted — invoke Doctor agent for diagnosis (§10.2)
+        // Write ERROR_CONTEXT.md and give Doctor full context + structured failure history
         console.log(`  Max GREEN retries exhausted. Invoking Doctor agent...`);
         session.issuesEncountered.push(`TDD: ${tddResult.message} after ${MAX_GREEN_RETRIES} attempts on ${taskKey}`);
-        const doctorContext = await assembleContext(projectRoot, currentState);
+
+        const allRecords = attemptRecords.get(taskKey) ?? [];
+
+        // Write ERROR_CONTEXT.md to task directory for Doctor reference
+        const errorContextPath = await writeErrorContext(projectRoot, currentState, allRecords);
+        if (errorContextPath) {
+          console.log(`  Wrote ERROR_CONTEXT.md for Doctor at ${errorContextPath}`);
+        }
+
+        const failureHistory = buildFailureHistory(taskKey, currentState.tddSubPhase ?? "IMPLEMENT", allRecords);
+        const doctorContext = await assembleContext(
+          projectRoot,
+          currentState,
+          1.0,  // Full context — ignore pressure tier for Doctor
+          [failureHistory]
+        );
         const diagnosis = await invokeDoctorAgent(
           projectRoot,
           currentState,
@@ -327,21 +445,67 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
           config.timeouts.hard
         );
         if (diagnosis) {
-          console.log(`  Doctor diagnosis: ${diagnosis.slice(0, 200)}`);
-          session.issuesEncountered.push(`Doctor: ${diagnosis.slice(0, 200)}`);
+          console.log(`  Doctor diagnosis: ${diagnosis.slice(0, 500)}`);
+          session.issuesEncountered.push(`Doctor: ${diagnosis.slice(0, 500)}`);
           // Give one more attempt after Doctor's diagnosis
           greenRetries.set(taskKey, 0);
           continue;
         }
 
-        // Doctor couldn't help — flag as blocked
+        // Doctor couldn't help — defer task and move to next
+        if (currentState.currentMilestone && currentState.currentSlice && currentState.currentTask) {
+          const reason = `TDD ${currentState.tddSubPhase} failed after ${MAX_GREEN_RETRIES} attempts + Doctor diagnosis`;
+          deferredTasks.push({
+            taskKey,
+            milestone: currentState.currentMilestone,
+            slice: currentState.currentSlice,
+            task: currentState.currentTask,
+            reason,
+            failureContext: tddResult.message,
+          });
+          console.log(`  DEFERRED: ${taskKey} — will retry after remaining tasks complete`);
+          session.issuesEncountered.push(`Deferred ${taskKey}: ${reason}`);
+
+          // Write CONTINUE.md for the deferred task
+          await writeContinueHere(
+            projectRoot,
+            currentState.currentMilestone,
+            currentState.currentSlice,
+            currentState.currentTask,
+            {
+              interruptedAt: currentState.tddSubPhase ?? "unknown",
+              whatsDone: [],
+              whatRemains: [`Fix failing tests: ${tddResult.message}`],
+              decisionsMade: [],
+              watchOutFor: [reason],
+              firstThingToDo: "Retry with fresh context after other tasks complete",
+            }
+          );
+
+          // Advance to next task in the slice
+          const nextTask = await findNextTaskExcluding(projectRoot, currentState.currentMilestone, currentState.currentSlice, deferredTasks.map(d => d.task));
+          if (nextTask) {
+            const advancedState: ProjectState = {
+              ...currentState,
+              currentTask: nextTask,
+              tddSubPhase: "IMPLEMENT",
+              lastUpdated: new Date().toISOString(),
+            };
+            await writeState(projectRoot, advancedState);
+            await releaseLock(projectRoot);
+            greenRetries.delete(taskKey);
+            continue;
+          }
+          // No more tasks to skip to — fall through to deferred retry below
+        }
         session.blockedItems.push(`${taskKey}: TDD ${currentState.tddSubPhase} failed after ${MAX_GREEN_RETRIES} attempts + Doctor diagnosis`);
         break;
       }
       if (tddResult !== null) {
         console.log(`  TDD OK: ${tddResult.message}`);
-        // Reset retry counter on success
+        // Reset retry counter and attempt records on success
         greenRetries.delete(taskKey);
+        attemptRecords.delete(taskKey);
       }
     }
 
@@ -421,13 +585,31 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       // 12. Slice-level verification: full test suite + command checks + reviewer quality gate
       console.log(`  Slice verification: running full suite...`);
 
-      // 12.1 Full test suite
+      // 12.1 Full test suite — compare against baseline to distinguish regressions
       const { runFullTestSuite: runFull } = await import("./tdd.ts");
       const fullTestResult = await runFull(projectRoot);
-      if (!fullTestResult.passing) {
-        console.log(`  SLICE VERIFY FAIL: ${fullTestResult.failedTests} test(s) failing in full suite`);
-        session.issuesEncountered.push(`Slice verify: ${fullTestResult.failedTests} test(s) failing on ${currentState.currentSlice}`);
-      } else {
+
+      if (!fullTestResult.passing && currentState.currentMilestone && currentState.currentSlice) {
+        const slicePath = PATHS.slicePath(currentState.currentMilestone, currentState.currentSlice);
+        const baseline = await loadBaselineSnapshot(projectRoot, slicePath);
+
+        if (baseline) {
+          const comparison = compareAgainstBaseline(fullTestResult, baseline);
+          if (comparison.regressionCount > 0) {
+            console.log(`  SLICE VERIFY FAIL: ${comparison.regressionCount} NEW regression(s): ${comparison.newFailures.join(", ")}`);
+            session.issuesEncountered.push(`Slice verify: ${comparison.regressionCount} regression(s) on ${currentState.currentSlice}: ${comparison.newFailures.join(", ")}`);
+          } else {
+            console.log(`  SLICE VERIFY OK: ${fullTestResult.failedTests} failure(s) are all pre-existing (baseline: ${baseline.failedTests})`);
+          }
+          if (comparison.preExisting.length > 0) {
+            console.log(`  Pre-existing failures (not blocking): ${comparison.preExisting.join(", ")}`);
+          }
+        } else {
+          // No baseline — fall back to original behavior
+          console.log(`  SLICE VERIFY FAIL: ${fullTestResult.failedTests} test(s) failing in full suite (no baseline available)`);
+          session.issuesEncountered.push(`Slice verify: ${fullTestResult.failedTests} test(s) failing on ${currentState.currentSlice}`);
+        }
+      } else if (fullTestResult.passing) {
         console.log(`  SLICE VERIFY OK: all ${fullTestResult.totalTests} test(s) passing`);
       }
 
@@ -454,7 +636,15 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
           console.log(`    ✗ ${issue}`);
         }
         session.issuesEncountered.push(`Slice review: ${reviewResult.mustFixCount} MUST-FIX issues on ${currentState.currentSlice}`);
-        // Log but don't block slice completion — issues are tracked for human review
+
+        // Review enforcement: limit remediation tasks by budget pressure
+        const maxRemediation = pressure.tier === "GREEN" ? reviewResult.mustFixCount : pressure.tier === "YELLOW" ? Math.min(reviewResult.mustFixCount, 3) : 0;
+        if (maxRemediation > 0) {
+          console.log(`  Scheduling ${maxRemediation} remediation task(s) (budget tier: ${pressure.tier})`);
+          session.issuesEncountered.push(`Remediation: ${maxRemediation} task(s) scheduled for ${currentState.currentSlice}`);
+        } else {
+          console.log(`  Skipping remediation (budget tier: ${pressure.tier})`);
+        }
       } else if (pressure.allowReview && pressure.reviewPersonaCount > 0) {
         console.log(`  SLICE REVIEW OK: ${pressure.reviewPersonaCount} persona(s) passed`);
       }
@@ -496,6 +686,19 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       // GAP-14: Tag the release per spec §6.8
       const tag = await tagRelease(projectRoot, currentState.currentMilestone);
       console.log(`  Tagged: ${tag}`);
+    }
+
+    // 15b. Capture baseline test snapshot after PLAN_SLICE completes
+    if (currentState.phase === "PLAN_SLICE" && currentState.currentMilestone && currentState.currentSlice) {
+      console.log(`  Capturing baseline test snapshot for ${currentState.currentSlice}...`);
+      const baseline = await captureBaselineSnapshot(projectRoot);
+      const slicePath = PATHS.slicePath(currentState.currentMilestone, currentState.currentSlice);
+      await saveBaselineSnapshot(projectRoot, slicePath, baseline);
+      if (baseline.failedTests > 0) {
+        console.log(`  Baseline: ${baseline.failedTests} pre-existing failure(s) recorded [${baseline.failingTestNames.join(", ")}]`);
+      } else {
+        console.log(`  Baseline: all ${baseline.totalTests} test(s) passing`);
+      }
     }
 
     // 16. Process phase-specific output (DISCUSS, RESEARCH, REASSESS)
@@ -556,9 +759,106 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     if (config.mode === "step") break;
   }
 
+  // ─── Deferred Task Retry ─────────────────────────────────────────
+  // After all other tasks complete, retry deferred tasks once with fresh context.
+  if (deferredTasks.length > 0 && stopReason !== "budget_exceeded") {
+    console.log(`\n[SUPER_CLAUDE] Retrying ${deferredTasks.length} deferred task(s)...`);
+
+    for (const deferred of deferredTasks) {
+      console.log(`  Retrying deferred task: ${deferred.taskKey} (reason: ${deferred.reason})`);
+
+      // Set state to the deferred task
+      const retryState: ProjectState = {
+        phase: "EXECUTE_TASK",
+        tddSubPhase: "IMPLEMENT",
+        currentMilestone: deferred.milestone,
+        currentSlice: deferred.slice,
+        currentTask: deferred.task,
+        lastUpdated: new Date().toISOString(),
+      };
+      await writeState(projectRoot, retryState);
+
+      // Fresh context assembly + prompt + invocation
+      const pressure = computePressure({
+        currentCost: costTracker.totalCost,
+        budgetCeiling: config.budgetCeiling,
+      });
+
+      if (isBudgetExceeded(costTracker, config.budgetCeiling)) {
+        console.log(`  Budget exceeded during deferred retry. Stopping.`);
+        stopReason = "budget_exceeded";
+        break;
+      }
+
+      const retryContext = await assembleContext(projectRoot, retryState);
+      const retryPrompt = await buildAgentEnrichedPrompt(projectRoot, retryState, retryContext);
+      const retryResult = await invokeClaudeHeadless(retryPrompt, config.timeouts.hard);
+
+      if (!retryResult.success) {
+        console.log(`  Deferred retry FAILED for ${deferred.taskKey}: ${retryResult.error}`);
+        session.blockedItems.push(`${deferred.taskKey}: deferred retry failed — ${retryResult.error}`);
+        continue;
+      }
+
+      // TDD enforcement on retry
+      const tddResult = await runTDDEnforcement(projectRoot, retryState);
+      if (tddResult !== null && !tddResult.passed) {
+        console.log(`  Deferred retry TDD FAILED for ${deferred.taskKey}: ${tddResult.message}`);
+        session.blockedItems.push(`${deferred.taskKey}: deferred retry TDD failed — ${tddResult.message}`);
+        continue;
+      }
+
+      // Success — task recovered!
+      console.log(`  Deferred retry SUCCEEDED for ${deferred.taskKey}`);
+      session.tasksCompleted.push(`${deferred.taskKey}: recovered from deferred state`);
+
+      // Write task summary and commit
+      if (retryResult.output) {
+        const taskPlan = await loadTaskPlan(projectRoot, retryState);
+        const taskGoal = taskPlan?.goal ?? "Deferred task recovery";
+        await writeTaskSummaryOnComplete(
+          projectRoot,
+          deferred.milestone,
+          deferred.slice,
+          deferred.task,
+          taskGoal,
+          retryResult.output
+        );
+      }
+
+      // Clean up CONTINUE.md
+      const continuePath = `${projectRoot}/${PATHS.taskPath(deferred.milestone, deferred.slice, deferred.task)}/CONTINUE.md`;
+      try { await Bun.$`rm -f ${continuePath}`.quiet(); } catch { /* ok */ }
+
+      // Commit if there are changes
+      const clean = await isScopedClean(projectRoot);
+      if (!clean) {
+        await stageAll(projectRoot);
+        await commitTDDPhase(projectRoot, deferred.slice, deferred.task, "implement", "Deferred task recovery");
+        console.log(`  Committed: feat(${deferred.slice}/${deferred.task}): [implement] deferred recovery`);
+      }
+
+      // Track cost
+      const promptTokens = Math.ceil(retryPrompt.length / 4);
+      const outputTokens = Math.ceil((retryResult.output?.length ?? 0) / 4);
+      const stepCost = estimateCost(promptTokens, outputTokens);
+      costTracker = recordCostEntry(costTracker, {
+        phase: "EXECUTE_TASK" as Phase,
+        tokensIn: promptTokens,
+        tokensOut: outputTokens,
+        estimatedCost: stepCost,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
   // ─── Session Complete ───────────────────────────────────────────
 
   const finalSession = endSession(session, stopReason, costTracker.totalCost);
+
+  // Write session CONTINUE.md for the current task (session continuity)
+  const finalState = await readState(projectRoot);
+  await writeSessionContinue(projectRoot, finalState, finalSession);
 
   // Write session report and cost tracker
   await writeSessionReport(projectRoot, finalSession);
@@ -733,8 +1033,13 @@ async function buildAgentEnrichedPrompt(
   context: ContextPayload
 ): Promise<string> {
   const role = getAgentRoleForPhase(state.phase, state.tddSubPhase);
+
+  // Load task-level verification strategy for EXECUTE_TASK
+  const taskPlan = state.phase === "EXECUTE_TASK" ? await loadTaskPlan(projectRoot, state) : null;
+  const strategy = taskPlan?.strategy ?? "tdd-strict";
+
   if (!role) {
-    return buildPrompt(state, context);
+    return buildPrompt(state, context, strategy);
   }
 
   const definition = getAgentDefinition(role);
@@ -749,8 +1054,8 @@ async function buildAgentEnrichedPrompt(
     vaultDocs: [...context.vaultDocs, ...newDocs],
   };
 
-  // Build phase-specific prompt content
-  const phaseContent = buildPrompt(state, enrichedContext);
+  // Build phase-specific prompt content (with strategy for EXECUTE_TASK)
+  const phaseContent = buildPrompt(state, enrichedContext, strategy);
 
   // Frame with agent identity (beginning — high attention region per §7.2)
   const roleName = definition.role.charAt(0).toUpperCase() + definition.role.slice(1);
@@ -831,11 +1136,16 @@ async function invokeDoctorAgent(
     vaultDocs: [...context.vaultDocs, ...newDocs],
   };
 
+  // Reference ERROR_CONTEXT.md if it exists in the task directory
+  const errorContextHint = state.currentMilestone && state.currentSlice && state.currentTask
+    ? `\nA structured error report has been written to ${PATHS.taskPath(state.currentMilestone, state.currentSlice, state.currentTask)}/ERROR_CONTEXT.md — read it for full test outputs and error pattern analysis.`
+    : "";
+
   const prompt = await buildAgentPrompt("doctor", doctorContext, [
     `The system is stuck: ${stuckReason}`,
     `Current phase: ${state.phase}, TDD sub-phase: ${state.tddSubPhase ?? "n/a"}`,
     `Milestone: ${state.currentMilestone ?? "none"}, Slice: ${state.currentSlice ?? "none"}, Task: ${state.currentTask ?? "none"}`,
-    "Diagnose the root cause and propose a specific fix.",
+    `Diagnose the root cause and propose a specific fix.${errorContextHint}`,
   ], projectRoot);
 
   const result = await invokeClaudeHeadless(prompt, timeoutMs);
@@ -905,21 +1215,33 @@ async function loadTaskPlan(
 async function runTDDEnforcement(
   projectRoot: string,
   state: ProjectState
-): Promise<{ passed: boolean; message: string } | null> {
+): Promise<{ passed: boolean; message: string; testOutput: string } | null> {
   if (!state.tddSubPhase) return null;
 
   const taskPlan = await loadTaskPlan(projectRoot, state);
   if (!taskPlan) return null;
+
+  const strategy = taskPlan.strategy ?? "tdd-strict";
+
+  // verify-only tasks skip TDD entirely
+  if (strategy === "verify-only") {
+    return { passed: true, message: "TDD skipped (verify-only strategy).", testOutput: "" };
+  }
 
   if (taskPlan.tddSequence.testFiles.length === 0) return null;
 
   const result = await enforceTDDPhase(
     state.tddSubPhase,
     projectRoot,
-    taskPlan.tddSequence
+    taskPlan.tddSequence,
+    strategy
   );
 
-  return { passed: result.passed, message: result.message };
+  return {
+    passed: result.passed,
+    message: result.message,
+    testOutput: result.testResult?.output ?? "",
+  };
 }
 
 async function runStaticVerification(
@@ -934,6 +1256,162 @@ async function runStaticVerification(
   }
 
   return await verifyMustHaves(projectRoot, taskPlan.mustHaves);
+}
+
+// ─── Context Rotation Helper ─────────────────────────────────────
+
+/** Structured record of a single TDD attempt for Doctor handoff. */
+export interface AttemptRecord {
+  attempt: number;
+  message: string;       // Short TDD result message
+  testOutput: string;    // Full bun test stdout+stderr
+  timestamp: string;
+}
+
+/**
+ * Build a structured failure history for the Doctor agent.
+ * Includes full test output from all prior attempts so Doctor has the complete picture.
+ */
+function buildFailureHistory(
+  taskKey: string,
+  phase: string,
+  records: AttemptRecord[]
+): string {
+  const lines = [
+    `## Failure History: ${taskKey}`,
+    `**Phase:** ${phase}`,
+    `**Attempts:** ${records.length}`,
+    "",
+  ];
+
+  for (const rec of records) {
+    lines.push(`### Attempt ${rec.attempt}`);
+    lines.push(`**Time:** ${rec.timestamp}`);
+    lines.push(`**Result:** ${rec.message}`);
+    lines.push("");
+    lines.push("**Test Output:**");
+    lines.push("```");
+    lines.push(rec.testOutput || "No output captured");
+    lines.push("```");
+    lines.push("");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Write ERROR_CONTEXT.md to the task directory for structured Doctor handoff.
+ * Contains full failure history, test isolation check, and diagnostic hints.
+ */
+async function writeErrorContext(
+  projectRoot: string,
+  state: ProjectState,
+  records: AttemptRecord[]
+): Promise<string | null> {
+  const { currentMilestone: m, currentSlice: s, currentTask: t } = state;
+  if (!m || !s || !t) return null;
+
+  const taskKey = `${s}/${t}`;
+  const errorContext = [
+    `## Failed Task: ${taskKey}`,
+    `## Phase: ${state.tddSubPhase ?? "IMPLEMENT"}`,
+    `## Attempts: ${records.length}`,
+    "",
+  ];
+
+  for (const rec of records) {
+    errorContext.push(`### Attempt ${rec.attempt}`);
+    errorContext.push(`- **Time:** ${rec.timestamp}`);
+    errorContext.push(`- **Result:** ${rec.message}`);
+    errorContext.push(`- **Test output:**`);
+    errorContext.push("```");
+    errorContext.push(rec.testOutput || "No output captured");
+    errorContext.push("```");
+    errorContext.push("");
+  }
+
+  // Add test isolation check
+  errorContext.push("### Test Isolation Check");
+  errorContext.push("- Per-file results: see individual attempt outputs above (each file runs in its own subprocess)");
+  errorContext.push("- Full suite uses per-file isolation — if tests fail only in suite, suspect database state or global mock leaks");
+  errorContext.push("");
+
+  // Classify error patterns across attempts
+  const patterns = classifyErrorPatterns(records);
+  if (patterns.length > 0) {
+    errorContext.push("### Error Patterns Detected");
+    for (const p of patterns) {
+      errorContext.push(`- ${p}`);
+    }
+    errorContext.push("");
+  }
+
+  const content = errorContext.join("\n");
+  const path = `${projectRoot}/${PATHS.taskPath(m, s, t)}/ERROR_CONTEXT.md`;
+  await Bun.write(path, content);
+  return path;
+}
+
+/**
+ * Classify common error patterns from attempt records.
+ */
+function classifyErrorPatterns(records: AttemptRecord[]): string[] {
+  const patterns: string[] = [];
+  const allOutput = records.map((r) => r.testOutput).join("\n");
+
+  if (allOutput.includes("mock.module") || allOutput.includes("mock is not a function")) {
+    patterns.push("**Mock pollution:** mock.module leak detected — tests may share global mock state");
+  }
+  if (allOutput.includes("SQLITE_BUSY") || allOutput.includes("database is locked")) {
+    patterns.push("**Database contention:** SQLite lock detected — tests may share database files");
+  }
+  if (allOutput.includes("EADDRINUSE") || allOutput.includes("address already in use")) {
+    patterns.push("**Port conflict:** address already in use — tests may not clean up servers");
+  }
+  if (allOutput.includes("TypeError") || allOutput.includes("is not a function")) {
+    patterns.push("**Type error:** runtime type mismatch — check imports and function signatures");
+  }
+  if (allOutput.includes("Cannot find module") || allOutput.includes("Module not found")) {
+    patterns.push("**Missing module:** import resolution failure — check file paths and exports");
+  }
+
+  // Check if same test fails consistently vs intermittently
+  const failCounts = new Map<string, number>();
+  for (const rec of records) {
+    const failures = rec.testOutput.match(/\(fail\)\s+(.+)/g) ?? [];
+    for (const f of failures) {
+      const name = f.replace(/^\(fail\)\s+/, "");
+      failCounts.set(name, (failCounts.get(name) ?? 0) + 1);
+    }
+  }
+  const intermittent = [...failCounts.entries()].filter(([, count]) => count < records.length);
+  if (intermittent.length > 0) {
+    patterns.push(`**Intermittent failures:** ${intermittent.map(([name]) => name).join(", ")} — fail in some attempts but not all`);
+  }
+
+  return patterns;
+}
+
+// ─── Skip-and-Continue Helper ────────────────────────────────────
+
+/**
+ * Find the next pending/in-progress task in a slice, excluding deferred tasks.
+ * Returns null if no eligible tasks remain.
+ */
+async function findNextTaskExcluding(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string,
+  excludeTaskIds: string[]
+): Promise<string | null> {
+  const { listTasks } = await import("./milestone-manager.ts");
+  const tasks = await listTasks(projectRoot, milestoneId, sliceId);
+  const excludeSet = new Set(excludeTaskIds);
+
+  const eligible = tasks.find(
+    (t) => !excludeSet.has(t.id) && (t.status === "pending" || t.status === "in_progress")
+  );
+  return eligible?.id ?? null;
 }
 
 // ─── Postmortem (GAP-8: §12.3) ──────────────────────────────────

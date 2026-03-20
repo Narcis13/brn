@@ -152,6 +152,89 @@ describe("buildPrompt", () => {
     expect(prompt).toContain("User");
   });
 
+  test("EXECUTE_TASK tdd-strict prompt includes database test isolation instructions", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Implement repo with DB" });
+
+    const prompt = buildPrompt(state, ctx, "tdd-strict");
+    expect(prompt).toContain("Database Test Isolation");
+    expect(prompt).toContain("beforeEach");
+    expect(prompt).toContain("afterEach");
+    expect(prompt).toContain("Never share database state");
+  });
+
+  test("EXECUTE_TASK test-after prompt includes database test isolation instructions", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Wire up routes" });
+
+    const prompt = buildPrompt(state, ctx, "test-after");
+    expect(prompt).toContain("Database Test Isolation");
+    expect(prompt).toContain("Never share database state");
+  });
+
+  test("EXECUTE_TASK with test-after strategy uses implement-then-test prompt", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Wire up API routes" });
+
+    const prompt = buildPrompt(state, ctx, "test-after");
+    expect(prompt).toContain("Implement Then Test");
+    expect(prompt).toContain("Step 1: IMPLEMENT");
+    expect(prompt).toContain("Step 2: TEST");
+    expect(prompt).not.toContain("Step 1: RED");
+  });
+
+  test("EXECUTE_TASK with verify-only strategy uses no-test prompt", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Set up database migrations" });
+
+    const prompt = buildPrompt(state, ctx, "verify-only");
+    expect(prompt).toContain("Implement and Verify");
+    expect(prompt).toContain("verify-only");
+    expect(prompt).not.toContain("Step 1: RED");
+    expect(prompt).not.toContain("bun test");
+    expect(prompt).toContain("tsc");
+  });
+
+  test("EXECUTE_TASK with tdd-strict strategy uses full TDD prompt (default)", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Implement auth service" });
+
+    const prompt = buildPrompt(state, ctx, "tdd-strict");
+    expect(prompt).toContain("One-Shot");
+    expect(prompt).toContain("Step 1: RED");
+    expect(prompt).toContain("Step 2: GREEN");
+  });
+
+  test("EXECUTE_TASK defaults to tdd-strict when no strategy provided", () => {
+    const state = makeState({ phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" });
+    const ctx = makeContext({ taskPlan: "Implement auth service" });
+
+    const prompt = buildPrompt(state, ctx);
+    expect(prompt).toContain("One-Shot");
+    expect(prompt).toContain("Step 1: RED");
+  });
+
+  test("PLAN_SLICE prompt includes verification strategy instructions", () => {
+    const state = makeState({ phase: "PLAN_SLICE", currentMilestone: "M001", currentSlice: "S01" });
+    const ctx = makeContext({ taskPlan: "Slice plan" });
+
+    const prompt = buildPrompt(state, ctx);
+    expect(prompt).toContain("tdd-strict");
+    expect(prompt).toContain("test-after");
+    expect(prompt).toContain("verify-only");
+    expect(prompt).toContain("strategy");
+  });
+
+  test("PLAN_SLICE prompt includes complexity instructions", () => {
+    const state = makeState({ phase: "PLAN_SLICE", currentMilestone: "M001", currentSlice: "S01" });
+    const ctx = makeContext({ taskPlan: "Slice plan" });
+
+    const prompt = buildPrompt(state, ctx);
+    expect(prompt).toContain("complexity");
+    expect(prompt).toContain("simple");
+    expect(prompt).toContain("complex");
+  });
+
   test("unknown phase returns fallback message", () => {
     const state = makeState({ phase: "IDLE" });
     const ctx = makeContext();

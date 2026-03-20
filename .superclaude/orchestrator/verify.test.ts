@@ -9,6 +9,7 @@ import {
   runTypeCheck,
   runLinter,
   runCommandVerification,
+  preflight,
 } from "./verify.ts";
 import type { MustHaves } from "./types.ts";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -393,5 +394,50 @@ describe("runCommandVerification", () => {
     for (const r of results) {
       expect(r.type).toBe("command");
     }
+  });
+});
+
+// ─── Pre-flight Validation ──────────────────────────────────────
+
+describe("preflight", () => {
+  test("returns ok when no blockers", async () => {
+    const state = {
+      phase: "EXECUTE_TASK" as const,
+      tddSubPhase: "IMPLEMENT" as const,
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+    const taskPlan = {
+      task: "T01", slice: "S01", milestone: "M001", status: "pending" as const,
+      goal: "Test", steps: [], mustHaves: { truths: [], artifacts: [], keyLinks: [] },
+      mustNotHaves: [], tddSequence: { testFiles: [], testCases: [], implementationFiles: [] },
+      strategy: "tdd-strict" as const, complexity: "standard" as const,
+    };
+
+    const result = await preflight(TEST_ROOT, state, taskPlan);
+    expect(result.ok).toBe(true);
+    expect(result.blockers).toHaveLength(0);
+  });
+
+  test("detects path prefix inconsistency between test files and artifacts", async () => {
+    const state = {
+      phase: "EXECUTE_TASK" as const, tddSubPhase: "IMPLEMENT" as const,
+      currentMilestone: "M001", currentSlice: "S01", currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+    const taskPlan = {
+      task: "T01", slice: "S01", milestone: "M001", status: "pending" as const,
+      goal: "Test", steps: [],
+      mustHaves: { truths: [], artifacts: [{ path: "playground/src/auth.ts", description: "Auth", minLines: 10, requiredExports: [] }], keyLinks: [] },
+      mustNotHaves: [],
+      tddSequence: { testFiles: ["src/auth.test.ts"], testCases: [], implementationFiles: [] },
+      strategy: "tdd-strict" as const, complexity: "standard" as const,
+    };
+
+    const result = await preflight(TEST_ROOT, state, taskPlan);
+    expect(result.fixes.length).toBeGreaterThan(0);
+    expect(result.fixes[0]!.fixed).toBe("playground/src/auth.test.ts");
   });
 });

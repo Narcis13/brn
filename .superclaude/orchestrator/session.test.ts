@@ -1,11 +1,12 @@
-import { test, expect, beforeEach, afterEach } from "bun:test";
-import { rmSync, mkdirSync } from "node:fs";
+import { test, expect, beforeEach, afterEach, describe } from "bun:test";
+import { rmSync, mkdirSync, writeFileSync } from "node:fs";
 import {
   createSession,
   endSession,
   generateSessionReport,
   writeSessionReport,
   loadSessionReport,
+  writeSessionContinue,
 } from "./session.ts";
 import type { SessionReport } from "./types.ts";
 
@@ -115,4 +116,61 @@ test("writeSessionReport and loadSessionReport roundtrip", async () => {
   expect(loaded!.tasksCompleted).toContain("S01/T01: Auth tests");
   expect(loaded!.blockedItems).toContain("S02/T01: Needs API key");
   expect(loaded!.totalCost).toBe(3.50);
+});
+
+describe("writeSessionContinue", () => {
+  test("writes CONTINUE.md for current task at session end", async () => {
+    // Create task directory
+    mkdirSync(`${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T02`, { recursive: true });
+
+    const state = {
+      phase: "EXECUTE_TASK" as const,
+      tddSubPhase: "IMPLEMENT" as const,
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T02",
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const session: SessionReport = {
+      session: "test-session",
+      started: "2026-03-20T10:00:00Z",
+      ended: "2026-03-20T11:00:00Z",
+      status: "error",
+      tasksCompleted: ["S01/T01: built auth"],
+      issuesEncountered: ["TDD failed on S01/T02"],
+      blockedItems: ["S01/T02: stuck"],
+      totalCost: 5.00,
+    };
+
+    await writeSessionContinue(TEST_ROOT, state, session);
+
+    const continuePath = `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T02/CONTINUE.md`;
+    const content = await Bun.file(continuePath).text();
+    expect(content).toContain("built auth");
+    expect(content).toContain("TDD failed");
+    expect(content).toContain("stuck");
+  });
+
+  test("does not overwrite CONTINUE.md if task is already complete", async () => {
+    mkdirSync(`${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01`, { recursive: true });
+    // Write SUMMARY.md to mark task as complete
+    writeFileSync(`${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/SUMMARY.md`, "# Summary\nDone.");
+
+    const state = {
+      phase: "EXECUTE_TASK" as const, tddSubPhase: "IMPLEMENT" as const,
+      currentMilestone: "M001", currentSlice: "S01", currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+    const session: SessionReport = {
+      session: "test", started: "", ended: "", status: "completed",
+      tasksCompleted: [], issuesEncountered: [], blockedItems: [], totalCost: 0,
+    };
+
+    await writeSessionContinue(TEST_ROOT, state, session);
+
+    const continuePath = `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/CONTINUE.md`;
+    const exists = await Bun.file(continuePath).exists();
+    expect(exists).toBe(false);
+  });
 });

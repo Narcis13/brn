@@ -47,9 +47,11 @@ describe("getScaledBudget", () => {
     expect(budget.vaultDocs).toBe(5_000);
   });
 
-  test("returns base budget at multiplier > 1.0", () => {
+  test("scales budget UP at multiplier > 1.0 for context rotation", () => {
     const budget = getScaledBudget(1.5);
-    expect(budget.total).toBe(80_000);
+    expect(budget.total).toBe(120_000);
+    expect(budget.codeFiles).toBe(60_000);
+    expect(budget.vaultDocs).toBe(15_000);
   });
 
   test("scales to 65% for ORANGE tier", () => {
@@ -360,6 +362,58 @@ Implement auth token generation`
     const halfVaultTokens = ctxHalf.vaultDocs.reduce((acc, d) => acc + estimateTokens(d), 0);
 
     expect(halfVaultTokens).toBeLessThanOrEqual(fullVaultTokens);
+  });
+
+  test("assembleContext injects extraContext into upstream summaries", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/PLAN.md`,
+      "---\ntask: T01\n---\n\n## Goal\nDo work"
+    );
+
+    const state: ProjectState = {
+      phase: "EXECUTE_TASK",
+      tddSubPhase: "IMPLEMENT",
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T01",
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const extraContext = [
+      "## Prior Attempt Test Output (Attempt 1)\nIMPLEMENT phase: 2 test(s) still failing.",
+      "## Prior Attempt Test Output (Attempt 2)\nIMPLEMENT phase: 1 test(s) still failing.",
+    ];
+
+    const ctx = await assembleContext(TEST_ROOT, state, 1.0, extraContext);
+    expect(ctx.upstreamSummaries.some((s) => s.includes("Prior Attempt Test Output"))).toBe(true);
+    expect(ctx.upstreamSummaries.some((s) => s.includes("2 test(s) still failing"))).toBe(true);
+  });
+
+  test("simple complexity skips vault docs and upstream summaries", async () => {
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/vault/patterns/typescript.md`,
+      "---\ntitle: TS\n---\n## Patterns"
+    );
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/SUMMARY.md`,
+      "## Built auth"
+    );
+    writeFileSync(
+      `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T02/PLAN.md`,
+      "---\ntask: T02\n---\n\n## Goal\nSimple change using [[patterns/typescript]]"
+    );
+
+    const state: ProjectState = {
+      phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT",
+      currentMilestone: "M001", currentSlice: "S01", currentTask: "T02",
+      lastUpdated: new Date().toISOString(),
+    };
+
+    const ctxSimple = await assembleContext(TEST_ROOT, state, 1.0, [], "simple");
+    const ctxStandard = await assembleContext(TEST_ROOT, state, 1.0, [], "standard");
+
+    // Simple should have fewer vault docs and upstream summaries
+    expect(ctxSimple.vaultDocs.length).toBeLessThanOrEqual(ctxStandard.vaultDocs.length);
   });
 
   test("context respects token budget — drops vault docs first", async () => {

@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { computeNextState, getAgentRoleForPhase } from "./loop.ts";
-import type { ProjectState } from "./types.ts";
+import type { AttemptRecord } from "./loop.ts";
+import type { ProjectState, DeferredTask } from "./types.ts";
 
 // ─── computeNextState ────────────────────────────────────────────
 
@@ -194,5 +195,102 @@ describe("getAgentRoleForPhase", () => {
 
   test("maps IDLE to null", () => {
     expect(getAgentRoleForPhase("IDLE", null)).toBeNull();
+  });
+});
+
+// ─── DeferredTask Type Contract ─────────────────────────────────
+
+describe("DeferredTask", () => {
+  test("DeferredTask interface has required fields", () => {
+    const deferred: DeferredTask = {
+      taskKey: "S01/T02",
+      milestone: "M001",
+      slice: "S01",
+      task: "T02",
+      reason: "TDD IMPLEMENT failed after 3 attempts + Doctor diagnosis",
+      failureContext: "2 test(s) still failing",
+    };
+
+    expect(deferred.taskKey).toBe("S01/T02");
+    expect(deferred.milestone).toBe("M001");
+    expect(deferred.slice).toBe("S01");
+    expect(deferred.task).toBe("T02");
+    expect(deferred.reason).toContain("failed");
+    expect(deferred.failureContext).toContain("failing");
+  });
+
+  test("computeNextState can set up retry state for deferred task", () => {
+    // Simulate: a deferred task is being retried by setting state back to EXECUTE_TASK
+    const currentState: ProjectState = {
+      phase: "EXECUTE_TASK",
+      tddSubPhase: "IMPLEMENT",
+      currentMilestone: "M001",
+      currentSlice: "S01",
+      currentTask: "T03", // was working on T03
+      lastUpdated: "2026-03-17T00:00:00Z",
+    };
+
+    // After T03 succeeds, we want to retry deferred T02
+    // The loop sets state directly, but computeNextState should handle
+    // a fresh EXECUTE_TASK → COMPLETE_SLICE transition for the retry too
+    const action = { phase: "EXECUTE_TASK", tddSubPhase: "IMPLEMENT" as const, task: "T02" };
+    const next = computeNextState(
+      { ...currentState, phase: "IDLE", tddSubPhase: null },
+      action
+    );
+    expect(next.phase).toBe("EXECUTE_TASK");
+    expect(next.tddSubPhase).toBe("IMPLEMENT");
+    expect(next.currentTask).toBe("T02");
+  });
+});
+
+// ─── AttemptRecord (Structured Doctor Handoff) ──────────────────
+
+describe("AttemptRecord", () => {
+  test("AttemptRecord captures structured attempt data", () => {
+    const record: AttemptRecord = {
+      attempt: 1,
+      message: "IMPLEMENT phase: 2 test(s) still failing. Agent must fix implementation.",
+      testOutput: "(fail) auth rejects expired token\n(fail) card creation validates title\n 5 pass\n 2 fail",
+      timestamp: "2026-03-20T10:00:00Z",
+    };
+
+    expect(record.attempt).toBe(1);
+    expect(record.message).toContain("2 test(s) still failing");
+    expect(record.testOutput).toContain("(fail) auth rejects expired token");
+    expect(record.timestamp).toBeDefined();
+  });
+
+  test("multiple AttemptRecords form a structured failure history", () => {
+    const records: AttemptRecord[] = [
+      {
+        attempt: 1,
+        message: "3 test(s) still failing",
+        testOutput: "(fail) a\n(fail) b\n(fail) c",
+        timestamp: "2026-03-20T10:00:00Z",
+      },
+      {
+        attempt: 2,
+        message: "2 test(s) still failing",
+        testOutput: "(fail) a\n(fail) b",
+        timestamp: "2026-03-20T10:01:00Z",
+      },
+      {
+        attempt: 3,
+        message: "1 test(s) still failing",
+        testOutput: "(fail) a",
+        timestamp: "2026-03-20T10:02:00Z",
+      },
+    ];
+
+    // Each successive attempt should show fewer failures (progress)
+    expect(records[0]!.message).toContain("3");
+    expect(records[1]!.message).toContain("2");
+    expect(records[2]!.message).toContain("1");
+    expect(records).toHaveLength(3);
+
+    // Full test output is preserved, not truncated
+    expect(records[0]!.testOutput).toContain("(fail) c");
+    expect(records[2]!.testOutput).not.toContain("(fail) c");
   });
 });

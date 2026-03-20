@@ -3,7 +3,7 @@
  * Test detection, test running, and TDD phase enforcement.
  */
 
-import type { TDDSequence, TDDSubPhase } from "./types.ts";
+import type { TDDSequence, TDDSubPhase, VerificationStrategy } from "./types.ts";
 
 // ─── Types ──────────────────────────────────────────────────────
 
@@ -109,22 +109,27 @@ export async function runTests(
 
 /**
  * Run the full test suite for the project.
+ *
+ * Discovers all test files and runs each in its own subprocess sequentially
+ * (--concurrency 1 equivalent) to prevent database state leaking between
+ * test files during slice verification.
  */
 export async function runFullTestSuite(projectRoot: string): Promise<TestResult> {
   try {
-    const proc = Bun.spawn(["bun", "test"], {
-      cwd: projectRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    // Discover all test files in the project
+    const testFiles = await discoverTestFiles(projectRoot);
+    if (testFiles.length === 0) {
+      return {
+        passing: true,
+        totalTests: 0,
+        passedTests: 0,
+        failedTests: 0,
+        output: "No test files found.",
+      };
+    }
 
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-
-    const output = stdout + stderr;
-
-    return parseTestOutput(output, exitCode);
+    // Run each file in its own process sequentially for full isolation
+    return await runTests(projectRoot, testFiles);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return {
@@ -137,18 +142,66 @@ export async function runFullTestSuite(projectRoot: string): Promise<TestResult>
   }
 }
 
+/**
+ * Discover all test files in a project root using `bun test --list`.
+ * Falls back to glob-based discovery if --list is not available.
+ */
+async function discoverTestFiles(projectRoot: string): Promise<string[]> {
+  try {
+    const proc = Bun.spawn(["bun", "test", "--list"], {
+      cwd: projectRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+
+    const files = stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && (line.endsWith(".test.ts") || line.endsWith(".test.js") || line.endsWith(".spec.ts") || line.endsWith(".spec.js")));
+
+    if (files.length > 0) return files;
+  } catch {
+    // Fall through to glob-based discovery
+  }
+
+  // Fallback: use Bun.Glob to find test files
+  const glob = new Bun.Glob("**/*.test.{ts,js}");
+  const found: string[] = [];
+  for await (const path of glob.scan({ cwd: projectRoot, absolute: true })) {
+    if (!path.includes("node_modules")) {
+      found.push(path);
+    }
+  }
+  return found;
+}
+
 // ─── TDD Phase Enforcement ──────────────────────────────────────
 
 /**
  * Enforce TDD rules for the IMPLEMENT phase.
- * Tests must exist AND must PASS (one-shot: agent wrote tests + implementation).
- * Full suite verification + reviewer quality gate happen at slice level.
+ * Behavior varies by verification strategy:
+ * - `tdd-strict`: Tests must exist AND pass (full RED-GREEN-REFACTOR).
+ * - `test-after`: Tests must exist AND pass (implementation first, tests after).
+ * - `verify-only`: No test requirement — skip TDD checks entirely.
  */
 export async function enforceTDDPhase(
   phase: TDDSubPhase,
   projectRoot: string,
-  sequence: TDDSequence
+  sequence: TDDSequence,
+  strategy: VerificationStrategy = "tdd-strict"
 ): Promise<TDDPhaseResult> {
+  if (strategy === "verify-only") {
+    return {
+      passed: true,
+      phase: "IMPLEMENT",
+      message: "IMPLEMENT OK (verify-only): TDD skipped — verified by static checks.",
+      testResult: null,
+    };
+  }
+
   return enforceImplement(projectRoot, sequence);
 }
 
@@ -183,6 +236,101 @@ async function enforceImplement(
     phase: "IMPLEMENT",
     message: `IMPLEMENT OK: ${testFiles.length} test file(s), all ${testResult.totalTests} test(s) passing.`,
     testResult,
+  };
+}
+
+// ─── Baseline Test Tracking ─────────────────────────────────────
+
+export interface BaselineTestSnapshot {
+  timestamp: string;
+  totalTests: number;
+  passedTests: number;
+  failedTests: number;
+  failingTestNames: string[];
+}
+
+/**
+ * Parse failing test names from bun test output.
+ * Bun marks failures as `(fail) test name`.
+ */
+export function parseFailingTestNames(output: string): string[] {
+  const failures: string[] = [];
+  for (const line of output.split("\n")) {
+    const match = line.match(/^\(fail\)\s+(.+)$/);
+    if (match?.[1]) {
+      failures.push(match[1].trim());
+    }
+  }
+  return failures;
+}
+
+/**
+ * Capture a baseline test snapshot by running the full test suite.
+ * Returns the snapshot to be saved to disk.
+ */
+export async function captureBaselineSnapshot(projectRoot: string): Promise<BaselineTestSnapshot> {
+  const result = await runFullTestSuite(projectRoot);
+  const failingTestNames = parseFailingTestNames(result.output);
+
+  return {
+    timestamp: new Date().toISOString(),
+    totalTests: result.totalTests,
+    passedTests: result.passedTests,
+    failedTests: result.failedTests,
+    failingTestNames,
+  };
+}
+
+/**
+ * Save a baseline snapshot to disk as JSON.
+ */
+export async function saveBaselineSnapshot(
+  projectRoot: string,
+  slicePath: string,
+  snapshot: BaselineTestSnapshot
+): Promise<void> {
+  const path = `${projectRoot}/${slicePath}/BASELINE_TESTS.json`;
+  await Bun.write(path, JSON.stringify(snapshot, null, 2));
+}
+
+/**
+ * Load a baseline snapshot from disk.
+ * Returns null if no baseline exists.
+ */
+export async function loadBaselineSnapshot(
+  projectRoot: string,
+  slicePath: string
+): Promise<BaselineTestSnapshot | null> {
+  const path = `${projectRoot}/${slicePath}/BASELINE_TESTS.json`;
+  const file = Bun.file(path);
+  if (!(await file.exists())) return null;
+
+  try {
+    const content = await file.text();
+    return JSON.parse(content) as BaselineTestSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compare current test results against a baseline.
+ * Returns only NEW failures (regressions) that weren't in the baseline.
+ */
+export function compareAgainstBaseline(
+  currentResult: TestResult,
+  baseline: BaselineTestSnapshot
+): { newFailures: string[]; preExisting: string[]; regressionCount: number } {
+  const currentFailures = parseFailingTestNames(currentResult.output);
+  const baselineSet = new Set(baseline.failingTestNames);
+
+  const newFailures = currentFailures.filter((name) => !baselineSet.has(name));
+  const preExisting = currentFailures.filter((name) => baselineSet.has(name));
+
+  return {
+    newFailures,
+    preExisting,
+    regressionCount: newFailures.length,
   };
 }
 

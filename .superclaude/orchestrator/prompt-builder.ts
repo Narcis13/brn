@@ -3,14 +3,15 @@
  * Generates phase-specific prompts for Claude headless invocations.
  */
 
-import type { ContextPayload, Phase, ProjectState, TDDSubPhase } from "./types.ts";
+import type { ContextPayload, Phase, ProjectState, TDDSubPhase, VerificationStrategy } from "./types.ts";
 import { PATHS } from "./types.ts";
 
 // ─── Prompt Builder ──────────────────────────────────────────────
 
 export function buildPrompt(
   state: ProjectState,
-  context: ContextPayload
+  context: ContextPayload,
+  strategy: VerificationStrategy = "tdd-strict"
 ): string {
   const phase = state.phase;
   const tddSubPhase = state.tddSubPhase;
@@ -25,7 +26,7 @@ export function buildPrompt(
     case "PLAN_SLICE":
       return buildPlanSlicePrompt(state, context);
     case "EXECUTE_TASK":
-      return buildExecuteTaskPrompt(tddSubPhase, context);
+      return buildExecuteTaskPrompt(tddSubPhase, context, strategy);
     case "COMPLETE_SLICE":
       return buildCompleteSlicePrompt(state, context);
     case "RETROSPECTIVE":
@@ -231,6 +232,24 @@ Right: \`playground/src/cards/card.repo.ts\` (if that's where existing code live
 You MUST write the plan to this exact path using the Write tool:
 **${outputPath}**
 
+## Verification Strategy
+Each task MUST include a \`strategy\` field in its frontmatter. Choose based on the task type:
+
+| Strategy | When to Use |
+|----------|------------|
+| \`tdd-strict\` | Pure logic, algorithms, services, repositories — full RED-GREEN-REFACTOR |
+| \`test-after\` | Integration wiring, API routes, middleware chains — implement first, then write tests |
+| \`verify-only\` | Infrastructure setup, config, scaffolding, migrations — no tests, verified by static checks |
+
+## Task Complexity
+Each task SHOULD include a \`complexity\` field in its frontmatter to control prompt size:
+
+| Complexity | When to Use |
+|-----------|------------|
+| \`simple\` | Add a field, create a basic route, rename something — minimal context needed |
+| \`standard\` | Implement a service, add validation logic — normal context (default) |
+| \`complex\` | Auth system, complex business logic, multi-file orchestration — full context |
+
 ## Output Format
 The file MUST use this structure (the orchestrator parses T01, T02 etc. from it):
 \`\`\`markdown
@@ -243,6 +262,9 @@ status: planned
 ## Tasks
 
 ### T01: [Task Name]
+---
+strategy: tdd-strict
+---
 **Goal:** [One sentence]
 
 #### TDD Sequence
@@ -259,6 +281,9 @@ status: planned
 - [explicit scope boundaries]
 
 ### T02: [Task Name]
+---
+strategy: verify-only
+---
 ...
 \`\`\`
 
@@ -271,9 +296,17 @@ status: planned
 
 function buildExecuteTaskPrompt(
   tddSubPhase: TDDSubPhase | null,
-  ctx: ContextPayload
+  ctx: ContextPayload,
+  strategy: VerificationStrategy = "tdd-strict"
 ): string {
-  return buildImplementPrompt(ctx);
+  switch (strategy) {
+    case "verify-only":
+      return buildVerifyOnlyPrompt(ctx);
+    case "test-after":
+      return buildTestAfterPrompt(ctx);
+    default:
+      return buildImplementPrompt(ctx);
+  }
 }
 
 function buildImplementPrompt(ctx: ContextPayload): string {
@@ -319,6 +352,12 @@ ${formatVaultDocs(ctx.vaultDocs)}
 All file paths in the task plan are relative to the project root.
 Write files at the EXACT paths specified — do not modify or shorten them.
 
+## Database Test Isolation (CRITICAL)
+Each test file MUST create and destroy its own database. Never share database state between test files.
+- Use \`/tmp/superclaude-test-{module}-{random}/data.db\` for temp databases
+- Create in \`beforeEach\`, destroy in \`afterEach\`
+- Never use a shared or global database instance across test files
+
 ## Verification (run these before finishing)
 - \`bun test\` — all tests pass
 - No TODO/FIXME/stub patterns in implementation files
@@ -329,6 +368,106 @@ Write files at the EXACT paths specified — do not modify or shorten them.
 - ONLY implement what the task plan specifies
 - Do NOT add unrequested features, tests, or files
 - Do NOT modify files outside the task's artifact list
+- If something seems missing from the plan, implement the minimum — do NOT expand scope`;
+}
+
+function buildTestAfterPrompt(ctx: ContextPayload): string {
+  return `# EXECUTE TASK — Implement Then Test
+
+You are the Implementer sub-agent. Complete this task by implementing first, then writing tests to verify.
+
+## Task Plan
+${ctx.taskPlan}
+
+${formatUpstreamContext(ctx.upstreamSummaries)}
+
+## Current Code
+${formatCodeFiles(ctx.codeFiles)}
+
+${formatVaultDocs(ctx.vaultDocs)}
+
+## Protocol — Follow This Order
+
+### Step 1: IMPLEMENT
+- Read the task's Artifacts section for EXACT implementation file paths
+- Write the implementation at the EXACT paths specified
+- All must-have artifacts must exist with real implementation (no stubs)
+- All must-have key links must be wired (imports connected)
+
+### Step 2: TEST
+- Read the task's TDD Sequence section for EXACT test file paths
+- Write test files at those EXACT paths
+- Tests must be runnable with \`bun test\`
+- Tests must cover: happy path, edge cases, error cases
+- Run \`bun test\` to verify all tests pass
+
+### Step 3: REFACTOR — Clean Up
+- Refactor for clarity, consistency, and quality
+- Follow established patterns from vault docs
+- Do NOT add new functionality
+- Run \`bun test\` to confirm tests still pass
+
+## CRITICAL: File Paths
+All file paths in the task plan are relative to the project root.
+Write files at the EXACT paths specified — do not modify or shorten them.
+
+## Database Test Isolation (CRITICAL)
+Each test file MUST create and destroy its own database. Never share database state between test files.
+- Use \`/tmp/superclaude-test-{module}-{random}/data.db\` for temp databases
+- Create in \`beforeEach\`, destroy in \`afterEach\`
+- Never use a shared or global database instance across test files
+
+## Verification (run these before finishing)
+- \`bun test\` — all tests pass
+- No TODO/FIXME/stub patterns in implementation files
+- All must-have exports present
+- All must-have imports wired
+
+## Scope Guard (HIGH ATTENTION)
+- ONLY implement what the task plan specifies
+- Do NOT add unrequested features, tests, or files
+- Do NOT modify files outside the task's artifact list
+- If something seems missing from the plan, implement the minimum — do NOT expand scope`;
+}
+
+function buildVerifyOnlyPrompt(ctx: ContextPayload): string {
+  return `# EXECUTE TASK — Implement and Verify
+
+You are the Implementer sub-agent. Complete this infrastructure/scaffolding task. No tests required — verification is through static checks.
+
+## Task Plan
+${ctx.taskPlan}
+
+${formatUpstreamContext(ctx.upstreamSummaries)}
+
+## Current Code
+${formatCodeFiles(ctx.codeFiles)}
+
+${formatVaultDocs(ctx.vaultDocs)}
+
+## Protocol
+
+### Step 1: IMPLEMENT
+- Read the task's Artifacts section for EXACT implementation file paths
+- Write the implementation at the EXACT paths specified
+- All must-have artifacts must exist with real implementation (no stubs)
+- All must-have key links must be wired (imports connected)
+
+### Step 2: VERIFY
+- Run \`bunx tsc --noEmit\` to verify TypeScript compiles
+- Confirm all must-have exports are present
+- Confirm all must-have imports are wired
+- No TODO/FIXME/stub patterns in implementation files
+
+## CRITICAL: File Paths
+All file paths in the task plan are relative to the project root.
+Write files at the EXACT paths specified — do not modify or shorten them.
+
+## Scope Guard (HIGH ATTENTION)
+- ONLY implement what the task plan specifies
+- Do NOT add unrequested features or files
+- Do NOT modify files outside the task's artifact list
+- Do NOT write test files — this task uses verify-only strategy
 - If something seems missing from the plan, implement the minimum — do NOT expand scope`;
 }
 
