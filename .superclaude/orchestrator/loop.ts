@@ -347,7 +347,61 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
 
     // 12. (Verification moved to slice level — see COMPLETE_SLICE section below)
 
-    // 13. Git commit for successful work (§13.3)
+    // 13. Track completed tasks + write summaries (before commit so they're included)
+    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "IMPLEMENT" &&
+        currentState.currentSlice && currentState.currentTask) {
+      session.tasksCompleted.push(`${currentState.currentSlice}/${currentState.currentTask}: ${nextAction.description}`);
+
+      // GAP-21: Write task summary deterministically (§7.3 fractal summaries)
+      if (currentState.currentMilestone) {
+        // Use the task plan's goal as the summary description, not the generic action label
+        const taskPlan = await loadTaskPlan(projectRoot, currentState);
+        const taskGoal = taskPlan?.goal ?? nextAction.description;
+        await writeTaskSummaryOnComplete(
+          projectRoot,
+          currentState.currentMilestone,
+          currentState.currentSlice,
+          currentState.currentTask,
+          taskGoal,
+          result.output
+        );
+      }
+
+      // GAP-13: Clean up CONTINUE.md after successful task completion
+      // Per spec §7.5: "CONTINUE.md is consumed on resume (ephemeral)"
+      if (currentState.currentMilestone) {
+        const continuePath = `${projectRoot}/${PATHS.taskPath(currentState.currentMilestone, currentState.currentSlice, currentState.currentTask)}/CONTINUE.md`;
+        try {
+          await Bun.$`rm -f ${continuePath}`.quiet();
+        } catch {
+          // File may not exist — that's fine
+        }
+      }
+    }
+
+    // 14. Update state (before commit so state.json is included)
+    let newState = computeNextState(currentState, nextAction);
+
+    // If a task just completed (phase moved to COMPLETE_SLICE), check for remaining tasks
+    // before writing state. This avoids a wasted loop iteration in auto mode and fixes
+    // step mode where COMPLETE_SLICE would stick without a next iteration.
+    if (newState.phase === "COMPLETE_SLICE" && currentState.phase === "EXECUTE_TASK" &&
+        newState.currentMilestone && newState.currentSlice) {
+      const remainingTask = await findNextTask(projectRoot, newState.currentMilestone, newState.currentSlice);
+      if (remainingTask) {
+        newState = {
+          ...newState,
+          phase: "EXECUTE_TASK",
+          tddSubPhase: "IMPLEMENT",
+          currentTask: remainingTask,
+        };
+        console.log(`  Next task: ${newState.currentSlice}/${remainingTask}`);
+      }
+    }
+
+    await writeState(projectRoot, newState);
+
+    // 15. Git commit for successful work (§13.3)
     if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase &&
         currentState.currentSlice && currentState.currentTask) {
       const clean = await isScopedClean(projectRoot);
@@ -444,39 +498,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       console.log(`  Tagged: ${tag}`);
     }
 
-    // Track completed tasks (after IMPLEMENT — verification happens at slice level)
-    if (currentState.phase === "EXECUTE_TASK" && currentState.tddSubPhase === "IMPLEMENT" &&
-        currentState.currentSlice && currentState.currentTask) {
-      session.tasksCompleted.push(`${currentState.currentSlice}/${currentState.currentTask}: ${nextAction.description}`);
-
-      // GAP-21: Write task summary deterministically (§7.3 fractal summaries)
-      if (currentState.currentMilestone) {
-        // Use the task plan's goal as the summary description, not the generic action label
-        const taskPlan = await loadTaskPlan(projectRoot, currentState);
-        const taskGoal = taskPlan?.goal ?? nextAction.description;
-        await writeTaskSummaryOnComplete(
-          projectRoot,
-          currentState.currentMilestone,
-          currentState.currentSlice,
-          currentState.currentTask,
-          taskGoal,
-          result.output
-        );
-      }
-
-      // GAP-13: Clean up CONTINUE.md after successful task completion
-      // Per spec §7.5: "CONTINUE.md is consumed on resume (ephemeral)"
-      if (currentState.currentMilestone) {
-        const continuePath = `${projectRoot}/${PATHS.taskPath(currentState.currentMilestone, currentState.currentSlice, currentState.currentTask)}/CONTINUE.md`;
-        try {
-          await Bun.$`rm -f ${continuePath}`.quiet();
-        } catch {
-          // File may not exist — that's fine
-        }
-      }
-    }
-
-    // 14. Process phase-specific output (DISCUSS, RESEARCH, REASSESS)
+    // 16. Process phase-specific output (DISCUSS, RESEARCH, REASSESS)
     if (result.output) {
       if (currentState.phase === "DISCUSS" && currentState.currentMilestone) {
         const discussResult = await processDiscussOutput(projectRoot, currentState.currentMilestone, result.output);
@@ -508,32 +530,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       }
     }
 
-    // 15. Update state
-    let newState = computeNextState(currentState, nextAction);
-
-    // If a task just completed (phase moved to COMPLETE_SLICE), check for remaining tasks
-    // before writing state. This avoids a wasted loop iteration in auto mode and fixes
-    // step mode where COMPLETE_SLICE would stick without a next iteration.
-    if (newState.phase === "COMPLETE_SLICE" && currentState.phase === "EXECUTE_TASK" &&
-        newState.currentMilestone && newState.currentSlice) {
-      const remainingTask = await findNextTask(projectRoot, newState.currentMilestone, newState.currentSlice);
-      if (remainingTask) {
-        newState = {
-          ...newState,
-          phase: "EXECUTE_TASK",
-          tddSubPhase: "IMPLEMENT",
-          currentTask: remainingTask,
-        };
-        console.log(`  Next task: ${newState.currentSlice}/${remainingTask}`);
-      }
-    }
-
-    await writeState(projectRoot, newState);
-
-    // 16. Release lock
+    // 17. Release lock
     await releaseLock(projectRoot);
 
-    // 17. Track cost
+    // 18. Track cost
     const promptTokens = Math.ceil(prompt.length / 4);
     const outputTokens = Math.ceil((result.output?.length ?? 0) / 4);
     const stepCost = estimateCost(promptTokens, outputTokens);
@@ -587,6 +587,16 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     console.log(renderDashboard(dashboardData));
   } catch {
     // Dashboard generation is best-effort
+  }
+
+  // Trailing commit: capture session report, dashboard, and any remaining state changes
+  const postLoopClean = await isScopedClean(projectRoot);
+  if (!postLoopClean) {
+    await stageAll(projectRoot);
+    const currentState = await readState(projectRoot);
+    const milestone = currentState.currentMilestone ?? "session";
+    await Bun.$`git -C ${projectRoot} commit -m ${"chore(" + milestone + "): update session report and dashboard"}`.quiet().catch(() => {});
+    console.log(`  Committed: chore(${milestone}): update session report and dashboard`);
   }
 
   console.log(`[SUPER_CLAUDE] Loop complete. ${iterations} iterations, ~$${costTracker.totalCost.toFixed(2)} total.`);
