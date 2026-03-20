@@ -23,6 +23,13 @@ const mockUpdateCard = vi.fn();
 // Mock getDb
 const mockGetDb = vi.fn(() => "mock-db-instance");
 
+// Mock service functions
+const mockServiceCreateCard = vi.fn();
+const mockServiceUpdateCard = vi.fn();
+const mockServiceMoveCard = vi.fn();
+const mockServiceGetCardById = vi.fn();
+const mockServiceGetCardsByBoard = vi.fn();
+
 mock.module("../boards/board.repo", () => ({
   findBoardById: mockFindBoardById,
 }));
@@ -33,6 +40,14 @@ mock.module("../cards/card.repo", () => ({
   findCardsByBoardId: mockFindCardsByBoardId,
   findCardById: mockFindCardById,
   updateCard: mockUpdateCard,
+}));
+
+mock.module("../cards/card.service", () => ({
+  createCard: mockServiceCreateCard,
+  updateCard: mockServiceUpdateCard,
+  moveCard: mockServiceMoveCard,
+  getCardById: mockServiceGetCardById,
+  getCardsByBoard: mockServiceGetCardsByBoard,
 }));
 
 mock.module("../db", () => ({
@@ -59,16 +74,6 @@ describe("Card Routes", () => {
 
   describe("POST /api/cards", () => {
     test("creates card with valid input", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-      mockFindCardsByBoardAndColumn.mockResolvedValue([]);
-
       const newCard: Card = {
         id: "card123",
         title: "My Card",
@@ -78,7 +83,7 @@ describe("Card Routes", () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      mockCreateCard.mockResolvedValue(newCard);
+      mockServiceCreateCard.mockResolvedValue(newCard);
 
       const res = await app.request("/api/cards", {
         method: "POST",
@@ -99,7 +104,7 @@ describe("Card Routes", () => {
     });
 
     test("returns 404 for non-existent board", async () => {
-      mockFindBoardById.mockResolvedValue(null);
+      mockServiceCreateCard.mockRejectedValue(new Error("Board not found"));
 
       const res = await app.request("/api/cards", {
         method: "POST",
@@ -120,14 +125,7 @@ describe("Card Routes", () => {
     });
 
     test("returns 403 for board not owned by user", async () => {
-      const otherUserBoard = {
-        id: "board123",
-        name: "Other Board",
-        userId: "other-user-id",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(otherUserBoard);
+      mockServiceCreateCard.mockRejectedValue(new Error("Not authorized"));
 
       const res = await app.request("/api/cards", {
         method: "POST",
@@ -162,14 +160,7 @@ describe("Card Routes", () => {
     });
 
     test("returns 400 when title is missing", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
+      mockServiceCreateCard.mockRejectedValue(new Error("Card title is required"));
 
       const res = await app.request("/api/cards", {
         method: "POST",
@@ -190,16 +181,6 @@ describe("Card Routes", () => {
     });
 
     test("defaults column to todo when not provided", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-      mockFindCardsByBoardAndColumn.mockResolvedValue([]);
-
       const newCard: Card = {
         id: "card456",
         title: "Default Column Card",
@@ -209,7 +190,7 @@ describe("Card Routes", () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      mockCreateCard.mockResolvedValue(newCard);
+      mockServiceCreateCard.mockResolvedValue(newCard);
 
       const res = await app.request("/api/cards", {
         method: "POST",
@@ -231,15 +212,6 @@ describe("Card Routes", () => {
 
   describe("GET /api/boards/:boardId/cards", () => {
     test("returns cards for owned board", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-
       const cards: Card[] = [
         {
           id: "card1",
@@ -260,7 +232,7 @@ describe("Card Routes", () => {
           updatedAt: new Date().toISOString(),
         },
       ];
-      mockFindCardsByBoardId.mockResolvedValue(cards);
+      mockServiceGetCardsByBoard.mockResolvedValue(cards);
 
       const res = await app.request("/api/boards/board123/cards", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -272,15 +244,7 @@ describe("Card Routes", () => {
     });
 
     test("returns empty array for board with no cards", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-      mockFindCardsByBoardId.mockResolvedValue([]);
+      mockServiceGetCardsByBoard.mockResolvedValue([]);
 
       const res = await app.request("/api/boards/board123/cards", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -292,14 +256,7 @@ describe("Card Routes", () => {
     });
 
     test("returns 403 for unowned board", async () => {
-      const otherBoard = {
-        id: "board123",
-        name: "Other Board",
-        userId: "other-user-id",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(otherBoard);
+      mockServiceGetCardsByBoard.mockRejectedValue(new Error("Not authorized"));
 
       const res = await app.request("/api/boards/board123/cards", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -311,22 +268,13 @@ describe("Card Routes", () => {
     });
 
     test("returns cards in position order within columns", async () => {
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-
-      // Return cards deliberately out of order
+      // Return cards in sorted order since the service layer is responsible for sorting
       const cards: Card[] = [
         {
-          id: "card3",
-          title: "Done Card",
+          id: "card2",
+          title: "Todo First",
           boardId: "board123",
-          column: "done",
+          column: "todo",
           position: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -341,16 +289,16 @@ describe("Card Routes", () => {
           updatedAt: new Date().toISOString(),
         },
         {
-          id: "card2",
-          title: "Todo First",
+          id: "card3",
+          title: "Done Card",
           boardId: "board123",
-          column: "todo",
+          column: "done",
           position: 0,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
       ];
-      mockFindCardsByBoardId.mockResolvedValue(cards);
+      mockServiceGetCardsByBoard.mockResolvedValue(cards);
 
       const res = await app.request("/api/boards/board123/cards", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -376,16 +324,7 @@ describe("Card Routes", () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      mockFindCardById.mockResolvedValue(card);
-
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
+      mockServiceGetCardById.mockResolvedValue(card);
 
       const res = await app.request("/api/cards/card123", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -397,25 +336,7 @@ describe("Card Routes", () => {
     });
 
     test("validates board ownership", async () => {
-      const card: Card = {
-        id: "card123",
-        title: "Test Card",
-        boardId: "board123",
-        column: "todo",
-        position: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindCardById.mockResolvedValue(card);
-
-      const otherBoard = {
-        id: "board123",
-        name: "Other Board",
-        userId: "other-user-id",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(otherBoard);
+      mockServiceGetCardById.mockRejectedValue(new Error("Not authorized"));
 
       const res = await app.request("/api/cards/card123", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -427,7 +348,7 @@ describe("Card Routes", () => {
     });
 
     test("returns 404 for non-existent card", async () => {
-      mockFindCardById.mockResolvedValue(null);
+      mockServiceGetCardById.mockRejectedValue(new Error("Card not found"));
 
       const res = await app.request("/api/cards/nonexistent", {
         headers: { Authorization: `Bearer ${validToken}` },
@@ -441,33 +362,17 @@ describe("Card Routes", () => {
 
   describe("PUT /api/cards/:id", () => {
     test("updates title and description", async () => {
-      const card: Card = {
+      const updatedCard: Card = {
         id: "card123",
-        title: "Original",
+        title: "Updated",
+        description: "New desc",
         boardId: "board123",
         column: "todo",
         position: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      mockFindCardById.mockResolvedValue(card);
-
-      const board = {
-        id: "board123",
-        name: "Test Board",
-        userId: mockAuthContext.userId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(board);
-
-      const updatedCard: Card = {
-        ...card,
-        title: "Updated",
-        description: "New desc",
-        updatedAt: new Date().toISOString(),
-      };
-      mockUpdateCard.mockResolvedValue(updatedCard);
+      mockServiceUpdateCard.mockResolvedValue(updatedCard);
 
       const res = await app.request("/api/cards/card123", {
         method: "PUT",
@@ -485,25 +390,7 @@ describe("Card Routes", () => {
     });
 
     test("validates board ownership", async () => {
-      const card: Card = {
-        id: "card123",
-        title: "Test Card",
-        boardId: "board123",
-        column: "todo",
-        position: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindCardById.mockResolvedValue(card);
-
-      const otherBoard = {
-        id: "board123",
-        name: "Other Board",
-        userId: "other-user-id",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      mockFindBoardById.mockResolvedValue(otherBoard);
+      mockServiceUpdateCard.mockRejectedValue(new Error("Not authorized"));
 
       const res = await app.request("/api/cards/card123", {
         method: "PUT",
@@ -517,6 +404,75 @@ describe("Card Routes", () => {
       expect(res.status).toBe(403);
       const data = await res.json();
       expect(data.error).toBe("Not authorized");
+    });
+
+    test("moves card to different column", async () => {
+      const movedCard: Card = {
+        id: "card123",
+        title: "Moving Card",
+        boardId: "board123",
+        column: "doing",
+        position: 2, // Should be at end of new column
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockServiceMoveCard.mockResolvedValue(movedCard);
+
+      const res = await app.request("/api/cards/card123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: JSON.stringify({ column: "doing" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.column).toBe("doing");
+      expect(data.position).toBe(2);
+    });
+
+    test("cannot move card to invalid column", async () => {
+      const res = await app.request("/api/cards/card123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: JSON.stringify({ column: "invalid" }),
+      });
+
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error).toBe("Invalid column. Must be todo, doing, or done");
+    });
+
+    test("updates position when moving within same column", async () => {
+      const reorderedCard: Card = {
+        id: "card123",
+        title: "Reorder Card",
+        boardId: "board123",
+        column: "todo",
+        position: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockServiceMoveCard.mockResolvedValue(reorderedCard);
+
+      const res = await app.request("/api/cards/card123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: JSON.stringify({ column: "todo", position: 0 }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.column).toBe("todo");
+      expect(data.position).toBe(0);
     });
   });
 });
