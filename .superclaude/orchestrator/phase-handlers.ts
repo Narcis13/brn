@@ -173,45 +173,45 @@ export async function processRetrospectiveOutput(
   output: string
 ): Promise<RetrospectiveResult> {
   const vaultDocsWritten: string[] = [];
-
-  // Count learnings written (look for vault/learnings/ paths in output)
-  const learningMatches = output.match(/vault\/learnings\/[\w-]+\.md/g);
-  const learningsCount = learningMatches?.length ?? 0;
-  if (learningMatches) vaultDocsWritten.push(...learningMatches);
-
-  // Count decisions written
-  const decisionMatches = output.match(/vault\/decisions\/[\w-]+\.md/g);
-  const decisionsCount = decisionMatches?.length ?? 0;
-  if (decisionMatches) vaultDocsWritten.push(...decisionMatches);
-
-  // Count playbooks written
-  const playbookMatches = output.match(/vault\/playbooks\/[\w-]+\.md/g);
-  const playbooksCount = playbookMatches?.length ?? 0;
-  if (playbookMatches) vaultDocsWritten.push(...playbookMatches);
-
-  // Check if INDEX.md was mentioned (likely updated)
-  const indexUpdated = output.includes("INDEX.md");
-
-  // Verify at least some vault docs exist on disk
   const vaultBase = `${projectRoot}/${PATHS.vault}`;
-  let actualDocsFound = 0;
-  for (const dir of ["learnings", "decisions", "playbooks"]) {
+
+  // Disk-based detection: scan vault directories for actual files written
+  let learningsCount = 0;
+  let decisionsCount = 0;
+  let playbooksCount = 0;
+
+  for (const [dir, counter] of [
+    ["learnings", "learnings"],
+    ["decisions", "decisions"],
+    ["playbooks", "playbooks"],
+  ] as const) {
     try {
       const glob = new Bun.Glob("*.md");
-      for await (const _ of glob.scan({ cwd: `${vaultBase}/${dir}` })) {
-        actualDocsFound++;
+      for await (const path of glob.scan({ cwd: `${vaultBase}/${dir}` })) {
+        vaultDocsWritten.push(`vault/${dir}/${path}`);
+        if (dir === "learnings") learningsCount++;
+        else if (dir === "decisions") decisionsCount++;
+        else if (dir === "playbooks") playbooksCount++;
       }
     } catch {
       // Directory may not exist yet
     }
   }
 
+  // Check if INDEX.md was updated (compare modified time or content)
+  const indexPath = `${vaultBase}/INDEX.md`;
+  const indexFile = Bun.file(indexPath);
+  const indexUpdated = (await indexFile.exists()) &&
+    (output.includes("INDEX.md") || vaultDocsWritten.length > 0);
+
+  const totalDocs = learningsCount + decisionsCount + playbooksCount;
+
   return {
-    success: true,
+    success: totalDocs > 0,
     learningsCount,
     decisionsCount,
     playbooksCount,
-    vaultDocsWritten: [...new Set(vaultDocsWritten)],
+    vaultDocsWritten,
     indexUpdated,
   };
 }

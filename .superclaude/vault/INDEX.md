@@ -2,8 +2,8 @@
 title: Vault Index
 type: index
 created: 2026-03-18
-updated: 2026-03-18
-updated_by: human
+updated: 2026-03-20
+updated_by: evolver
 ---
 
 # Vault — Map of Content
@@ -15,18 +15,24 @@ The vault is the system's long-term memory. Agents read from and write to these 
 
 ## Patterns
 - [[patterns/typescript]] — TypeScript conventions: strict mode, no any, explicit types
+- [[patterns/position-management]] — Managing ordered positions within collections
+- [[patterns/database-indexes]] — Essential indexes for query performance
 
 ## Testing
 - [[testing/strategy]] — Testing strategy: what to test, at which layer, and how
 
 ## Decisions
-_No ADRs yet — added as architectural decisions are made._
+- [[decisions/ADR-001-fixed-columns]] — Fixed columns vs dynamic lists for Kanban boards
+- [[decisions/ADR-002-authorization-pattern]] — Authorization result pattern for proper HTTP status codes
 
 ## Learnings
-_No learnings yet — added by the Evolver agent after postmortems._
+- [[learnings/database-test-isolation]] — Each test file must create its own isolated database
+- [[learnings/schema-code-alignment]] — Database schema and code must use consistent naming
+- [[learnings/explicit-return-types]] — All exported functions require explicit return types
+- [[learnings/test-coverage-gaps]] — Every public function needs tests, especially auth paths
 
 ## Playbooks
-_No playbooks yet — added as common operations are identified._
+- [[playbooks/test-failure-recovery]] — Recovering from test failures in suite vs individual runs
 
 ## Contracts
-_No contracts yet — generated during slice planning._
+- [[contracts/S03]] — Card Operations boundary contract

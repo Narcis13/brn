@@ -16,6 +16,7 @@ const STAGING_PATHS = [
   "playground/",
   ".superclaude/state/",
   ".superclaude/history/",
+  ".superclaude/vault/",
 ];
 
 // ─── Branch Operations ──────────────────────────────────────────

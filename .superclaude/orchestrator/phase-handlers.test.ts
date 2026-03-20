@@ -189,54 +189,57 @@ test("processReassessOutput appends reassessment note to ROADMAP.md", async () =
 
 // ─── processRetrospectiveOutput ───────────────────────────────
 
-test("processRetrospectiveOutput counts learnings from output", async () => {
-  const output = `I wrote the following vault documents:
+test("processRetrospectiveOutput counts learnings from disk", async () => {
+  // Create vault learnings on disk (simulating what Claude's Write tool does)
+  const vaultDir = `${projectRoot}/.superclaude/vault/learnings`;
+  await Bun.$`mkdir -p ${vaultDir}`.quiet();
+  await Bun.write(`${vaultDir}/bun-mock-pollution.md`, "---\ntitle: Mock Pollution\ntype: learning\n---\nContent");
+  await Bun.write(`${vaultDir}/sqlite-in-memory.md`, "---\ntitle: SQLite In-Memory\ntype: learning\n---\nContent");
+  // Also create INDEX.md
+  await Bun.write(`${projectRoot}/.superclaude/vault/INDEX.md`, "# Vault Index\n- learnings/bun-mock-pollution");
 
-Created vault/learnings/bun-mock-pollution.md with frontmatter.
-Created vault/learnings/sqlite-in-memory-testing.md with frontmatter.
-Updated INDEX.md with new entries.`;
-
-  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", "done");
   expect(result.success).toBe(true);
   expect(result.learningsCount).toBe(2);
   expect(result.indexUpdated).toBe(true);
 });
 
-test("processRetrospectiveOutput counts decisions from output", async () => {
-  const output = `Created vault/decisions/ADR-001-card-columns.md
-Created vault/learnings/testing-strategy.md
-Updated INDEX.md`;
+test("processRetrospectiveOutput counts decisions from disk", async () => {
+  await Bun.$`mkdir -p ${projectRoot}/.superclaude/vault/decisions ${projectRoot}/.superclaude/vault/learnings`.quiet();
+  await Bun.write(`${projectRoot}/.superclaude/vault/decisions/ADR-001-card-columns.md`, "---\ntitle: Card Columns\ntype: decision\n---\nContent");
+  await Bun.write(`${projectRoot}/.superclaude/vault/learnings/testing-strategy.md`, "---\ntitle: Testing\ntype: learning\n---\nContent");
 
-  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", "done");
   expect(result.decisionsCount).toBe(1);
   expect(result.learningsCount).toBe(1);
-  expect(result.indexUpdated).toBe(true);
 });
 
-test("processRetrospectiveOutput counts playbooks from output", async () => {
-  const output = `Created vault/playbooks/unstick-completed-task.md
-Created vault/learnings/mock-pollution.md`;
+test("processRetrospectiveOutput counts playbooks from disk", async () => {
+  await Bun.$`mkdir -p ${projectRoot}/.superclaude/vault/playbooks ${projectRoot}/.superclaude/vault/learnings`.quiet();
+  await Bun.write(`${projectRoot}/.superclaude/vault/playbooks/unstick-task.md`, "---\ntitle: Unstick Task\ntype: playbook\n---\nContent");
+  await Bun.write(`${projectRoot}/.superclaude/vault/learnings/mock-pollution.md`, "---\ntitle: Mock Pollution\ntype: learning\n---\nContent");
 
-  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", "done");
   expect(result.playbooksCount).toBe(1);
   expect(result.learningsCount).toBe(1);
 });
 
-test("processRetrospectiveOutput handles empty output", async () => {
-  const output = "No significant learnings to extract from this slice.";
-  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
-  expect(result.success).toBe(true);
+test("processRetrospectiveOutput returns failure when no vault docs exist", async () => {
+  // No vault directories created — simulates Claude not writing files
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", "I wrote lots of docs!");
+  expect(result.success).toBe(false);
   expect(result.learningsCount).toBe(0);
   expect(result.decisionsCount).toBe(0);
   expect(result.playbooksCount).toBe(0);
 });
 
-test("processRetrospectiveOutput deduplicates vault doc paths", async () => {
-  const output = `Created vault/learnings/testing.md
-Updated vault/learnings/testing.md with additional context`;
+test("processRetrospectiveOutput lists all vault doc paths", async () => {
+  await Bun.$`mkdir -p ${projectRoot}/.superclaude/vault/learnings`.quiet();
+  await Bun.write(`${projectRoot}/.superclaude/vault/learnings/testing.md`, "---\ntitle: Testing\ntype: learning\n---\nContent");
 
-  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", "done");
   expect(result.vaultDocsWritten.length).toBe(1);
+  expect(result.vaultDocsWritten[0]).toContain("vault/learnings/testing.md");
 });
 
 test("isPhaseArtifactComplete returns true for RETROSPECTIVE", async () => {

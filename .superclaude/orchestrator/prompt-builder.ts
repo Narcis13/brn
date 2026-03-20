@@ -403,12 +403,36 @@ Should any existing vault docs be updated with new findings?
 ### 5. Update INDEX (vault/INDEX.md)
 Add entries for all new vault documents.
 
-## CRITICAL: Output Files
-Write vault documents using the Write tool. Each document MUST go to the correct vault subdirectory:
-- Learnings: \`.superclaude/vault/learnings/<slug>.md\`
-- Decisions: \`.superclaude/vault/decisions/ADR-<NNN>-<slug>.md\`
-- Playbooks: \`.superclaude/vault/playbooks/<slug>.md\`
+## CRITICAL: You MUST Create Files
+
+You MUST call the Write tool to create each vault document as a separate file on disk.
+Do NOT just describe or summarize what you would write — actually write each file.
+If you do not call Write for each document, the orchestrator will detect 0 vault docs and the phase fails.
+
+**File paths** (relative to project root):
+- Learnings: \`.superclaude/vault/learnings/<slug>.md\` (e.g. \`.superclaude/vault/learnings/db-test-isolation.md\`)
+- Decisions: \`.superclaude/vault/decisions/ADR-<NNN>-<slug>.md\` (e.g. \`.superclaude/vault/decisions/ADR-001-fixed-columns.md\`)
+- Playbooks: \`.superclaude/vault/playbooks/<slug>.md\` (e.g. \`.superclaude/vault/playbooks/test-failure-recovery.md\`)
 - Updated INDEX: \`.superclaude/vault/INDEX.md\`
+
+**Example** — a learning file at \`.superclaude/vault/learnings/db-test-isolation.md\`:
+\`\`\`markdown
+---
+title: Database Test Isolation
+type: learning
+source: ${milestoneId}/${sliceId}
+tags: [testing, database, bun]
+---
+
+## Problem
+Full test suite fails while individual test files pass in isolation.
+
+## Root Cause
+SQLite file-based databases share state across test files when run in parallel.
+
+## Fix
+Each test file must create its own in-memory or temp-file database in beforeEach and destroy it in afterEach.
+\`\`\`
 
 ## Quality Rules
 - Each document must have proper frontmatter (title, type, source, tags)
@@ -416,6 +440,7 @@ Write vault documents using the Write tool. Each document MUST go to the correct
 - Deduplicate — if a learning already exists in the vault, skip or merge
 - Source reference required — which slice/task/error it came from (${milestoneId}/${sliceId})
 - Tags required — for relevance matching during context assembly
+- You MUST write at least 1 learning — if nothing went wrong, document what went RIGHT as a pattern to repeat
 
 ## Scope Guard
 - DO NOT modify any code

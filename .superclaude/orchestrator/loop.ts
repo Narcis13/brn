@@ -509,6 +509,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       } else if (currentState.phase === "RETROSPECTIVE" && currentState.currentMilestone && currentState.currentSlice) {
         const retroResult = await processRetrospectiveOutput(projectRoot, currentState.currentMilestone, currentState.currentSlice, result.output);
         console.log(`  Retrospective: ${retroResult.learningsCount} learnings, ${retroResult.decisionsCount} decisions, ${retroResult.playbooksCount} playbooks`);
+        if (!retroResult.success) {
+          console.log(`  WARNING: Retrospective produced 0 vault docs — Claude may not have written files to disk`);
+          session.issuesEncountered.push(`Retrospective: 0 vault docs written for ${currentState.currentSlice}`);
+        }
         if (retroResult.vaultDocsWritten.length > 0) {
           // Commit vault docs
           const clean = await isScopedClean(projectRoot);
