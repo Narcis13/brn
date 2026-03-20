@@ -13,6 +13,7 @@ export type Phase =
   | "PLAN_SLICE"
   | "EXECUTE_TASK"
   | "COMPLETE_SLICE"
+  | "RETROSPECTIVE"
   | "REASSESS"
   | "COMPLETE_MILESTONE";
 

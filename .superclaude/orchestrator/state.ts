@@ -154,6 +154,8 @@ export async function determineNextAction(
       return handleExecuteTask(state);
     case "COMPLETE_SLICE":
       return { phase: "COMPLETE_SLICE", tddSubPhase: null, description: "Complete slice" };
+    case "RETROSPECTIVE":
+      return { phase: "RETROSPECTIVE", tddSubPhase: null, description: "Extract learnings from slice" };
     case "REASSESS":
       return { phase: "REASSESS", tddSubPhase: null, description: "Reassess roadmap" };
     case "COMPLETE_MILESTONE":
@@ -259,6 +261,9 @@ export async function determineNextActionEnhanced(
 
     case "COMPLETE_SLICE":
       return await handleCompleteSliceEnhanced(projectRoot, state, pressure);
+
+    case "RETROSPECTIVE":
+      return await handleRetrospectiveEnhanced(projectRoot, state);
 
     case "REASSESS":
       return await handleReassessEnhanced(projectRoot, state);
@@ -370,17 +375,32 @@ async function handleCompleteSliceEnhanced(
     }
   }
 
-  // All tasks done — proceed to reassess (unless budget pressure says skip)
-  if (pressure && shouldSkipPhase("REASSESS", pressure)) {
-    // Skip reassess — go directly to next slice
-    const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
-    if (nextSlice) {
-      return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Skip reassess — plan next slice ${nextSlice}`, slice: nextSlice, task: null };
+  // All tasks done — proceed to retrospective (unless budget pressure says skip)
+  if (pressure && shouldSkipPhase("RETROSPECTIVE", pressure)) {
+    // Skip retrospective — check if reassess is also skipped
+    if (shouldSkipPhase("REASSESS", pressure)) {
+      const nextSlice = await findNextSlice(projectRoot, state.currentMilestone);
+      if (nextSlice) {
+        return { phase: "PLAN_SLICE", tddSubPhase: null, description: `Skip retrospective+reassess — plan next slice ${nextSlice}`, slice: nextSlice, task: null };
+      }
+      return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "All slices done — complete milestone" };
     }
-    return { phase: "COMPLETE_MILESTONE", tddSubPhase: null, description: "All slices done — complete milestone" };
+    return { phase: "REASSESS", tddSubPhase: null, description: "Skip retrospective — reassess roadmap" };
   }
 
-  return { phase: "REASSESS", tddSubPhase: null, description: "Slice complete — reassess roadmap" };
+  return { phase: "RETROSPECTIVE", tddSubPhase: null, description: "Slice complete — extract learnings" };
+}
+
+async function handleRetrospectiveEnhanced(
+  projectRoot: string,
+  state: ProjectState
+): Promise<NextAction> {
+  if (!state.currentMilestone) {
+    return { phase: "IDLE", tddSubPhase: null, description: "No milestone — return to IDLE" };
+  }
+
+  // After retrospective, move to reassess
+  return { phase: "REASSESS", tddSubPhase: null, description: "Retrospective complete — reassess roadmap" };
 }
 
 async function handleReassessEnhanced(
@@ -451,7 +471,8 @@ export function advancePhase(current: Phase): Phase {
     PLAN_MILESTONE: "PLAN_SLICE",
     PLAN_SLICE: "EXECUTE_TASK",
     EXECUTE_TASK: "COMPLETE_SLICE",
-    COMPLETE_SLICE: "REASSESS",
+    COMPLETE_SLICE: "RETROSPECTIVE",
+    RETROSPECTIVE: "REASSESS",
     REASSESS: "PLAN_SLICE",
     COMPLETE_MILESTONE: "IDLE",
   };

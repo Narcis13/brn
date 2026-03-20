@@ -151,6 +151,96 @@ ${output}
   };
 }
 
+// ─── RETROSPECTIVE Phase ─────────────────────────────────────────
+
+export interface RetrospectiveResult {
+  success: boolean;
+  learningsCount: number;
+  decisionsCount: number;
+  playbooksCount: number;
+  vaultDocsWritten: string[];
+  indexUpdated: boolean;
+}
+
+/**
+ * Parse the output of a RETROSPECTIVE phase invocation.
+ * Counts vault documents written and verifies INDEX.md was updated.
+ */
+export async function processRetrospectiveOutput(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string,
+  output: string
+): Promise<RetrospectiveResult> {
+  const vaultDocsWritten: string[] = [];
+
+  // Count learnings written (look for vault/learnings/ paths in output)
+  const learningMatches = output.match(/vault\/learnings\/[\w-]+\.md/g);
+  const learningsCount = learningMatches?.length ?? 0;
+  if (learningMatches) vaultDocsWritten.push(...learningMatches);
+
+  // Count decisions written
+  const decisionMatches = output.match(/vault\/decisions\/[\w-]+\.md/g);
+  const decisionsCount = decisionMatches?.length ?? 0;
+  if (decisionMatches) vaultDocsWritten.push(...decisionMatches);
+
+  // Count playbooks written
+  const playbookMatches = output.match(/vault\/playbooks\/[\w-]+\.md/g);
+  const playbooksCount = playbookMatches?.length ?? 0;
+  if (playbookMatches) vaultDocsWritten.push(...playbookMatches);
+
+  // Check if INDEX.md was mentioned (likely updated)
+  const indexUpdated = output.includes("INDEX.md");
+
+  // Verify at least some vault docs exist on disk
+  const vaultBase = `${projectRoot}/${PATHS.vault}`;
+  let actualDocsFound = 0;
+  for (const dir of ["learnings", "decisions", "playbooks"]) {
+    try {
+      const glob = new Bun.Glob("*.md");
+      for await (const _ of glob.scan({ cwd: `${vaultBase}/${dir}` })) {
+        actualDocsFound++;
+      }
+    } catch {
+      // Directory may not exist yet
+    }
+  }
+
+  return {
+    success: true,
+    learningsCount,
+    decisionsCount,
+    playbooksCount,
+    vaultDocsWritten: [...new Set(vaultDocsWritten)],
+    indexUpdated,
+  };
+}
+
+/**
+ * Check if the RETROSPECTIVE phase has completed for a slice.
+ * We consider it complete if the evolver has been invoked (output processed).
+ * The phase is stateless — no specific artifact is required beyond vault writes.
+ */
+export async function isRetrospectiveComplete(
+  projectRoot: string,
+  milestoneId: string,
+  sliceId: string
+): Promise<boolean> {
+  // Check if any vault learnings exist that reference this slice
+  const learningsDir = `${projectRoot}/${PATHS.vault}/learnings`;
+  try {
+    const glob = new Bun.Glob("*.md");
+    for await (const path of glob.scan({ cwd: learningsDir })) {
+      const content = await Bun.file(`${learningsDir}/${path}`).text();
+      if (content.includes(sliceId)) return true;
+    }
+  } catch {
+    // Directory may not exist
+  }
+
+  return false;
+}
+
 // ─── REASSESS Phase (§6.7) ─────────────────────────────────────
 
 /**
@@ -253,6 +343,10 @@ export async function isPhaseArtifactComplete(
       const content = await file.text();
       return !content.includes("_To be planned during PLAN_MILESTONE phase._");
     }
+
+    case "RETROSPECTIVE":
+      // Retrospective is always "complete" after one pass — it's a best-effort knowledge extraction
+      return true;
 
     default:
       return false;

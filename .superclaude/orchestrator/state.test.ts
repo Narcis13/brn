@@ -146,7 +146,8 @@ test("advancePhase follows correct transitions", () => {
   expect(advancePhase("PLAN_MILESTONE")).toBe("PLAN_SLICE");
   expect(advancePhase("PLAN_SLICE")).toBe("EXECUTE_TASK");
   expect(advancePhase("EXECUTE_TASK")).toBe("COMPLETE_SLICE");
-  expect(advancePhase("COMPLETE_SLICE")).toBe("REASSESS");
+  expect(advancePhase("COMPLETE_SLICE")).toBe("RETROSPECTIVE");
+  expect(advancePhase("RETROSPECTIVE")).toBe("REASSESS");
   expect(advancePhase("REASSESS")).toBe("PLAN_SLICE");
   expect(advancePhase("COMPLETE_MILESTONE")).toBe("IDLE");
 });

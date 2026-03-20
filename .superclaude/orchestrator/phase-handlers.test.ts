@@ -9,6 +9,7 @@ import {
   processDiscussOutput,
   processResearchOutput,
   processReassessOutput,
+  processRetrospectiveOutput,
 } from "./phase-handlers.ts";
 
 let projectRoot: string;
@@ -184,6 +185,62 @@ test("processReassessOutput appends reassessment note to ROADMAP.md", async () =
   expect(content).toContain("Performance testing");
   // Original content preserved
   expect(content).toContain("# Roadmap");
+});
+
+// ─── processRetrospectiveOutput ───────────────────────────────
+
+test("processRetrospectiveOutput counts learnings from output", async () => {
+  const output = `I wrote the following vault documents:
+
+Created vault/learnings/bun-mock-pollution.md with frontmatter.
+Created vault/learnings/sqlite-in-memory-testing.md with frontmatter.
+Updated INDEX.md with new entries.`;
+
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  expect(result.success).toBe(true);
+  expect(result.learningsCount).toBe(2);
+  expect(result.indexUpdated).toBe(true);
+});
+
+test("processRetrospectiveOutput counts decisions from output", async () => {
+  const output = `Created vault/decisions/ADR-001-card-columns.md
+Created vault/learnings/testing-strategy.md
+Updated INDEX.md`;
+
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  expect(result.decisionsCount).toBe(1);
+  expect(result.learningsCount).toBe(1);
+  expect(result.indexUpdated).toBe(true);
+});
+
+test("processRetrospectiveOutput counts playbooks from output", async () => {
+  const output = `Created vault/playbooks/unstick-completed-task.md
+Created vault/learnings/mock-pollution.md`;
+
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  expect(result.playbooksCount).toBe(1);
+  expect(result.learningsCount).toBe(1);
+});
+
+test("processRetrospectiveOutput handles empty output", async () => {
+  const output = "No significant learnings to extract from this slice.";
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  expect(result.success).toBe(true);
+  expect(result.learningsCount).toBe(0);
+  expect(result.decisionsCount).toBe(0);
+  expect(result.playbooksCount).toBe(0);
+});
+
+test("processRetrospectiveOutput deduplicates vault doc paths", async () => {
+  const output = `Created vault/learnings/testing.md
+Updated vault/learnings/testing.md with additional context`;
+
+  const result = await processRetrospectiveOutput(projectRoot, milestoneId, "S01", output);
+  expect(result.vaultDocsWritten.length).toBe(1);
+});
+
+test("isPhaseArtifactComplete returns true for RETROSPECTIVE", async () => {
+  expect(await isPhaseArtifactComplete(projectRoot, "RETROSPECTIVE", milestoneId)).toBe(true);
 });
 
 // ─── isPhaseArtifactComplete ──────────────────────────────────

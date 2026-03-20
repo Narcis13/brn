@@ -97,8 +97,15 @@ describe("computeNextState", () => {
     expect(next.currentTask).toBe("T01");
   });
 
-  test("transitions from COMPLETE_SLICE to REASSESS", () => {
+  test("transitions from COMPLETE_SLICE to RETROSPECTIVE", () => {
     const state: ProjectState = { ...baseState, phase: "COMPLETE_SLICE", currentMilestone: "M001", currentSlice: "S01" };
+    const action = { phase: "RETROSPECTIVE", tddSubPhase: null };
+    const next = computeNextState(state, action);
+    expect(next.phase).toBe("RETROSPECTIVE");
+  });
+
+  test("transitions from RETROSPECTIVE to REASSESS", () => {
+    const state: ProjectState = { ...baseState, phase: "RETROSPECTIVE", currentMilestone: "M001", currentSlice: "S01" };
     const action = { phase: "REASSESS", tddSubPhase: null };
     const next = computeNextState(state, action);
     expect(next.phase).toBe("REASSESS");
@@ -175,6 +182,10 @@ describe("getAgentRoleForPhase", () => {
 
   test("maps COMPLETE_MILESTONE to scribe", () => {
     expect(getAgentRoleForPhase("COMPLETE_MILESTONE", null)).toBe("scribe");
+  });
+
+  test("maps RETROSPECTIVE to evolver", () => {
+    expect(getAgentRoleForPhase("RETROSPECTIVE", null)).toBe("evolver");
   });
 
   test("maps REASSESS to architect", () => {

@@ -68,6 +68,7 @@ test("GREEN allows all features", () => {
   expect(p.reviewPersonaCount).toBe(6);
   expect(p.contextBudgetMultiplier).toBe(1.0);
   expect(p.allowDiscuss).toBe(true);
+  expect(p.allowRetrospective).toBe(true);
   expect(p.allowReassess).toBe(true);
 });
 
@@ -78,10 +79,11 @@ test("YELLOW reduces review personas and context", () => {
   expect(p.contextBudgetMultiplier).toBe(0.85);
 });
 
-test("ORANGE disables research, discuss, reassess", () => {
+test("ORANGE disables research, discuss, retrospective, reassess", () => {
   const p = computePressure({ currentCost: 20, budgetCeiling: 25 });
   expect(p.allowResearch).toBe(false);
   expect(p.allowDiscuss).toBe(false);
+  expect(p.allowRetrospective).toBe(false);
   expect(p.allowReassess).toBe(false);
   expect(p.reviewPersonaCount).toBe(1);
 });
@@ -114,6 +116,26 @@ test("shouldSkipPhase returns true for RESEARCH in RED", () => {
 test("shouldSkipPhase returns false for EXECUTE_TASK (never skipped)", () => {
   const p = computePressure({ currentCost: 24, budgetCeiling: 25 });
   expect(shouldSkipPhase("EXECUTE_TASK", p)).toBe(false);
+});
+
+test("shouldSkipPhase returns false for RETROSPECTIVE in GREEN", () => {
+  const p = computePressure({ currentCost: 0, budgetCeiling: 25 });
+  expect(shouldSkipPhase("RETROSPECTIVE", p)).toBe(false);
+});
+
+test("shouldSkipPhase returns false for RETROSPECTIVE in YELLOW", () => {
+  const p = computePressure({ currentCost: 15, budgetCeiling: 25 });
+  expect(shouldSkipPhase("RETROSPECTIVE", p)).toBe(false);
+});
+
+test("shouldSkipPhase returns true for RETROSPECTIVE in ORANGE", () => {
+  const p = computePressure({ currentCost: 20, budgetCeiling: 25 });
+  expect(shouldSkipPhase("RETROSPECTIVE", p)).toBe(true);
+});
+
+test("shouldSkipPhase returns true for RETROSPECTIVE in RED", () => {
+  const p = computePressure({ currentCost: 24, budgetCeiling: 25 });
+  expect(shouldSkipPhase("RETROSPECTIVE", p)).toBe(true);
 });
 
 test("shouldSkipPhase returns true for REASSESS in ORANGE", () => {

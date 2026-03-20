@@ -232,6 +232,14 @@ export async function assembleContext(
         // Load relevant vault docs referenced in task plan
         payload.vaultDocs = await loadRelevantVaultDocs(projectRoot, payload.taskPlan);
 
+        // Auto-load ALL vault learnings (short, high-value — RETROSPECTIVE phase feeds these)
+        const learnings = await loadAllVaultByType(projectRoot, "learnings");
+        payload.vaultDocs.push(...learnings);
+
+        // Auto-load playbooks tagged with current technologies
+        const playbooks = await loadAllVaultByType(projectRoot, "playbooks");
+        payload.vaultDocs.push(...playbooks);
+
         // Load code files referenced in task plan
         payload.codeFiles = await loadCodeFilesForTask(projectRoot, payload.taskPlan);
       }
@@ -241,6 +249,34 @@ export async function assembleContext(
       if (m && s) {
         payload.taskPlan = await loadFile(projectRoot, `${PATHS.slicePath(m, s)}/PLAN.md`);
         payload.upstreamSummaries = await loadAllTaskSummaries(projectRoot, m, s);
+      }
+      break;
+
+    case "RETROSPECTIVE":
+      if (m && s) {
+        // Load all task summaries for this slice (what was built)
+        payload.upstreamSummaries = await loadAllTaskSummaries(projectRoot, m, s);
+
+        // Load the slice plan (what was planned)
+        payload.taskPlan = await loadFile(projectRoot, `${PATHS.slicePath(m, s)}/PLAN.md`);
+
+        // Load debug outputs (doctor diagnoses) for this slice
+        const debugDocs = await loadDebugOutputs(projectRoot);
+        payload.upstreamSummaries.push(...debugDocs);
+
+        // Load session reports from recent executions
+        const sessionDocs = await loadRecentSessionReports(projectRoot);
+        payload.upstreamSummaries.push(...sessionDocs);
+
+        // Load current vault INDEX.md + existing learnings (to avoid duplicates)
+        const vaultIndex = await loadFile(projectRoot, PATHS.vaultIndex);
+        if (vaultIndex) payload.vaultDocs.push(vaultIndex);
+        const existingLearnings = await loadAllVaultByType(projectRoot, "learnings");
+        payload.vaultDocs.push(...existingLearnings);
+        const existingDecisions = await loadAllVaultByType(projectRoot, "decisions");
+        payload.vaultDocs.push(...existingDecisions);
+        const existingPlaybooks = await loadAllVaultByType(projectRoot, "playbooks");
+        payload.vaultDocs.push(...existingPlaybooks);
       }
       break;
 
@@ -507,6 +543,84 @@ async function loadRelevantVaultDocs(
     const docPath = ref.slice(2, -2); // strip [[ and ]]
     const content = await loadFile(projectRoot, `${PATHS.vault}/${docPath}.md`);
     if (content) docs.push(content);
+  }
+
+  return docs;
+}
+
+/**
+ * Load all vault documents of a specific type (learnings, decisions, playbooks).
+ * Scans the vault subdirectory and loads all .md files.
+ */
+export async function loadAllVaultByType(
+  projectRoot: string,
+  type: string
+): Promise<string[]> {
+  const docs: string[] = [];
+  const vaultDir = `${projectRoot}/${PATHS.vault}/${type}`;
+
+  try {
+    const glob = new Bun.Glob("*.md");
+    for await (const path of glob.scan({ cwd: vaultDir })) {
+      const content = await loadFile(projectRoot, `${PATHS.vault}/${type}/${path}`);
+      if (content) docs.push(content);
+    }
+  } catch {
+    // Directory may not exist yet
+  }
+
+  return docs;
+}
+
+/**
+ * Load recent debug outputs (doctor diagnoses, error outputs).
+ * Filters to the most recent outputs to stay within token budget.
+ */
+async function loadDebugOutputs(projectRoot: string): Promise<string[]> {
+  const docs: string[] = [];
+  const debugDir = `${projectRoot}/${PATHS.history}/debug`;
+
+  try {
+    const glob = new Bun.Glob("output-*.md");
+    const paths: string[] = [];
+    for await (const path of glob.scan({ cwd: debugDir })) {
+      paths.push(path);
+    }
+    // Sort by timestamp (newest first) and take last 5
+    const sorted = paths.sort().reverse().slice(0, 5);
+    for (const path of sorted) {
+      const content = await loadFile(projectRoot, `${PATHS.history}/debug/${path}`);
+      if (content) docs.push(`## Debug Output: ${path}\n${content}`);
+    }
+  } catch {
+    // Directory may not exist yet
+  }
+
+  return docs;
+}
+
+/**
+ * Load recent session reports for retrospective analysis.
+ * Takes the most recent 3 session reports.
+ */
+async function loadRecentSessionReports(projectRoot: string): Promise<string[]> {
+  const docs: string[] = [];
+  const historyDir = `${projectRoot}/${PATHS.history}`;
+
+  try {
+    const glob = new Bun.Glob("session-*.md");
+    const paths: string[] = [];
+    for await (const path of glob.scan({ cwd: historyDir })) {
+      paths.push(path);
+    }
+    // Sort by name (contains timestamp) and take last 3
+    const sorted = paths.sort().reverse().slice(0, 3);
+    for (const path of sorted) {
+      const content = await loadFile(projectRoot, `${PATHS.history}/${path}`);
+      if (content) docs.push(`## Session Report: ${path}\n${content}`);
+    }
+  } catch {
+    // Directory may not exist yet
   }
 
   return docs;

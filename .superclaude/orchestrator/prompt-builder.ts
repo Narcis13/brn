@@ -28,6 +28,8 @@ export function buildPrompt(
       return buildExecuteTaskPrompt(tddSubPhase, context);
     case "COMPLETE_SLICE":
       return buildCompleteSlicePrompt(state, context);
+    case "RETROSPECTIVE":
+      return buildRetrospectivePrompt(state, context);
     case "REASSESS":
       return buildReassessPrompt(state, context);
     case "COMPLETE_MILESTONE":
@@ -354,6 +356,71 @@ ${ctx.taskPlan}
 You MUST write these files using the Write tool:
 - **${summaryPath}**
 - **${uatPath}**`;
+}
+
+function buildRetrospectivePrompt(state: ProjectState, ctx: ContextPayload): string {
+  const milestoneId = state.currentMilestone ?? "M001";
+  const sliceId = state.currentSlice ?? "S01";
+
+  return `# RETROSPECTIVE PHASE
+
+You are the Evolver sub-agent. Analyze the completed slice's execution history and extract knowledge for the vault.
+
+## Completed Slice Summary
+${ctx.upstreamSummaries.join("\n\n")}
+
+## Slice Plan
+${ctx.taskPlan}
+
+## Current Vault
+${formatVaultDocs(ctx.vaultDocs)}
+
+## Instructions
+
+### 1. Extract LEARNINGS (vault/learnings/)
+What went wrong, what was surprising, what should future agents avoid?
+- Must be **actionable** — not "tests are important" but "Bun mock.module is global, use in-memory DBs instead"
+- Must be **generalizable** to future slices, not one-off fixes
+- Include the root cause, not just the symptom
+- Max 5 learnings per slice — prioritize by impact
+
+### 2. Extract DECISIONS (vault/decisions/)
+What architectural choices emerged during implementation?
+- Only non-obvious decisions that a future architect needs to know
+- Include the alternatives that were considered and why they were rejected
+- Format as lightweight ADRs
+
+### 3. Extract PLAYBOOKS (vault/playbooks/)
+Did any manual intervention happen that could be a documented procedure?
+- Recovery steps, debugging workflows, operational runbooks
+- Must be repeatable — not ad-hoc one-time fixes
+
+### 4. Update PATTERNS (vault/patterns/)
+Should any existing vault docs be updated with new findings?
+- New anti-patterns discovered
+- Refinements to existing conventions
+
+### 5. Update INDEX (vault/INDEX.md)
+Add entries for all new vault documents.
+
+## CRITICAL: Output Files
+Write vault documents using the Write tool. Each document MUST go to the correct vault subdirectory:
+- Learnings: \`.superclaude/vault/learnings/<slug>.md\`
+- Decisions: \`.superclaude/vault/decisions/ADR-<NNN>-<slug>.md\`
+- Playbooks: \`.superclaude/vault/playbooks/<slug>.md\`
+- Updated INDEX: \`.superclaude/vault/INDEX.md\`
+
+## Quality Rules
+- Each document must have proper frontmatter (title, type, source, tags)
+- Each learning must be under 15 lines
+- Deduplicate — if a learning already exists in the vault, skip or merge
+- Source reference required — which slice/task/error it came from (${milestoneId}/${sliceId})
+- Tags required — for relevance matching during context assembly
+
+## Scope Guard
+- DO NOT modify any code
+- DO NOT modify the roadmap (that's the next phase)
+- ONLY write vault documents and update INDEX.md`;
 }
 
 function buildReassessPrompt(state: ProjectState, ctx: ContextPayload): string {

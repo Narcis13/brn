@@ -33,6 +33,8 @@ export interface PressurePolicy {
   contextBudgetMultiplier: number;
   /** Whether to allow DISCUSS phase for new milestones */
   allowDiscuss: boolean;
+  /** Whether to allow RETROSPECTIVE phase between slices */
+  allowRetrospective: boolean;
   /** Whether to allow REASSESS phase between slices */
   allowReassess: boolean;
   /** Human-readable description of the tier */
@@ -74,6 +76,7 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         reviewPersonaCount: 6,
         contextBudgetMultiplier: 1.0,
         allowDiscuss: true,
+        allowRetrospective: true,
         allowReassess: true,
         description: "Full budget — all features enabled",
       };
@@ -87,6 +90,7 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         reviewPersonaCount: 3,
         contextBudgetMultiplier: 0.85,
         allowDiscuss: true,
+        allowRetrospective: true,
         allowReassess: true,
         description: "Moderate pressure — reduced review personas, slightly compressed context",
       };
@@ -100,6 +104,7 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         reviewPersonaCount: 1,
         contextBudgetMultiplier: 0.65,
         allowDiscuss: false,
+        allowRetrospective: false,
         allowReassess: false,
         description: "High pressure — skip research/discuss, minimal review, compressed context",
       };
@@ -113,6 +118,7 @@ function makePolicy(tier: PressureTier, percentUsed: number): PressurePolicy {
         reviewPersonaCount: 0,
         contextBudgetMultiplier: 0.5,
         allowDiscuss: false,
+        allowRetrospective: false,
         allowReassess: false,
         description: "Critical — execute only, no review, minimal context",
       };
@@ -131,6 +137,8 @@ export function shouldSkipPhase(
       return !policy.allowDiscuss;
     case "RESEARCH":
       return !policy.allowResearch;
+    case "RETROSPECTIVE":
+      return !policy.allowRetrospective;
     case "REASSESS":
       return !policy.allowReassess;
     default:

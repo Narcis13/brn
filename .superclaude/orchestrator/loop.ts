@@ -74,7 +74,7 @@ import {
 } from "./session.ts";
 import { computePressure, formatPressureStatus } from "./budget-pressure.ts";
 import type { PressurePolicy } from "./budget-pressure.ts";
-import { processDiscussOutput, processResearchOutput, processReassessOutput } from "./phase-handlers.ts";
+import { processDiscussOutput, processResearchOutput, processReassessOutput, processRetrospectiveOutput } from "./phase-handlers.ts";
 import { assembleDashboard, renderDashboard, writeDashboard } from "./dashboard.ts";
 import { generateTaskSummary, generateSliceSummary, generateMilestoneSummary } from "./summary.ts";
 import type { TaskSummary, SliceSummary } from "./types.ts";
@@ -484,6 +484,24 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       } else if (currentState.phase === "RESEARCH" && currentState.currentMilestone) {
         const researchResult = await processResearchOutput(projectRoot, currentState.currentMilestone, result.output);
         console.log(`  Research: ${researchResult.dontHandRollCount} don't-hand-roll, ${researchResult.pitfallsCount} pitfalls`);
+      } else if (currentState.phase === "RETROSPECTIVE" && currentState.currentMilestone && currentState.currentSlice) {
+        const retroResult = await processRetrospectiveOutput(projectRoot, currentState.currentMilestone, currentState.currentSlice, result.output);
+        console.log(`  Retrospective: ${retroResult.learningsCount} learnings, ${retroResult.decisionsCount} decisions, ${retroResult.playbooksCount} playbooks`);
+        if (retroResult.vaultDocsWritten.length > 0) {
+          // Commit vault docs
+          const clean = await isScopedClean(projectRoot);
+          if (!clean) {
+            await stageAll(projectRoot);
+            await commitTDDPhase(
+              projectRoot,
+              currentState.currentSlice,
+              "retro",
+              "retrospective",
+              `Extract ${retroResult.vaultDocsWritten.length} vault docs from ${currentState.currentSlice}`
+            );
+            console.log(`  Committed: feat(${currentState.currentSlice}/retro): [retrospective] vault knowledge extraction`);
+          }
+        }
       } else if (currentState.phase === "REASSESS" && currentState.currentMilestone) {
         const reassessResult = await processReassessOutput(projectRoot, currentState.currentMilestone, result.output);
         console.log(`  Reassess: ${reassessResult.changes.length} changes proposed, roadmap ${reassessResult.roadmapUpdated ? "updated" : "unchanged"}`);
@@ -678,6 +696,8 @@ export function getAgentRoleForPhase(
     case "COMPLETE_SLICE":
     case "COMPLETE_MILESTONE":
       return "scribe";
+    case "RETROSPECTIVE":
+      return "evolver";
     case "REASSESS":
       return "architect";
     default:
