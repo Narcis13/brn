@@ -11,7 +11,7 @@ Card Updates & Column Movement
 **Goal:** Enable editing card content and moving cards between columns with position management.
 
 #### TDD Sequence
-- Test file(s): src/routes/cards.test.ts (extend), src/cards/card.service.test.ts (extend)
+- Test file(s): playground/src/routes/cards.test.ts (extend), playground/src/cards/card.service.test.ts (extend)
 - Test cases:
   - PUT /api/cards/:id updates title and description
   - PUT /api/cards/:id validates board ownership
@@ -19,16 +19,16 @@ Card Updates & Column Movement
   - Moving within column updates positions correctly
   - Service recalculates positions to prevent gaps
   - Cannot move card to invalid column
-- Implementation file(s): src/routes/cards.ts, src/cards/card.service.ts
+- Implementation file(s): playground/src/routes/cards.ts, playground/src/cards/card.service.ts
 
 #### Must-Haves
-**Truths:** 
+**Truths:**
 - Column moves reset position to end of target column
 - Position updates maintain order integrity
 - Only title, description, column, position updatable
-**Artifacts:** 
-- src/routes/cards.ts — PUT endpoint, min 40 lines added
-- src/cards/card.service.ts — updateCard, moveCard functions, min 60 lines added
+**Artifacts:**
+- playground/src/routes/cards.ts — PUT endpoint, min 40 lines added
+- playground/src/cards/card.service.ts — updateCard, moveCard functions, min 60 lines added
 **Key Links:** 
 - card.service.ts uses transaction for position updates
 
