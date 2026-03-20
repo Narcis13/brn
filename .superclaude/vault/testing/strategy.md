@@ -58,6 +58,33 @@ afterEach(() => {
 });
 ```
 
+### Database Test Isolation (CRITICAL)
+Each test file MUST create and destroy its own isolated database. Shared database state between test files causes crosstalk — tests pass individually but fail in suite.
+
+```typescript
+import { mkdirSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+
+const TEST_DB_DIR = `/tmp/superclaude-test-${randomUUID()}`;
+const TEST_DB_PATH = `${TEST_DB_DIR}/data.db`;
+
+beforeEach(() => {
+  mkdirSync(TEST_DB_DIR, { recursive: true });
+  // Initialize your DB with TEST_DB_PATH
+});
+
+afterEach(() => {
+  // Close DB connection first, then clean up
+  rmSync(TEST_DB_DIR, { recursive: true, force: true });
+});
+```
+
+**Rules:**
+- Never use a shared or global database path across test files
+- Always use a unique random directory per test file
+- Close database connections before cleanup in `afterEach`
+- The orchestrator runs full-suite verification per-file sequentially to prevent parallel crosstalk
+
 ### Test Data Immutability
 Functions that transform state should be pure — return new objects, don't mutate.
 
