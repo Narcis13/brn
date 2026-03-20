@@ -125,3 +125,80 @@ export async function createCard(
     position: nextPosition,
   });
 }
+
+/** Column ordering for sorting: todo → doing → done */
+const COLUMN_ORDER: Record<CardColumn, number> = { todo: 0, doing: 1, done: 2 };
+
+/**
+ * Get all cards for a board, sorted by column then position.
+ *
+ * Validates board ownership before returning cards.
+ *
+ * @param db - Database instance
+ * @param boardId - Board to get cards for
+ * @param userId - User requesting the cards (must own the board)
+ * @returns Cards sorted by column order, then position within column
+ * @throws Error "Board not found" - if board doesn't exist
+ * @throws Error "Not authorized" - if user doesn't own the board
+ */
+export async function getCardsByBoard(
+  db: Database,
+  boardId: string,
+  userId: string
+): Promise<Card[]> {
+  const validation = await validateBoardOwnership(db, boardId, userId);
+
+  if (!validation.exists) {
+    throw new Error("Board not found");
+  }
+
+  if (!validation.isOwner) {
+    throw new Error("Not authorized");
+  }
+
+  const cards = await cardRepo.findCardsByBoardId(db, boardId);
+
+  return cards.sort((a, b) => {
+    const colDiff = COLUMN_ORDER[a.column] - COLUMN_ORDER[b.column];
+    if (colDiff !== 0) return colDiff;
+    return a.position - b.position;
+  });
+}
+
+/**
+ * Get a single card by ID with board ownership validation.
+ *
+ * Looks up the card, then validates that the requesting user
+ * owns the board the card belongs to.
+ *
+ * @param db - Database instance
+ * @param cardId - Card ID to look up
+ * @param userId - User requesting the card (must own the board)
+ * @returns The card
+ * @throws Error "Card not found" - if card doesn't exist
+ * @throws Error "Board not found" - if card's board doesn't exist
+ * @throws Error "Not authorized" - if user doesn't own the board
+ */
+export async function getCardById(
+  db: Database,
+  cardId: string,
+  userId: string
+): Promise<Card> {
+  const card = await cardRepo.findCardById(db, cardId);
+
+  if (!card) {
+    throw new Error("Card not found");
+  }
+
+  const validation = await validateBoardOwnership(db, card.boardId, userId);
+
+  if (!validation.exists) {
+    throw new Error("Board not found");
+  }
+
+  if (!validation.isOwner) {
+    throw new Error("Not authorized");
+  }
+
+  return card;
+}

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { authMiddleware, getAuthContext } from "../auth/middleware";
 import * as boardService from "../boards/board.service";
+import * as cardService from "../cards/card.service";
 import { getDb } from "../db";
 import type { Context } from "hono";
 
@@ -32,6 +33,34 @@ boardRoutes.post("/", async (c: Context) => {
     if (error.message === "Board name is required" || error.message === "Board name must be 100 characters or less") {
       return c.json({ error: error.message }, 400);
     }
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// GET /api/boards/:boardId/cards - Get all cards for a board
+boardRoutes.get("/:boardId/cards", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const boardId = c.req.param("boardId");
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    const cards = await cardService.getCardsByBoard(db, boardId, authContext.userId);
+
+    return c.json(cards);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message === "Board not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Not authorized") {
+      return c.json({ error: message }, 403);
+    }
+
+    console.error("Error fetching board cards:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });

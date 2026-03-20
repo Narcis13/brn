@@ -17,6 +17,11 @@ const VALID_COLUMNS: ReadonlySet<string> = new Set(["todo", "doing", "done"]);
  *   Returns 400 if title is missing
  *   Returns 404 if board doesn't exist
  *   Returns 403 if user doesn't own the board
+ *
+ * GET /:id — Get a card by ID
+ *   Returns 200 with card details
+ *   Returns 404 if card doesn't exist
+ *   Returns 403 if user doesn't own the card's board
  */
 export const cardRoutes = new Hono();
 
@@ -63,6 +68,37 @@ cardRoutes.post("/", async (c: Context) => {
     }
 
     console.error("Error creating card:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// GET /api/cards/:id — Get a card by ID
+cardRoutes.get("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const cardId = c.req.param("id");
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    const card = await cardService.getCardById(db, cardId, authContext.userId);
+
+    return c.json(card);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message === "Card not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Board not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Not authorized") {
+      return c.json({ error: message }, 403);
+    }
+
+    console.error("Error fetching card:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });
