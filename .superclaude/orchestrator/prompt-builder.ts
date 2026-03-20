@@ -213,6 +213,18 @@ ${ctx.upstreamSummaries.join("\n\n")}
 4. Define must-haves: truths, artifacts (with file paths, min lines, required exports), key links
 5. Define must-NOT-haves: explicit scope boundaries
 
+## CRITICAL: File Paths
+All file paths in the plan MUST be relative to the project root directory (where CLAUDE.md lives).
+The orchestrator resolves paths as \`projectRoot + "/" + path\`. If source code lives in a subdirectory
+(e.g. \`playground/src/\`, \`packages/app/src/\`), you MUST include that prefix.
+
+Look at existing code files and upstream summaries to determine the correct path prefix.
+For example, if existing files are at \`playground/src/db.ts\`, then new files must also use
+\`playground/src/\` — NOT bare \`src/\`.
+
+Wrong: \`src/cards/card.repo.ts\`
+Right: \`playground/src/cards/card.repo.ts\` (if that's where existing code lives)
+
 ## CRITICAL: Output File
 You MUST write the plan to this exact path using the Write tool:
 **${outputPath}**
@@ -232,9 +244,9 @@ status: planned
 **Goal:** [One sentence]
 
 #### TDD Sequence
-- Test file(s): [paths]
+- Test file(s): [full paths from project root, e.g. playground/src/foo.test.ts]
 - Test cases: [list]
-- Implementation file(s): [paths]
+- Implementation file(s): [full paths from project root]
 
 #### Must-Haves
 **Truths:** [observable behaviors]
