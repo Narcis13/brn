@@ -35,4 +35,18 @@ export function runMigrations(db: Database): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // Cards table: stores kanban cards belonging to boards
+  db.run(`
+    CREATE TABLE IF NOT EXISTS cards (
+      id         TEXT PRIMARY KEY,
+      title      TEXT NOT NULL,
+      board_id   TEXT NOT NULL,
+      column_name TEXT NOT NULL,
+      position   INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
+    )
+  `);
 }

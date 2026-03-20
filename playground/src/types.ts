@@ -62,3 +62,42 @@ export interface NewBoard {
   /** UUID of the user who will own this board */
   userId: string;
 }
+
+/** Valid column values for cards on a board */
+export type CardColumn = "todo" | "doing" | "done";
+
+/**
+ * A card as stored in the database.
+ * Cards belong to a board and live in a column with a position.
+ */
+export interface Card {
+  /** UUID v4 identifier */
+  id: string;
+  /** Card title / summary */
+  title: string;
+  /** UUID of the board this card belongs to */
+  boardId: string;
+  /** Which column the card is in */
+  column: CardColumn;
+  /** Position within the column (0-indexed, lower = higher) */
+  position: number;
+  /** ISO 8601 timestamp of creation */
+  createdAt: string;
+  /** ISO 8601 timestamp of last update */
+  updatedAt: string;
+}
+
+/**
+ * Input for creating a new card.
+ * ID and timestamps are generated automatically.
+ */
+export interface NewCard {
+  /** Card title / summary */
+  title: string;
+  /** UUID of the board this card belongs to */
+  boardId: string;
+  /** Which column the card is in */
+  column: CardColumn;
+  /** Position within the column */
+  position: number;
+}
