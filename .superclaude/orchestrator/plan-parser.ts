@@ -119,19 +119,23 @@ function parseOrderedList(section: string): string[] {
  *   `path — description`
  */
 function parseArtifactLine(line: string): ArtifactSpec | null {
-  // Split on em-dash or double hyphen
-  const dashMatch = line.match(/^(\S+)\s+[—\u2014-]{1,2}\s+(.+)$/);
+  // Split on em-dash or double hyphen — handle both `path` and bare path formats
+  const dashMatch = line.match(/^`?([^`\s]+)`?\s+[—\u2014-]{1,2}\s+(.+)$/);
   if (!dashMatch?.[1] || !dashMatch[2]) return null;
 
   const path = dashMatch[1];
   let rest = dashMatch[2];
 
-  // Extract [exports: ...] if present
+  // Extract [exports: ...] or "exports `a`, `b`" format
   let requiredExports: string[] = [];
   const exportsMatch = rest.match(/\[exports?:\s*([^\]]+)\]/i);
+  const exportsBoldMatch = rest.match(/exports?\s+(.+)$/i);
   if (exportsMatch?.[1]) {
-    requiredExports = exportsMatch[1].split(",").map((e) => e.trim()).filter(Boolean);
+    requiredExports = exportsMatch[1].split(",").map((e) => e.trim().replace(/^`|`$/g, "")).filter(Boolean);
     rest = rest.replace(exportsMatch[0], "").trim();
+  } else if (exportsBoldMatch?.[1]) {
+    requiredExports = exportsBoldMatch[1].split(",").map((e) => e.trim().replace(/^`|`$/g, "")).filter(Boolean);
+    rest = rest.replace(exportsBoldMatch[0], "").trim();
   }
 
   // Extract (N+ lines) if present
@@ -178,7 +182,7 @@ function parseTDDSequence(section: string): TDDSequence {
     if (testFilesMatch?.[1] && !isPlaceholder(testFilesMatch[1].trim())) {
       result.testFiles = testFilesMatch[1]
         .split(",")
-        .map((f) => f.trim())
+        .map((f) => f.trim().replace(/^`|`$/g, ""))
         .filter(Boolean);
       continue;
     }
@@ -188,7 +192,7 @@ function parseTDDSequence(section: string): TDDSequence {
     if (testCasesMatch?.[1] && !isPlaceholder(testCasesMatch[1].trim())) {
       result.testCases = testCasesMatch[1]
         .split(",")
-        .map((c) => c.trim())
+        .map((c) => c.trim().replace(/^`|`$/g, ""))
         .filter(Boolean);
       continue;
     }
@@ -198,7 +202,7 @@ function parseTDDSequence(section: string): TDDSequence {
     if (implMatch?.[1] && !isPlaceholder(implMatch[1].trim())) {
       result.implementationFiles = implMatch[1]
         .split(",")
-        .map((f) => f.trim())
+        .map((f) => f.trim().replace(/^`|`$/g, ""))
         .filter(Boolean);
       continue;
     }
@@ -212,14 +216,26 @@ function parseTDDSequence(section: string): TDDSequence {
 export function parseTaskPlan(content: string): TaskPlan {
   const { frontmatter, body } = parseFrontmatter(content);
 
-  // Extract sections
+  // Extract sections — try multiple heading levels (## and ####)
   const goalSection = extractSection(body, "Goal", 2);
-  const stepsSection = extractSection(body, "Steps", 2);
-  const truthsSection = extractSection(body, "Truths", 3);
-  const artifactsSection = extractSection(body, "Artifacts", 3);
-  const keyLinksSection = extractSection(body, "Key Links", 3);
-  const mustNotHavesSection = extractSection(body, "Must-NOT-Haves", 2);
-  const tddSection = extractSection(body, "TDD Sequence", 2);
+  const stepsSection = extractSection(body, "Steps", 2) || extractSection(body, "Steps", 4);
+  const tddSection = extractSection(body, "TDD Sequence", 2) || extractSection(body, "TDD Sequence", 4);
+  const mustNotHavesSection = extractSection(body, "Must-NOT-Haves", 2) || extractSection(body, "Must-NOT-Haves", 4);
+
+  // Must-haves: try heading-based extraction first, then bold-label patterns
+  let truthsSection = extractSection(body, "Truths", 3);
+  let artifactsSection = extractSection(body, "Artifacts", 3);
+  let keyLinksSection = extractSection(body, "Key Links", 3);
+
+  // Fallback: parse bold-label sections under #### Must-Haves
+  if (!truthsSection && !artifactsSection && !keyLinksSection) {
+    const mustHavesBlock = extractSection(body, "Must-Haves", 4) || extractSection(body, "Must-Haves", 3);
+    if (mustHavesBlock) {
+      truthsSection = extractBoldLabelSection(mustHavesBlock, "Truths");
+      artifactsSection = extractBoldLabelSection(mustHavesBlock, "Artifacts");
+      keyLinksSection = extractBoldLabelSection(mustHavesBlock, "Key Links");
+    }
+  }
 
   return {
     task: frontmatter.task,
@@ -236,4 +252,18 @@ export function parseTaskPlan(content: string): TaskPlan {
     mustNotHaves: parseBulletList(mustNotHavesSection),
     tddSequence: parseTDDSequence(tddSection),
   };
+}
+
+/**
+ * Extract content after a **Bold:** label until the next **Bold:** label or end.
+ * Handles the common plan format where Must-Haves uses bold labels instead of headings:
+ *   **Truths:**
+ *   - item 1
+ *   **Artifacts:**
+ *   - item 1
+ */
+function extractBoldLabelSection(block: string, label: string): string {
+  const pattern = new RegExp(`\\*\\*${label}:?\\*\\*\\s*\\n([\\s\\S]*?)(?=\\n\\*\\*[A-Z]|$)`, "i");
+  const match = pattern.exec(block);
+  return match?.[1]?.trim() ?? "";
 }

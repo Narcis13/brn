@@ -13,6 +13,7 @@
 
 import { parseArgs, getProjectRoot } from "./config.ts";
 import { readState, writeState, determineNextActionEnhanced, advanceTDDPhase } from "./state.ts";
+import { findNextTask } from "./milestone-manager.ts";
 import { assembleContext } from "./context.ts";
 import { buildPrompt } from "./prompt-builder.ts";
 import {
@@ -412,6 +413,9 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
           currentState.currentSlice,
           result.output
         );
+
+        // Auto-generate boundary contract for downstream slices
+        await writeSliceContract(projectRoot, currentState.currentMilestone, currentState.currentSlice);
       }
 
       const clean = await isScopedClean(projectRoot);
@@ -487,7 +491,25 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     }
 
     // 15. Update state
-    const newState = computeNextState(currentState, nextAction);
+    let newState = computeNextState(currentState, nextAction);
+
+    // If a task just completed (phase moved to COMPLETE_SLICE), check for remaining tasks
+    // before writing state. This avoids a wasted loop iteration in auto mode and fixes
+    // step mode where COMPLETE_SLICE would stick without a next iteration.
+    if (newState.phase === "COMPLETE_SLICE" && currentState.phase === "EXECUTE_TASK" &&
+        newState.currentMilestone && newState.currentSlice) {
+      const remainingTask = await findNextTask(projectRoot, newState.currentMilestone, newState.currentSlice);
+      if (remainingTask) {
+        newState = {
+          ...newState,
+          phase: "EXECUTE_TASK",
+          tddSubPhase: "IMPLEMENT",
+          currentTask: remainingTask,
+        };
+        console.log(`  Next task: ${newState.currentSlice}/${remainingTask}`);
+      }
+    }
+
     await writeState(projectRoot, newState);
 
     // 16. Release lock
@@ -936,8 +958,8 @@ async function createPostmortemForFailure(
 // ─── Summary Writing (GAP-21: §7.3 Fractal Summaries) ──────────
 
 /**
- * Write a task summary after VERIFY phase completes.
- * Populates with available data: task ID, description, and files from git.
+ * Write an enriched task summary after IMPLEMENT completes.
+ * Uses deterministic code intelligence to extract exports, imports, and test coverage.
  */
 async function writeTaskSummaryOnComplete(
   projectRoot: string,
@@ -945,37 +967,51 @@ async function writeTaskSummaryOnComplete(
   slice: string,
   task: string,
   description: string,
-  llmOutput: string | null
+  _llmOutput: string | null
 ): Promise<void> {
   try {
+    const { buildTaskIntel, renderTaskIntelSummary } = await import("./code-intel.ts");
+
     // Get modified files from git diff
     const gitDiff = await Bun.$`git -C ${projectRoot} diff --name-only HEAD~1 2>/dev/null || echo ""`.text();
     const filesModified = gitDiff.trim().split("\n").filter(Boolean);
 
-    const data: TaskSummary = {
-      task,
-      status: "complete",
-      filesModified,
-      patternsEstablished: [],
-      whatWasBuilt: description,
-      keyDecisions: {},
-      downstreamNotes: [],
-    };
+    // Build deterministic intelligence from actual code
+    const intel = await buildTaskIntel(projectRoot, milestone, slice, task);
 
-    // Extract patterns from LLM output if available
-    if (llmOutput) {
-      const patternMatch = llmOutput.match(/pattern[s]?\s*(?:established|discovered|used):\s*(.+)/i);
-      if (patternMatch?.[1]) {
-        data.patternsEstablished = patternMatch[1].split(",").map(p => p.trim()).filter(Boolean);
+    // Render enriched summary with exports, signatures, test counts
+    const enrichedBody = intel
+      ? renderTaskIntelSummary(intel)
+      : `## What Was Built\n${description}`;
+
+    // Build downstream notes from exports
+    const downstreamNotes: string[] = [];
+    if (intel) {
+      for (const artifact of intel.artifacts) {
+        for (const exp of artifact.exports) {
+          downstreamNotes.push(`\`${artifact.path}\` exports \`${exp.name}\` (${exp.kind})`);
+        }
       }
     }
 
-    const summaryMd = generateTaskSummary(data);
+    const data: TaskSummary = {
+      task,
+      status: "complete",
+      filesModified: filesModified.filter(f => !f.startsWith(".superclaude/")),
+      patternsEstablished: [],
+      whatWasBuilt: intel?.goal ?? description,
+      keyDecisions: {},
+      downstreamNotes,
+    };
+
+    // Write structured frontmatter + enriched body
+    const summaryMd = generateTaskSummary(data) + "\n" + (intel ? renderTaskIntelSummary(intel).replace(/^## What Was Built\n.*\n/, "") : "");
     const summaryPath = `${projectRoot}/${PATHS.taskPath(milestone, slice, task)}/SUMMARY.md`;
     await Bun.write(summaryPath, summaryMd);
-    console.log(`  Summary: ${task} written`);
-  } catch {
-    // Summary writing is best-effort
+    console.log(`  Summary: ${task} written (${intel?.artifacts.length ?? 0} artifacts, ${intel?.testFiles.reduce((s, t) => s + t.testCount, 0) ?? 0} tests)`);
+  } catch (err) {
+    // Summary writing is best-effort — log but don't crash
+    console.error(`  Summary: ${task} failed — ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -1042,6 +1078,30 @@ async function writeSliceSummaryOnComplete(
     console.log(`  Summary: ${slice} written`);
   } catch {
     // Summary writing is best-effort
+  }
+}
+
+/**
+ * Auto-generate a boundary contract for a completed slice.
+ * Writes to vault/contracts/ so downstream slices can see what this slice produces.
+ */
+async function writeSliceContract(
+  projectRoot: string,
+  milestone: string,
+  slice: string
+): Promise<void> {
+  try {
+    const { buildSliceContract, renderSliceContract } = await import("./code-intel.ts");
+    const contract = await buildSliceContract(projectRoot, milestone, slice);
+    if (!contract || contract.produces.length === 0) return;
+
+    const contractMd = renderSliceContract(contract);
+    const contractDir = `${projectRoot}/${PATHS.vault}/contracts`;
+    await Bun.$`mkdir -p ${contractDir}`.quiet();
+    await Bun.write(`${contractDir}/${milestone}-${slice}.md`, contractMd);
+    console.log(`  Contract: ${milestone}-${slice} written (${contract.produces.length} files, ${contract.produces.reduce((s, f) => s + f.exports.length, 0)} exports)`);
+  } catch (err) {
+    console.error(`  Contract: ${milestone}-${slice} failed — ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
