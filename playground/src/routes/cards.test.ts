@@ -18,6 +18,7 @@ const mockCreateCard = vi.fn();
 const mockFindCardsByBoardAndColumn = vi.fn();
 const mockFindCardsByBoardId = vi.fn();
 const mockFindCardById = vi.fn();
+const mockUpdateCard = vi.fn();
 
 // Mock getDb
 const mockGetDb = vi.fn(() => "mock-db-instance");
@@ -31,6 +32,7 @@ mock.module("../cards/card.repo", () => ({
   findCardsByBoardAndColumn: mockFindCardsByBoardAndColumn,
   findCardsByBoardId: mockFindCardsByBoardId,
   findCardById: mockFindCardById,
+  updateCard: mockUpdateCard,
 }));
 
 mock.module("../db", () => ({
@@ -434,6 +436,87 @@ describe("Card Routes", () => {
       expect(res.status).toBe(404);
       const data = await res.json();
       expect(data.error).toBe("Card not found");
+    });
+  });
+
+  describe("PUT /api/cards/:id", () => {
+    test("updates title and description", async () => {
+      const card: Card = {
+        id: "card123",
+        title: "Original",
+        boardId: "board123",
+        column: "todo",
+        position: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockFindCardById.mockResolvedValue(card);
+
+      const board = {
+        id: "board123",
+        name: "Test Board",
+        userId: mockAuthContext.userId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockFindBoardById.mockResolvedValue(board);
+
+      const updatedCard: Card = {
+        ...card,
+        title: "Updated",
+        description: "New desc",
+        updatedAt: new Date().toISOString(),
+      };
+      mockUpdateCard.mockResolvedValue(updatedCard);
+
+      const res = await app.request("/api/cards/card123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: JSON.stringify({ title: "Updated", description: "New desc" }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.title).toBe("Updated");
+      expect(data.description).toBe("New desc");
+    });
+
+    test("validates board ownership", async () => {
+      const card: Card = {
+        id: "card123",
+        title: "Test Card",
+        boardId: "board123",
+        column: "todo",
+        position: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockFindCardById.mockResolvedValue(card);
+
+      const otherBoard = {
+        id: "board123",
+        name: "Other Board",
+        userId: "other-user-id",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      mockFindBoardById.mockResolvedValue(otherBoard);
+
+      const res = await app.request("/api/cards/card123", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${validToken}`,
+        },
+        body: JSON.stringify({ title: "Hacked" }),
+      });
+
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.error).toBe("Not authorized");
     });
   });
 });

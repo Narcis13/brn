@@ -4,8 +4,9 @@ import { unlinkSync, existsSync } from "fs";
 import { getDb, runMigrations } from "../db";
 import { createUser } from "../user.repo";
 import { createBoard } from "../boards/board.repo";
-import { createCard as repoCreateCard } from "./card.repo";
-import { validateBoardOwnership, createCard } from "./card.service";
+import { createCard as repoCreateCard, findCardsByBoardAndColumn } from "./card.repo";
+import { validateBoardOwnership, createCard, updateCard, moveCard } from "./card.service";
+import type { CardColumn } from "../types";
 
 describe("card.service", () => {
   let db: Database;
@@ -176,6 +177,175 @@ describe("card.service", () => {
           userId: testUserId,
         })
       ).rejects.toThrow("Card title is required");
+    });
+  });
+
+  describe("updateCard", () => {
+    test("updates title and description", async () => {
+      const card = await createCard(db, {
+        title: "Original",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      const updated = await updateCard(db, {
+        cardId: card.id,
+        userId: testUserId,
+        title: "Updated Title",
+        description: "A description",
+      });
+
+      expect(updated.title).toBe("Updated Title");
+      expect(updated.description).toBe("A description");
+    });
+
+    test("validates board ownership", async () => {
+      const card = await createCard(db, {
+        title: "My Card",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      await expect(
+        updateCard(db, {
+          cardId: card.id,
+          userId: otherUserId,
+          title: "Hacked",
+        })
+      ).rejects.toThrow("Not authorized");
+    });
+
+    test("throws 'Card not found' for non-existent card", async () => {
+      await expect(
+        updateCard(db, {
+          cardId: "00000000-0000-4000-8000-000000000000",
+          userId: testUserId,
+          title: "Ghost",
+        })
+      ).rejects.toThrow("Card not found");
+    });
+  });
+
+  describe("moveCard", () => {
+    test("moves card to different column at end position", async () => {
+      await createCard(db, {
+        title: "Todo 1",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card = await createCard(db, {
+        title: "Todo 2",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      await createCard(db, {
+        title: "Doing 1",
+        boardId: testBoardId,
+        column: "doing",
+        userId: testUserId,
+      });
+
+      const moved = await moveCard(db, {
+        cardId: card.id,
+        userId: testUserId,
+        column: "doing",
+      });
+
+      expect(moved.column).toBe("doing");
+      expect(moved.position).toBe(1);
+    });
+
+    test("recalculates source column positions to prevent gaps", async () => {
+      const card1 = await createCard(db, {
+        title: "First",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card2 = await createCard(db, {
+        title: "Second",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card3 = await createCard(db, {
+        title: "Third",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      await moveCard(db, {
+        cardId: card2.id,
+        userId: testUserId,
+        column: "doing",
+      });
+
+      const todoCards = await findCardsByBoardAndColumn(db, testBoardId, "todo");
+      expect(todoCards.length).toBe(2);
+      expect(todoCards[0].id).toBe(card1.id);
+      expect(todoCards[0].position).toBe(0);
+      expect(todoCards[1].id).toBe(card3.id);
+      expect(todoCards[1].position).toBe(1);
+    });
+
+    test("cannot move card to invalid column", async () => {
+      const card = await createCard(db, {
+        title: "Card",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      await expect(
+        moveCard(db, {
+          cardId: card.id,
+          userId: testUserId,
+          column: "invalid" as CardColumn,
+        })
+      ).rejects.toThrow("Invalid column");
+    });
+
+    test("moving within same column updates positions correctly", async () => {
+      const card1 = await createCard(db, {
+        title: "First",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card2 = await createCard(db, {
+        title: "Second",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card3 = await createCard(db, {
+        title: "Third",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      const moved = await moveCard(db, {
+        cardId: card3.id,
+        userId: testUserId,
+        column: "todo",
+        position: 0,
+      });
+
+      expect(moved.position).toBe(0);
+
+      const todoCards = await findCardsByBoardAndColumn(db, testBoardId, "todo");
+      expect(todoCards[0].id).toBe(card3.id);
+      expect(todoCards[0].position).toBe(0);
+      expect(todoCards[1].id).toBe(card1.id);
+      expect(todoCards[1].position).toBe(1);
+      expect(todoCards[2].id).toBe(card2.id);
+      expect(todoCards[2].position).toBe(2);
     });
   });
 });

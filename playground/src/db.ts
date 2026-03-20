@@ -39,14 +39,22 @@ export function runMigrations(db: Database): void {
   // Cards table: stores kanban cards belonging to boards
   db.run(`
     CREATE TABLE IF NOT EXISTS cards (
-      id         TEXT PRIMARY KEY,
-      title      TEXT NOT NULL,
-      board_id   TEXT NOT NULL,
+      id          TEXT PRIMARY KEY,
+      title       TEXT NOT NULL,
+      description TEXT,
+      board_id    TEXT NOT NULL,
       column_name TEXT NOT NULL,
-      position   INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
+      position    INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT NOT NULL,
+      updated_at  TEXT NOT NULL,
       FOREIGN KEY (board_id) REFERENCES boards(id) ON DELETE CASCADE
     )
   `);
+
+  // Migration: add description column to existing cards tables
+  try {
+    db.run("ALTER TABLE cards ADD COLUMN description TEXT");
+  } catch {
+    // Column already exists
+  }
 }

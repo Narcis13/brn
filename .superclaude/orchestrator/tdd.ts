@@ -48,6 +48,9 @@ export async function findTestFiles(
 
 /**
  * Run bun test on specific test files and return structured results.
+ *
+ * Each file runs in its own subprocess to prevent Bun mock.module pollution
+ * across test files (mock.module is process-global and cannot be un-registered).
  */
 export async function runTests(
   projectRoot: string,
@@ -63,32 +66,45 @@ export async function runTests(
     };
   }
 
-  const fileArgs = testFiles.join(" ");
+  // Run each file in its own process to isolate mock.module effects
+  let totalPassed = 0;
+  let totalFailed = 0;
+  const outputs: string[] = [];
+  let allPassing = true;
 
-  try {
-    const proc = Bun.spawn(["bun", "test", ...testFiles], {
-      cwd: projectRoot,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+  for (const file of testFiles) {
+    try {
+      const proc = Bun.spawn(["bun", "test", file], {
+        cwd: projectRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
 
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
+      const stdout = await new Response(proc.stdout).text();
+      const stderr = await new Response(proc.stderr).text();
+      const exitCode = await proc.exited;
 
-    const output = stdout + stderr;
+      const output = stdout + stderr;
+      outputs.push(output);
 
-    return parseTestOutput(output, exitCode);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      passing: false,
-      totalTests: 0,
-      passedTests: 0,
-      failedTests: 0,
-      output: `Test execution error: ${message}`,
-    };
+      const result = parseTestOutput(output, exitCode);
+      totalPassed += result.passedTests;
+      totalFailed += result.failedTests;
+      if (!result.passing) allPassing = false;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      outputs.push(`Test execution error for ${file}: ${message}`);
+      allPassing = false;
+    }
   }
+
+  return {
+    passing: allPassing && totalFailed === 0 && (totalPassed + totalFailed) > 0,
+    totalTests: totalPassed + totalFailed,
+    passedTests: totalPassed,
+    failedTests: totalFailed,
+    output: outputs.join("\n---\n"),
+  };
 }
 
 /**

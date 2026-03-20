@@ -72,6 +72,74 @@ cardRoutes.post("/", async (c: Context) => {
   }
 });
 
+// PUT /api/cards/:id — Update a card
+cardRoutes.put("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const cardId = c.req.param("id");
+    const body = await c.req.json();
+    const { title, description, column, position } = body;
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+
+    let result: import("../types").Card | undefined;
+
+    // Handle column/position move
+    if (column !== undefined) {
+      if (!VALID_COLUMNS.has(column)) {
+        return c.json({ error: "Invalid column. Must be todo, doing, or done" }, 400);
+      }
+      result = await cardService.moveCard(db, {
+        cardId,
+        userId: authContext.userId,
+        column,
+        position,
+      });
+    }
+
+    // Handle field updates (title/description)
+    if (title !== undefined || description !== undefined) {
+      result = await cardService.updateCard(db, {
+        cardId,
+        userId: authContext.userId,
+        title,
+        description,
+      });
+    }
+
+    // If nothing was provided, return current card
+    if (!result) {
+      result = await cardService.getCardById(db, cardId, authContext.userId);
+    }
+
+    return c.json(result, 200);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message === "Card not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Board not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Not authorized") {
+      return c.json({ error: message }, 403);
+    }
+    if (message === "Card title is required") {
+      return c.json({ error: message }, 400);
+    }
+    if (message === "Invalid column") {
+      return c.json({ error: message }, 400);
+    }
+
+    console.error("Error updating card:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
 // GET /api/cards/:id — Get a card by ID
 cardRoutes.get("/:id", async (c: Context) => {
   const authContext = getAuthContext(c);

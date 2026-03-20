@@ -75,6 +75,8 @@ export interface Card {
   id: string;
   /** Card title / summary */
   title: string;
+  /** Optional longer description */
+  description?: string;
   /** UUID of the board this card belongs to */
   boardId: string;
   /** Which column the card is in */
@@ -94,6 +96,8 @@ export interface Card {
 export interface NewCard {
   /** Card title / summary */
   title: string;
+  /** Optional longer description */
+  description?: string;
   /** UUID of the board this card belongs to */
   boardId: string;
   /** Which column the card is in */

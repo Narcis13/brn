@@ -5,6 +5,7 @@ import type { Card, NewCard, CardColumn } from "../types";
 interface CardRow {
   id: string;
   title: string;
+  description: string | null;
   board_id: string;
   column_name: string;
   position: number;
@@ -15,6 +16,7 @@ interface CardRow {
 /** Fields that can be updated on a card */
 export interface CardUpdates {
   title?: string;
+  description?: string;
   column?: CardColumn;
   position?: number;
 }
@@ -23,7 +25,7 @@ export interface CardUpdates {
  * Map a database row to a Card domain object.
  */
 function rowToCard(row: CardRow): Card {
-  return {
+  const card: Card = {
     id: row.id,
     title: row.title,
     boardId: row.board_id,
@@ -32,6 +34,10 @@ function rowToCard(row: CardRow): Card {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+  if (row.description !== null) {
+    card.description = row.description;
+  }
+  return card;
 }
 
 /**
@@ -48,13 +54,14 @@ export async function createCard(
   const now = new Date().toISOString();
 
   const stmt = db.prepare(`
-    INSERT INTO cards (id, title, board_id, column_name, position, created_at, updated_at)
-    VALUES ($id, $title, $boardId, $column, $position, $createdAt, $updatedAt)
+    INSERT INTO cards (id, title, description, board_id, column_name, position, created_at, updated_at)
+    VALUES ($id, $title, $description, $boardId, $column, $position, $createdAt, $updatedAt)
   `);
 
   stmt.run({
     $id: id,
     $title: newCard.title,
+    $description: newCard.description ?? null,
     $boardId: newCard.boardId,
     $column: newCard.column,
     $position: newCard.position,
@@ -62,7 +69,7 @@ export async function createCard(
     $updatedAt: now,
   });
 
-  return {
+  const card: Card = {
     id,
     title: newCard.title,
     boardId: newCard.boardId,
@@ -71,6 +78,10 @@ export async function createCard(
     createdAt: now,
     updatedAt: now,
   };
+  if (newCard.description !== undefined) {
+    card.description = newCard.description;
+  }
+  return card;
 }
 
 /**
@@ -150,24 +161,26 @@ export async function updateCard(
 
   const now = new Date().toISOString();
   const newTitle = updates.title ?? existing.title;
+  const newDescription = updates.description !== undefined ? updates.description : existing.description;
   const newColumn = updates.column ?? existing.column;
   const newPosition = updates.position ?? existing.position;
 
   const stmt = db.prepare(`
     UPDATE cards
-    SET title = $title, column_name = $column, position = $position, updated_at = $updatedAt
+    SET title = $title, description = $description, column_name = $column, position = $position, updated_at = $updatedAt
     WHERE id = $id
   `);
 
   stmt.run({
     $id: id,
     $title: newTitle,
+    $description: newDescription ?? null,
     $column: newColumn,
     $position: newPosition,
     $updatedAt: now,
   });
 
-  return {
+  const card: Card = {
     id: existing.id,
     title: newTitle,
     boardId: existing.boardId,
@@ -176,6 +189,10 @@ export async function updateCard(
     createdAt: existing.createdAt,
     updatedAt: now,
   };
+  if (newDescription !== undefined) {
+    card.description = newDescription;
+  }
+  return card;
 }
 
 /**

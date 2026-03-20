@@ -182,7 +182,7 @@ function parseTDDSequence(section: string): TDDSequence {
     if (testFilesMatch?.[1] && !isPlaceholder(testFilesMatch[1].trim())) {
       result.testFiles = testFilesMatch[1]
         .split(",")
-        .map((f) => f.trim().replace(/^`|`$/g, ""))
+        .map((f) => f.trim().replace(/^`|`$/g, "").replace(/\s*\(.*\)\s*$/, ""))
         .filter(Boolean);
       continue;
     }
@@ -202,7 +202,7 @@ function parseTDDSequence(section: string): TDDSequence {
     if (implMatch?.[1] && !isPlaceholder(implMatch[1].trim())) {
       result.implementationFiles = implMatch[1]
         .split(",")
-        .map((f) => f.trim().replace(/^`|`$/g, ""))
+        .map((f) => f.trim().replace(/^`|`$/g, "").replace(/\s*\(.*\)\s*$/, ""))
         .filter(Boolean);
       continue;
     }

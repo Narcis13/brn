@@ -317,4 +317,20 @@ No frontmatter plan
     expect(plan.goal).toBe("No frontmatter plan");
     expect(plan.tddSequence.testFiles).toEqual(["src/test.test.ts"]);
   });
+
+  test("strips parenthetical annotations from file paths", () => {
+    const plan = parseTaskPlan(`## Goal
+Extend existing tests
+
+## TDD Sequence
+- Test file(s): playground/src/routes/cards.test.ts (extend existing)
+- Implementation file(s): playground/src/routes/cards.ts, playground/src/routes/boards.ts
+`);
+
+    expect(plan.tddSequence.testFiles).toEqual(["playground/src/routes/cards.test.ts"]);
+    expect(plan.tddSequence.implementationFiles).toEqual([
+      "playground/src/routes/cards.ts",
+      "playground/src/routes/boards.ts",
+    ]);
+  });
 });
