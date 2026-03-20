@@ -29,7 +29,7 @@ status: planned
 - JWT auth middleware from S01
 - User ID from auth context
 
-### S03: Card Operations
+### S03: Card Operations ✓
 **Demo:** After this, the user can create cards in any column, edit them, and move them between columns
 **Depends on:** S01, S02
 **Risk:** medium
@@ -103,5 +103,17 @@ No structural changes needed. Marked S02 as complete (✓) and updated its deliv
 
 ## Reassessment (2026-03-20)
 
-Roadmap updated with S02 marked complete and reassessment notes added.
+With S03 now complete, the backend API is fully implemented:
+- S03 delivered comprehensive card operations with CRUD, column movement, and position management
+- All three backend slices (S01-S03) are now complete, providing a solid API foundation
+- The frontend slices (S04-S06) can now proceed with all required backend functionality in place
+- Dependencies and risk assessments remain accurate
+
+The roadmap structure continues to prove effective. No changes needed beyond marking S03 as complete.
+
+
+
+## Reassessment (2026-03-20)
+
+Roadmap updated with S03 marked complete and reassessment added.
 
