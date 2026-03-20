@@ -22,6 +22,11 @@ const VALID_COLUMNS: ReadonlySet<string> = new Set(["todo", "doing", "done"]);
  *   Returns 200 with card details
  *   Returns 404 if card doesn't exist
  *   Returns 403 if user doesn't own the card's board
+ *
+ * DELETE /:id — Delete a card
+ *   Returns 204 No Content on success
+ *   Returns 404 if card doesn't exist
+ *   Returns 403 if user doesn't own the card's board
  */
 export const cardRoutes = new Hono();
 
@@ -167,6 +172,41 @@ cardRoutes.get("/:id", async (c: Context) => {
     }
 
     console.error("Error fetching card:", error);
+    return c.json({ error: "Internal server error" }, 500);
+  }
+});
+
+// DELETE /api/cards/:id — Delete a card
+cardRoutes.delete("/:id", async (c: Context) => {
+  const authContext = getAuthContext(c);
+  if (!authContext) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  try {
+    const cardId = c.req.param("id");
+    const db = getDb(Bun.env.DB_PATH ?? "./data/app.db");
+    
+    await cardService.deleteCard(db, {
+      cardId,
+      userId: authContext.userId,
+    });
+
+    return c.body(null, 204);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+
+    if (message === "Card not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Board not found") {
+      return c.json({ error: message }, 404);
+    }
+    if (message === "Not authorized") {
+      return c.json({ error: message }, 403);
+    }
+
+    console.error("Error deleting card:", error);
     return c.json({ error: "Internal server error" }, 500);
   }
 });

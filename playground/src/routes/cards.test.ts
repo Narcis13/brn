@@ -29,6 +29,7 @@ const mockServiceUpdateCard = vi.fn();
 const mockServiceMoveCard = vi.fn();
 const mockServiceGetCardById = vi.fn();
 const mockServiceGetCardsByBoard = vi.fn();
+const mockServiceDeleteCard = vi.fn();
 
 mock.module("../boards/board.repo", () => ({
   findBoardById: mockFindBoardById,
@@ -48,6 +49,7 @@ mock.module("../cards/card.service", () => ({
   moveCard: mockServiceMoveCard,
   getCardById: mockServiceGetCardById,
   getCardsByBoard: mockServiceGetCardsByBoard,
+  deleteCard: mockServiceDeleteCard,
 }));
 
 mock.module("../db", () => ({
@@ -473,6 +475,63 @@ describe("Card Routes", () => {
       const data = await res.json();
       expect(data.column).toBe("todo");
       expect(data.position).toBe(0);
+    });
+  });
+
+  describe("DELETE /api/cards/:id", () => {
+    test("removes card", async () => {
+      mockServiceDeleteCard.mockResolvedValue(undefined);
+
+      const res = await app.request("/api/cards/card123", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+      });
+
+      expect(res.status).toBe(204);
+      expect(mockServiceDeleteCard).toHaveBeenCalledWith("mock-db-instance", {
+        cardId: "card123",
+        userId: mockAuthContext.userId,
+      });
+    });
+
+    test("validates board ownership", async () => {
+      mockServiceDeleteCard.mockRejectedValue(new Error("Not authorized"));
+
+      const res = await app.request("/api/cards/card123", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+      });
+
+      expect(res.status).toBe(403);
+      const data = await res.json();
+      expect(data.error).toBe("Not authorized");
+    });
+
+    test("returns 404 for non-existent card", async () => {
+      mockServiceDeleteCard.mockRejectedValue(new Error("Card not found"));
+
+      const res = await app.request("/api/cards/nonexistent", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${validToken}`,
+        },
+      });
+
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error).toBe("Card not found");
+    });
+
+    test("returns 401 without auth token", async () => {
+      const res = await app.request("/api/cards/card123", {
+        method: "DELETE",
+      });
+
+      expect(res.status).toBe(401);
     });
   });
 });

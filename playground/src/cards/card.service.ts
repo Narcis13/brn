@@ -371,3 +371,77 @@ export async function moveCard(
   const updated = await cardRepo.findCardById(db, params.cardId);
   return updated!;
 }
+
+/**
+ * Input parameters for deleting a card.
+ */
+export interface DeleteCardParams {
+  cardId: string;
+  userId: string;
+}
+
+/**
+ * Delete a card and adjust positions of remaining cards in the same column.
+ *
+ * Validates board ownership before deletion.
+ * Uses a transaction to atomically delete the card and recalculate positions,
+ * preventing gaps in the position sequence.
+ *
+ * @param db - Database instance
+ * @param params - Delete parameters with cardId and userId
+ * @throws Error "Card not found" - if card doesn't exist
+ * @throws Error "Board not found" - if card's board doesn't exist
+ * @throws Error "Not authorized" - if user doesn't own the board
+ */
+export async function deleteCard(
+  db: Database,
+  params: DeleteCardParams
+): Promise<void> {
+  const card = await cardRepo.findCardById(db, params.cardId);
+  if (!card) {
+    throw new Error("Card not found");
+  }
+
+  const validation = await validateBoardOwnership(db, card.boardId, params.userId);
+  if (!validation.exists) {
+    throw new Error("Board not found");
+  }
+  if (!validation.isOwner) {
+    throw new Error("Not authorized");
+  }
+
+  // Get all cards in the same column
+  const columnCards = await cardRepo.findCardsByBoardAndColumn(
+    db,
+    card.boardId,
+    card.column
+  );
+
+  // Prepare statements for transaction
+  const deleteStmt = db.prepare("DELETE FROM cards WHERE id = $id");
+  const updatePosStmt = db.prepare(
+    "UPDATE cards SET position = $position, updated_at = $updatedAt WHERE id = $id"
+  );
+  const now = new Date().toISOString();
+
+  // Use transaction for atomic deletion and position adjustment
+  const txn = db.transaction(() => {
+    // Delete the card
+    deleteStmt.run({ $id: card.id });
+
+    // Adjust positions of remaining cards
+    let newPos = 0;
+    for (const c of columnCards) {
+      if (c.id !== card.id) {
+        updatePosStmt.run({
+          $id: c.id,
+          $position: newPos,
+          $updatedAt: now,
+        });
+        newPos++;
+      }
+    }
+  });
+  
+  txn();
+}

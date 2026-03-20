@@ -5,7 +5,7 @@ import { getDb, runMigrations } from "../db";
 import { createUser } from "../user.repo";
 import { createBoard } from "../boards/board.repo";
 import { createCard as repoCreateCard, findCardsByBoardAndColumn } from "./card.repo";
-import { validateBoardOwnership, createCard, updateCard, moveCard } from "./card.service";
+import { validateBoardOwnership, createCard, updateCard, moveCard, deleteCard } from "./card.service";
 import type { CardColumn } from "../types";
 
 describe("card.service", () => {
@@ -346,6 +346,123 @@ describe("card.service", () => {
       expect(todoCards[1].position).toBe(1);
       expect(todoCards[2].id).toBe(card2.id);
       expect(todoCards[2].position).toBe(2);
+    });
+  });
+
+  describe("deleteCard", () => {
+    test("deletes card and adjusts positions of remaining cards", async () => {
+      const card1 = await createCard(db, {
+        title: "First",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card2 = await createCard(db, {
+        title: "Second",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card3 = await createCard(db, {
+        title: "Third",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      await deleteCard(db, {
+        cardId: card2.id,
+        userId: testUserId,
+      });
+
+      const remainingCards = await findCardsByBoardAndColumn(db, testBoardId, "todo");
+      expect(remainingCards.length).toBe(2);
+      expect(remainingCards[0].id).toBe(card1.id);
+      expect(remainingCards[0].position).toBe(0);
+      expect(remainingCards[1].id).toBe(card3.id);
+      expect(remainingCards[1].position).toBe(1);
+    });
+
+    test("uses transaction for atomic deletion", async () => {
+      const card1 = await createCard(db, {
+        title: "First",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const card2 = await createCard(db, {
+        title: "Second",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      // This test validates that transaction is used by checking that
+      // positions are updated atomically with deletion
+      await deleteCard(db, {
+        cardId: card1.id,
+        userId: testUserId,
+      });
+
+      const remainingCards = await findCardsByBoardAndColumn(db, testBoardId, "todo");
+      expect(remainingCards.length).toBe(1);
+      expect(remainingCards[0].position).toBe(0); // Should be 0, not 1
+    });
+
+    test("validates board ownership", async () => {
+      const card = await createCard(db, {
+        title: "My Card",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+
+      await expect(
+        deleteCard(db, {
+          cardId: card.id,
+          userId: otherUserId,
+        })
+      ).rejects.toThrow("Not authorized");
+    });
+
+    test("throws 'Card not found' for non-existent card", async () => {
+      await expect(
+        deleteCard(db, {
+          cardId: "00000000-0000-4000-8000-000000000000",
+          userId: testUserId,
+        })
+      ).rejects.toThrow("Card not found");
+    });
+
+    test("only adjusts positions in same column", async () => {
+      const todoCard = await createCard(db, {
+        title: "Todo",
+        boardId: testBoardId,
+        column: "todo",
+        userId: testUserId,
+      });
+      const doingCard1 = await createCard(db, {
+        title: "Doing 1",
+        boardId: testBoardId,
+        column: "doing",
+        userId: testUserId,
+      });
+      const doingCard2 = await createCard(db, {
+        title: "Doing 2",
+        boardId: testBoardId,
+        column: "doing",
+        userId: testUserId,
+      });
+
+      await deleteCard(db, {
+        cardId: todoCard.id,
+        userId: testUserId,
+      });
+
+      const doingCards = await findCardsByBoardAndColumn(db, testBoardId, "doing");
+      expect(doingCards.length).toBe(2);
+      expect(doingCards[0].position).toBe(0); // Should not change
+      expect(doingCards[1].position).toBe(1); // Should not change
     });
   });
 });
