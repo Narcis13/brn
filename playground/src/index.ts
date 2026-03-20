@@ -3,6 +3,7 @@ import { getDb, runMigrations } from "./db.ts";
 import type { Serve } from "bun";
 import { authRoutes } from "./routes/auth";
 import { boardRoutes } from "./routes/boards";
+import { cardRoutes } from "./routes/cards";
 
 // Initialize Hono application
 export const app = new Hono();
@@ -15,6 +16,9 @@ app.route("/api/auth", authRoutes);
 
 // Mount board routes
 app.route("/api/boards", boardRoutes);
+
+// Mount card routes
+app.route("/api/cards", cardRoutes);
 
 // Server start function that actually starts the server
 export async function startServer(): Promise<void> {
