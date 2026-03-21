@@ -1003,6 +1003,41 @@ export function resolveInvocationOptions(
   return { model: "sonnet", effort: "medium" };
 }
 
+/** Cache the resolved claude binary path across invocations. */
+let _claudeBinPath: string | null = null;
+
+/**
+ * Resolve the claude binary path. Shell aliases (e.g., in .zshrc) aren't
+ * available to Bun.spawn, so we resolve the real path once and cache it.
+ */
+async function resolveClaudeBinary(): Promise<string> {
+  if (_claudeBinPath) return _claudeBinPath;
+
+  // Try the common local install location first
+  const localBin = `${process.env.HOME}/.claude/local/claude`;
+  if (await Bun.file(localBin).exists()) {
+    _claudeBinPath = localBin;
+    return localBin;
+  }
+
+  // Fall back to which/command -v via user's login shell
+  try {
+    const shell = process.env.SHELL ?? "/bin/zsh";
+    const result = await Bun.$`${shell} -ilc "which claude" 2>/dev/null`.quiet().text();
+    const resolved = result.trim();
+    if (resolved) {
+      _claudeBinPath = resolved;
+      return resolved;
+    }
+  } catch {
+    // Ignore
+  }
+
+  // Last resort — hope it's on PATH
+  _claudeBinPath = "claude";
+  return "claude";
+}
+
 async function invokeClaudeHeadless(
   prompt: string,
   timeoutMs: number = 30 * 60 * 1000,
@@ -1026,9 +1061,10 @@ async function invokeClaudeHeadless(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Build CLI args array — prompt is piped via stdin (no shell escaping issues)
+    // Build CLI args — use resolved claude binary path to avoid alias issues with sh
+    const claudeBin = await resolveClaudeBinary();
     const args = [
-      "claude", "-p",
+      claudeBin, "-p",
       "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
       "--no-session-persistence",
       "--output-format", "json",
