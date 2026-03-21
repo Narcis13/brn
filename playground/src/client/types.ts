@@ -67,3 +67,18 @@ export interface Card {
   /** ISO 8601 timestamp of last update */
   updatedAt: string;
 }
+
+/**
+ * Input for creating a new card on the client.
+ * Position is calculated by the server.
+ */
+export interface NewCard {
+  /** Card title / summary */
+  title: string;
+  /** Optional longer description */
+  description?: string;
+  /** UUID of the board this card belongs to */
+  boardId: string;
+  /** Which column the card starts in */
+  column: CardColumn;
+}
