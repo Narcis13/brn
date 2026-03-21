@@ -6,6 +6,11 @@ out
 dist
 *.tgz
 
+# databases
+*.db
+*.db-wal
+*.db-shm
+
 # code coverage
 coverage
 *.lcov
