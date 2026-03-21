@@ -32,20 +32,23 @@ If `state.json` does not exist or `status` is empty:
 - This is a **FIRST RUN**. Proceed to Step 1b: INITIALIZE.
 
 If `state.json` has `status: done`:
-- Report "Feature complete. Nothing to do." and stop.
+- Check `.brn/specs/` for another spec with `status: ready`
+- If found: proceed to Step 1c: ARCHIVE & INITIALIZE (new feature)
+- If not found: report "All features complete. Drop a new spec in `.brn/specs/` and run `/next`." and stop.
 
 If `state.json` has `blocked: true`:
 - Check `steering.md` for new directives that might unblock
 - If found: clear blocked state and continue
 - If not: report the block reason and stop
 
-### Step 1b: INITIALIZE (first run only)
+### Step 1b: INITIALIZE (first run, no prior state)
 
 1. Find a spec file in `.brn/specs/` with frontmatter `status: ready`
-2. Read the spec thoroughly
-3. Extract acceptance criteria from the spec's requirements and user stories. Each criterion should be testable and specific.
-4. Create the feature branch: `git checkout -b feat/<feature-name>`
-5. Write `.brn/state.json` with:
+2. If no spec found: report "No spec found. Drop a spec in `.brn/specs/` with `status: ready` and run `/next`." and stop.
+3. Read the spec thoroughly
+4. Extract acceptance criteria from the spec's requirements and user stories. Each criterion should be testable and specific.
+5. Create the feature branch: `git checkout -b feat/<feature-name>`
+6. Write `.brn/state.json` with:
    - `feature`: derived from spec title
    - `spec`: spec filename
    - `branch`: the branch name
@@ -56,10 +59,35 @@ If `state.json` has `blocked: true`:
    - `last_run`: null
    - `retry_count`: 0
    - `blocked`: false
-6. Create `.brn/steering.md` with empty Active/Acknowledged sections
-7. Create `.brn/history/index.json` as empty array
-8. Commit: `git add .brn/ && git commit -m "feat: initialize BRN for <feature>"`
-9. Now continue to Step 2 for the first real planning step
+7. Update the spec's frontmatter: set `status: active`
+8. Create `.brn/steering.md` with empty Active/Acknowledged sections
+9. Create `.brn/history/index.json` as empty array
+10. Commit: `git add .brn/ && git commit -m "feat: initialize BRN for <feature>"`
+11. Now continue to Step 2 for the first real planning step
+
+### Step 1c: ARCHIVE & INITIALIZE (transitioning between features)
+
+The previous feature is done. Archive it and start the next one.
+
+1. **Archive the completed feature**:
+   - Create `.brn/archive/<feature-name>/` directory
+   - Move `.brn/history/runs/` → `.brn/archive/<feature-name>/history/`
+   - Move `.brn/history/index.json` → `.brn/archive/<feature-name>/index.json`
+   - Copy `.brn/state.json` → `.brn/archive/<feature-name>/state.json`
+   - Copy `.brn/steering.md` → `.brn/archive/<feature-name>/steering.md`
+   - Update the completed spec's frontmatter: set `status: done`
+
+2. **Keep the vault** — it persists across all features. This is the compounding advantage.
+
+3. **Reset for new feature**:
+   - Delete `.brn/state.json`
+   - Create fresh `.brn/history/runs/` directory
+   - Create fresh `.brn/history/index.json` as empty array
+   - Clear `.brn/steering.md` to empty Active/Acknowledged sections
+
+4. **Initialize the new feature** — proceed to Step 1b with the new spec.
+
+5. Commit: `git add .brn/ && git commit -m "feat: archive <old-feature>, initialize <new-feature>"`
 
 ## Step 2: THINK
 

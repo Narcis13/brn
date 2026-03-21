@@ -45,16 +45,29 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
 .brn/
   state.json              # Current feature state (created by /next)
   steering.md             # Human directives for the agent
-  specs/                  # Feature specifications (human-written)
-  vault/                  # Compounding knowledge base
+  specs/                  # Feature specifications (human-written, status: ready|active|done)
+  vault/                  # Compounding knowledge base (persists across ALL features)
     patterns/             # What works
     anti-patterns/        # What to avoid
     decisions/            # Key choices and why
     codebase/             # Insights about this codebase
-  history/                # Run history
+  history/                # Run history (reset per feature)
     runs/                 # One folder per /next run
     index.json            # Quick-scan summary
+  archive/                # Completed features (auto-created by /next)
+    <feature-name>/       # Each completed feature gets archived here
+      state.json          # Final state snapshot
+      steering.md         # Steering history
+      history/            # All run records
 ```
+
+## Feature Lifecycle
+1. Drop a spec in `.brn/specs/` with `status: ready` in frontmatter
+2. Run `/next` — it initializes state, creates branch, sets spec to `status: active`
+3. Keep running `/next` (or `/nightshift`) until all acceptance criteria pass
+4. `/next` creates a PR, sets spec to `status: done`, sets state to `done`
+5. Next `/next` call: archives completed feature, picks up next `ready` spec
+6. **Vault persists forever** — knowledge compounds across all features
 
 ## Skills
 | Command | Purpose |
