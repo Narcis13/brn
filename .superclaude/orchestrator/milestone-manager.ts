@@ -170,9 +170,11 @@ export async function listSlices(
       // Check if SUMMARY.md exists (complete)
       const summaryExists = await Bun.file(`${slicesDir}/${sliceId}/SUMMARY.md`).exists();
 
+      // Treat "absorbed" slices as complete — their work was delivered by another slice
+      const isAbsorbed = fm["status"] === "absorbed";
       slices.push({
         id: sliceId,
-        status: summaryExists ? "complete" : fm["status"] === "in_progress" ? "in_progress" : "pending",
+        status: summaryExists || isAbsorbed ? "complete" : fm["status"] === "in_progress" ? "in_progress" : "pending",
         demoSentence: fm["demo_sentence"]?.replace(/^"|"$/g, "") ?? "",
       });
     }
@@ -274,6 +276,14 @@ export async function isSliceComplete(
   milestoneId: string,
   sliceId: string
 ): Promise<boolean> {
+  // Check if slice is marked as absorbed (delivered by another slice)
+  const planPath = `${projectRoot}/${PATHS.slicePath(milestoneId, sliceId)}/PLAN.md`;
+  const planFile = Bun.file(planPath);
+  if (await planFile.exists()) {
+    const content = await planFile.text();
+    if (/^status:\s*absorbed/m.test(content)) return true;
+  }
+
   const tasks = await listTasks(projectRoot, milestoneId, sliceId);
   if (tasks.length === 0) return false;
   return tasks.every((t) => t.status === "complete");
