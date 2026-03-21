@@ -38,6 +38,9 @@ The vault is the system's long-term memory. Agents read from and write to these 
 - [[learnings/jwt-storage-security]] — JWT localStorage vulnerability considerations
 - [[learnings/placeholder-test-implementations]] — Tests need real assertions, not placeholders
 - [[learnings/missing-critical-test-coverage]] — Auth and routing need mandatory test coverage
+- [[learnings/integration-wiring-missing]] — Components built but never wired into App.tsx render tree
+- [[learnings/centralized-client-not-adopted]] — New abstraction built without migrating existing callers
+- [[learnings/react-timer-leak]] — setTimeout in React context must be tracked and cancelled on dismiss/unmount
 
 ## Playbooks
 - [[playbooks/test-failure-recovery]] — Recovering from test failures in suite vs individual runs
@@ -45,3 +48,4 @@ The vault is the system's long-term memory. Agents read from and write to these 
 ## Contracts
 - [[contracts/S03]] — Card Operations boundary contract
 - [[contracts/S04]] — Frontend React Implementation boundary contract
+- [[contracts/S05]] — S05 UI Polish & Infrastructure boundary contract
