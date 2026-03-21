@@ -37,6 +37,7 @@ import {
   createCheckpoint,
   rollbackToCheckpoint,
   tagRelease,
+  createMilestonePR,
   stageAll,
   isCleanWorkingTree,
   isScopedClean,
@@ -333,9 +334,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     // 8. Generate prompt (agent-enriched per §8)
     const prompt = await buildAgentEnrichedPrompt(projectRoot, currentState, context);
 
-    // 9. Invoke Claude headless
-    console.log(`  Action: ${nextAction.description}`);
-    const result = await invokeClaudeHeadless(prompt, config.timeouts.hard);
+    // 9. Invoke Claude headless (adaptive model/effort based on phase + complexity)
+    const invocationOpts = resolveInvocationOptions(currentState.phase, taskComplexity);
+    console.log(`  Action: ${nextAction.description} [${invocationOpts.model}/${invocationOpts.effort}]`);
+    const result = await invokeClaudeHeadless(prompt, config.timeouts.hard, invocationOpts);
 
     // 10. Check timeout
     const elapsed = Date.now() - iterationStart;
@@ -706,6 +708,18 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
       // GAP-14: Tag the release per spec §6.8
       const tag = await tagRelease(projectRoot, currentState.currentMilestone);
       console.log(`  Tagged: ${tag}`);
+
+      // Create PR for human review instead of auto-merging to main
+      const prResult = await createMilestonePR(
+        projectRoot,
+        currentState.currentMilestone,
+        result.output?.split("\n")[0] ?? `Milestone ${currentState.currentMilestone} complete`
+      );
+      if (prResult.success) {
+        console.log(`  PR: ${prResult.message}`);
+      } else {
+        console.log(`  PR skipped: ${prResult.message}`);
+      }
     }
 
     // 15b. Capture baseline test snapshot after PLAN_SLICE completes
@@ -760,10 +774,11 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     // 17. Release lock
     await releaseLock(projectRoot);
 
-    // 18. Track cost
-    const promptTokens = Math.ceil(prompt.length / 4);
-    const outputTokens = Math.ceil((result.output?.length ?? 0) / 4);
-    const stepCost = estimateCost(promptTokens, outputTokens);
+    // 18. Track cost (use real usage from JSON output when available, fall back to estimate)
+    const promptTokens = result.usage?.inputTokens ?? Math.ceil(prompt.length / 4);
+    const outputTokens = result.usage?.outputTokens ?? Math.ceil((result.output?.length ?? 0) / 4);
+    const model = invocationOpts.model;
+    const stepCost = estimateCost(promptTokens, outputTokens, model);
     costTracker = recordCostEntry(costTracker, {
       phase: currentState.phase,
       tokensIn: promptTokens,
@@ -812,7 +827,8 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
 
       const retryContext = await assembleContext(projectRoot, retryState);
       const retryPrompt = await buildAgentEnrichedPrompt(projectRoot, retryState, retryContext);
-      const retryResult = await invokeClaudeHeadless(retryPrompt, config.timeouts.hard);
+      const retryOpts = resolveInvocationOptions(retryState.phase, "standard");
+      const retryResult = await invokeClaudeHeadless(retryPrompt, config.timeouts.hard, retryOpts);
 
       if (!retryResult.success) {
         console.log(`  Deferred retry FAILED for ${deferred.taskKey}: ${retryResult.error}`);
@@ -858,10 +874,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         console.log(`  Committed: feat(${deferred.slice}/${deferred.task}): [implement] deferred recovery`);
       }
 
-      // Track cost
-      const promptTokens = Math.ceil(retryPrompt.length / 4);
-      const outputTokens = Math.ceil((retryResult.output?.length ?? 0) / 4);
-      const stepCost = estimateCost(promptTokens, outputTokens);
+      // Track cost (use real usage from JSON output when available)
+      const promptTokens = retryResult.usage?.inputTokens ?? Math.ceil(retryPrompt.length / 4);
+      const outputTokens = retryResult.usage?.outputTokens ?? Math.ceil((retryResult.output?.length ?? 0) / 4);
+      const stepCost = estimateCost(promptTokens, outputTokens, retryOpts.model);
       costTracker = recordCostEntry(costTracker, {
         phase: "EXECUTE_TASK" as Phase,
         tokensIn: promptTokens,
@@ -937,15 +953,60 @@ async function runSingleStep(projectRoot: string, config: OrchestratorConfig) {
 
 // ─── Claude Invocation ───────────────────────────────────────────
 
+interface InvocationUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 interface InvocationResult {
   success: boolean;
   output: string | null;
   error: string | null;
+  usage: InvocationUsage | null;
+  sessionId: string | null;
+}
+
+/** CLI flags for adaptive Claude invocation based on phase + complexity. */
+interface InvocationOptions {
+  model: "sonnet" | "opus";
+  effort: "medium" | "high" | "max";
+}
+
+/**
+ * Resolve invocation options from phase and task complexity.
+ * - Simple/standard tasks and non-critical phases → sonnet (cheaper, faster)
+ * - Complex tasks and critical planning phases → opus (more capable)
+ */
+export function resolveInvocationOptions(
+  phase: Phase,
+  complexity: TaskComplexity | null
+): InvocationOptions {
+  // Planning phases need opus for architectural judgment
+  if (phase === "PLAN_MILESTONE" || phase === "PLAN_SLICE") {
+    return { model: "opus", effort: "high" };
+  }
+
+  // EXECUTE_TASK — depends on task complexity
+  if (phase === "EXECUTE_TASK") {
+    switch (complexity) {
+      case "simple":
+        return { model: "sonnet", effort: "medium" };
+      case "complex":
+        return { model: "opus", effort: "max" };
+      default: // "standard"
+        return { model: "sonnet", effort: "high" };
+    }
+  }
+
+  // All other phases (DISCUSS, RESEARCH, COMPLETE_SLICE, RETROSPECTIVE, REASSESS, COMPLETE_MILESTONE)
+  // — summarization, analysis, knowledge extraction — sonnet handles fine
+  return { model: "sonnet", effort: "medium" };
 }
 
 async function invokeClaudeHeadless(
   prompt: string,
-  timeoutMs: number = 30 * 60 * 1000
+  timeoutMs: number = 30 * 60 * 1000,
+  options?: InvocationOptions
 ): Promise<InvocationResult> {
   const timestamp = Date.now();
   const debugDir = `${getProjectRoot()}/.superclaude/history/debug`;
@@ -956,19 +1017,29 @@ async function invokeClaudeHeadless(
     const tmpFile = `/tmp/superclaude-prompt-${timestamp}.md`;
     await Bun.write(tmpFile, prompt);
 
-    // Log prompt for debugging
-    await Bun.write(`${debugDir}/prompt-${timestamp}.md`, prompt);
+    // Log prompt for debugging (include model/effort for traceability)
+    const debugHeader = options
+      ? `<!-- model: ${options.model}, effort: ${options.effort} -->\n`
+      : "";
+    await Bun.write(`${debugDir}/prompt-${timestamp}.md`, debugHeader + prompt);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
+    // Build CLI flags from invocation options
+    const modelFlag = options ? `--model ${options.model}` : "";
+    const effortFlag = options ? `--effort ${options.effort}` : "";
+    const extraFlags = [modelFlag, effortFlag, "--no-session-persistence", "--output-format json"]
+      .filter(Boolean)
+      .join(" ");
+
     try {
       const proc = Bun.spawn(
-        ["sh", "-c", `claude -p "$(cat ${tmpFile})" --allowedTools "Read,Write,Edit,Bash,Glob,Grep" 2>&1`],
+        ["sh", "-c", `claude -p "$(cat ${tmpFile})" --allowedTools "Read,Write,Edit,Bash,Glob,Grep" ${extraFlags} 2>&1`],
         { signal: controller.signal, stdout: "pipe", stderr: "pipe" }
       );
 
-      const output = await new Response(proc.stdout).text();
+      const rawOutput = await new Response(proc.stdout).text();
       const exitCode = await proc.exited;
 
       clearTimeout(timer);
@@ -976,19 +1047,46 @@ async function invokeClaudeHeadless(
       // Cleanup temp file (keep debug copy)
       await Bun.$`rm -f ${tmpFile}`.quiet();
 
-      // Log output for debugging
+      // Parse JSON output — extract result text and usage stats
+      let output: string | null = null;
+      let usage: InvocationUsage | null = null;
+      let sessionId: string | null = null;
+
+      try {
+        const json = JSON.parse(rawOutput) as {
+          result?: string;
+          session_id?: string;
+          usage?: { input_tokens?: number; output_tokens?: number };
+        };
+        output = json.result ?? null;
+        sessionId = json.session_id ?? null;
+        if (json.usage) {
+          usage = {
+            inputTokens: json.usage.input_tokens ?? 0,
+            outputTokens: json.usage.output_tokens ?? 0,
+          };
+        }
+      } catch {
+        // JSON parse failed — fall back to raw text (e.g., older CLI version)
+        output = rawOutput;
+      }
+
+      // Log output for debugging (text result + usage summary)
       const status = exitCode === 0 ? "OK" : `FAIL(${exitCode})`;
+      const usageNote = usage
+        ? `\n\n<!-- tokens_in: ${usage.inputTokens}, tokens_out: ${usage.outputTokens} -->`
+        : "";
       await Bun.write(
         `${debugDir}/output-${timestamp}.md`,
-        `# Claude Output [${status}]\n\n${output}\n`
+        `# Claude Output [${status}]${usageNote}\n\n${output ?? rawOutput}\n`
       );
 
       if (exitCode !== 0) {
         const stderr = proc.stderr ? await new Response(proc.stderr).text() : "";
-        return { success: false, output: null, error: stderr || output || `Exit code ${exitCode}` };
+        return { success: false, output: null, error: stderr || output || rawOutput || `Exit code ${exitCode}`, usage, sessionId };
       }
 
-      return { success: true, output, error: null };
+      return { success: true, output, error: null, usage, sessionId };
     } catch (err) {
       clearTimeout(timer);
       await Bun.$`rm -f /tmp/superclaude-prompt-${timestamp}.md`.quiet();
@@ -999,11 +1097,11 @@ async function invokeClaudeHeadless(
       // Log error for debugging
       await Bun.write(`${debugDir}/output-${timestamp}.md`, `# Claude Error\n\n${error}\n`);
 
-      return { success: false, output: null, error };
+      return { success: false, output: null, error, usage: null, sessionId: null };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { success: false, output: null, error: message };
+    return { success: false, output: null, error: message, usage: null, sessionId: null };
   }
 }
 

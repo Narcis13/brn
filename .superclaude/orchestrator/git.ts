@@ -182,6 +182,62 @@ export async function tagRelease(
   return tagName;
 }
 
+// ─── Pull Request (milestone completion) ─────────────────────────
+
+export interface PullRequestResult {
+  success: boolean;
+  url: string;
+  message: string;
+}
+
+/**
+ * Push the milestone branch and create a pull request to main.
+ * Replaces squash-merge-to-main: the human reviews and merges.
+ */
+export async function createMilestonePR(
+  projectRoot: string,
+  milestoneId: string,
+  description: string
+): Promise<PullRequestResult> {
+  const branchName = `superc/${milestoneId}`;
+
+  // Push branch (with tags)
+  try {
+    await Bun.$`git -C ${projectRoot} push --set-upstream origin ${branchName} --tags`.quiet();
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If remote doesn't exist or push fails, return gracefully
+    return { success: false, url: "", message: `Push failed: ${msg}` };
+  }
+
+  // Create PR via gh CLI
+  try {
+    const title = `feat(${milestoneId}): ${description}`;
+    const body = [
+      `## ${milestoneId}: ${description}`,
+      "",
+      "Milestone completed by SUPER_CLAUDE orchestrator.",
+      "",
+      "### Review checklist",
+      "- [ ] Code quality",
+      "- [ ] Test coverage",
+      "- [ ] Frontend servability (if applicable)",
+      "- [ ] No stubs/TODOs in implementation",
+    ].join("\n");
+
+    const result = await Bun.$`gh pr create --repo origin --base main --head ${branchName} --title ${title} --body ${body}`.quiet().text();
+    const url = result.trim();
+    return { success: true, url, message: `PR created: ${url}` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // PR may already exist
+    if (msg.includes("already exists")) {
+      return { success: true, url: "", message: "PR already exists for this branch" };
+    }
+    return { success: false, url: "", message: `PR creation failed: ${msg}` };
+  }
+}
+
 // ─── Utilities ──────────────────────────────────────────────────
 
 /**

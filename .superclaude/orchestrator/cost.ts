@@ -15,16 +15,21 @@ export interface CostTracker {
   totalCost: number;
 }
 
-// ─── Pricing (rough Opus estimates) ─────────────────────────────
+// ─── Pricing (per model) ────────────────────────────────────────
 
-const PRICE_PER_INPUT_TOKEN = 15 / 1_000_000;   // $15 per 1M input tokens
-const PRICE_PER_OUTPUT_TOKEN = 75 / 1_000_000;  // $75 per 1M output tokens
+const PRICING: Record<string, { input: number; output: number }> = {
+  opus:   { input: 15 / 1_000_000, output: 75 / 1_000_000 },  // $15/$75 per 1M tokens
+  sonnet: { input: 3 / 1_000_000,  output: 15 / 1_000_000 },  // $3/$15 per 1M tokens
+  haiku:  { input: 0.8 / 1_000_000, output: 4 / 1_000_000 },  // $0.80/$4 per 1M tokens
+};
 
 /**
- * Estimate cost from token counts using current Opus pricing.
+ * Estimate cost from token counts using model-specific pricing.
+ * Defaults to opus pricing when model is unknown (conservative estimate).
  */
-export function estimateCost(tokensIn: number, tokensOut: number): number {
-  return tokensIn * PRICE_PER_INPUT_TOKEN + tokensOut * PRICE_PER_OUTPUT_TOKEN;
+export function estimateCost(tokensIn: number, tokensOut: number, model: string = "opus"): number {
+  const prices = PRICING[model] ?? PRICING["opus"]!;
+  return tokensIn * prices.input + tokensOut * prices.output;
 }
 
 // ─── Tracker Operations ─────────────────────────────────────────

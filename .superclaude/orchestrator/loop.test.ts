@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { computeNextState, getAgentRoleForPhase } from "./loop.ts";
+import { computeNextState, getAgentRoleForPhase, resolveInvocationOptions } from "./loop.ts";
 import type { AttemptRecord } from "./loop.ts";
 import type { ProjectState, DeferredTask } from "./types.ts";
 
@@ -195,6 +195,58 @@ describe("getAgentRoleForPhase", () => {
 
   test("maps IDLE to null", () => {
     expect(getAgentRoleForPhase("IDLE", null)).toBeNull();
+  });
+});
+
+// ─── resolveInvocationOptions ────────────────────────────────────
+
+describe("resolveInvocationOptions", () => {
+  test("PLAN_MILESTONE uses opus", () => {
+    const opts = resolveInvocationOptions("PLAN_MILESTONE", null);
+    expect(opts.model).toBe("opus");
+  });
+
+  test("PLAN_SLICE uses opus", () => {
+    const opts = resolveInvocationOptions("PLAN_SLICE", null);
+    expect(opts.model).toBe("opus");
+  });
+
+  test("EXECUTE_TASK simple uses sonnet with medium effort", () => {
+    const opts = resolveInvocationOptions("EXECUTE_TASK", "simple");
+    expect(opts.model).toBe("sonnet");
+    expect(opts.effort).toBe("medium");
+  });
+
+  test("EXECUTE_TASK standard uses sonnet with high effort", () => {
+    const opts = resolveInvocationOptions("EXECUTE_TASK", "standard");
+    expect(opts.model).toBe("sonnet");
+    expect(opts.effort).toBe("high");
+  });
+
+  test("EXECUTE_TASK complex uses opus with max effort", () => {
+    const opts = resolveInvocationOptions("EXECUTE_TASK", "complex");
+    expect(opts.model).toBe("opus");
+    expect(opts.effort).toBe("max");
+  });
+
+  test("COMPLETE_SLICE uses sonnet", () => {
+    const opts = resolveInvocationOptions("COMPLETE_SLICE", null);
+    expect(opts.model).toBe("sonnet");
+  });
+
+  test("RETROSPECTIVE uses sonnet", () => {
+    const opts = resolveInvocationOptions("RETROSPECTIVE", null);
+    expect(opts.model).toBe("sonnet");
+  });
+
+  test("REASSESS uses sonnet", () => {
+    const opts = resolveInvocationOptions("REASSESS", null);
+    expect(opts.model).toBe("sonnet");
+  });
+
+  test("DISCUSS uses sonnet", () => {
+    const opts = resolveInvocationOptions("DISCUSS", null);
+    expect(opts.model).toBe("sonnet");
   });
 });
 

@@ -6,6 +6,7 @@ import {
   getTotalCost,
   getCostByPhase,
   isBudgetExceeded,
+  estimateCost,
 } from "./cost.ts";
 import type { Phase } from "./types.ts";
 
@@ -126,6 +127,28 @@ test("isBudgetExceeded returns false when under budget", () => {
   });
 
   expect(isBudgetExceeded(tracker, 25.0)).toBe(false);
+});
+
+test("estimateCost uses model-specific pricing", () => {
+  const tokens = { in: 100_000, out: 10_000 };
+
+  const opusCost = estimateCost(tokens.in, tokens.out, "opus");
+  const sonnetCost = estimateCost(tokens.in, tokens.out, "sonnet");
+
+  // Opus: 100k * $15/M + 10k * $75/M = $1.50 + $0.75 = $2.25
+  expect(opusCost).toBeCloseTo(2.25, 2);
+
+  // Sonnet: 100k * $3/M + 10k * $15/M = $0.30 + $0.15 = $0.45
+  expect(sonnetCost).toBeCloseTo(0.45, 2);
+
+  // Sonnet should be ~5x cheaper
+  expect(sonnetCost).toBeLessThan(opusCost / 4);
+});
+
+test("estimateCost defaults to opus pricing for unknown model", () => {
+  const opusCost = estimateCost(10_000, 1_000, "opus");
+  const unknownCost = estimateCost(10_000, 1_000, "future-model");
+  expect(unknownCost).toBe(opusCost);
 });
 
 test("isBudgetExceeded returns true when over budget", () => {
