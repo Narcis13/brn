@@ -1,5 +1,6 @@
 import { DraggableCard } from "./DraggableCard";
 import { CreateCard } from "./CreateCard";
+import { EmptyState } from "../common/EmptyState";
 import type { Card as CardType, CardColumn } from "../../types";
 
 interface ColumnProps {
@@ -15,11 +16,11 @@ interface ColumnProps {
   draggedCard?: CardType | null;
 }
 
-export function Column({ 
-  title, 
-  columnType, 
-  cards, 
-  boardId, 
+export function Column({
+  title,
+  columnType,
+  cards,
+  boardId,
   onCardUpdate,
   onCardDragStart,
   onCardDragEnd,
@@ -72,7 +73,7 @@ export function Column({
 
   const handleDrop = async (e: React.DragEvent<HTMLDivElement>): Promise<void> => {
     e.preventDefault();
-    
+
     if (onCardDrop) {
       // Dropping at the end of the column
       await onCardDrop(columnType, null);
@@ -86,7 +87,7 @@ export function Column({
   };
 
   return (
-    <div 
+    <div
       data-testid={`column-${columnType}`}
       style={getColumnStyle()}
       onDragOver={handleDragOver}
@@ -96,7 +97,7 @@ export function Column({
         <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>
           {title}
         </h3>
-        <span 
+        <span
           style={{
             backgroundColor: "#e0e0e0",
             color: "#666",
@@ -112,14 +113,12 @@ export function Column({
 
       <div style={{ minHeight: "320px" }}>
         {sortedCards.length === 0 ? (
-          <p style={{ 
-            textAlign: "center", 
-            color: "#999", 
-            marginTop: "24px",
-            fontSize: "14px",
-          }}>
-            No cards in {title}
-          </p>
+          <EmptyState
+            title={`No cards in ${title}`}
+            message="Add a card to this column"
+            testId={`column-${columnType}-empty`}
+            style={{ padding: "24px", backgroundColor: "transparent" }}
+          />
         ) : (
           sortedCards.map((card) => (
             <div
@@ -134,8 +133,8 @@ export function Column({
                 e.stopPropagation();
               }}
             >
-              <DraggableCard 
-                card={card} 
+              <DraggableCard
+                card={card}
                 onUpdate={onCardUpdate || (() => {})}
                 onDragStart={onCardDragStart}
                 onDragEnd={onCardDragEnd}
@@ -144,7 +143,7 @@ export function Column({
             </div>
           ))
         )}
-        
+
         {boardId && (
           <CreateCard
             boardId={boardId}

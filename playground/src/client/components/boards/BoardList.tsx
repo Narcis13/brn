@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { getBoards, deleteBoard } from "../../api/boards";
 import { BoardCard } from "./BoardCard";
 import { CreateBoard } from "./CreateBoard";
+import { EmptyState } from "../common/EmptyState";
+import { LoadingSpinner } from "../common/LoadingSpinner";
 import type { Board } from "../../types";
 
 interface BoardListProps {
@@ -55,8 +57,8 @@ export function BoardList({ navigateTo }: BoardListProps): JSX.Element {
 
   if (isLoading) {
     return (
-      <div style={{ padding: "24px", textAlign: "center" }}>
-        <p>Loading boards...</p>
+      <div style={{ padding: "24px" }}>
+        <LoadingSpinner label="Loading boards..." testId="board-list-loading" />
       </div>
     );
   }
@@ -65,7 +67,7 @@ export function BoardList({ navigateTo }: BoardListProps): JSX.Element {
     return (
       <div style={{ padding: "24px", textAlign: "center" }}>
         <p style={{ color: "#ff4444" }}>{error}</p>
-        <button 
+        <button
           onClick={fetchBoards}
           style={{
             marginTop: "16px",
@@ -86,19 +88,16 @@ export function BoardList({ navigateTo }: BoardListProps): JSX.Element {
   return (
     <div style={{ padding: "24px", maxWidth: "800px", margin: "0 auto" }}>
       <h1 style={{ fontSize: "32px", marginBottom: "24px" }}>My Boards</h1>
-      
+
       <CreateBoard />
 
       {boards.length === 0 ? (
-        <div style={{
-          textAlign: "center",
-          padding: "60px 24px",
-          backgroundColor: "#f5f5f5",
-          borderRadius: "8px",
-        }}>
-          <h2 style={{ marginBottom: "16px", color: "#666" }}>No boards yet</h2>
-          <p style={{ color: "#999" }}>Create your first board to get started</p>
-        </div>
+        <EmptyState
+          icon="📋"
+          title="No boards yet"
+          message="Create your first board to get started"
+          testId="board-list-empty"
+        />
       ) : (
         <div>
           {boards.map(board => (
