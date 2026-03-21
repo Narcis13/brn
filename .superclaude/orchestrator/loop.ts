@@ -774,11 +774,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
     // 17. Release lock
     await releaseLock(projectRoot);
 
-    // 18. Track cost (use real usage from JSON output when available, fall back to estimate)
+    // 18. Track cost (use actual cost from CLI when available, fall back to estimate)
     const promptTokens = result.usage?.inputTokens ?? Math.ceil(prompt.length / 4);
     const outputTokens = result.usage?.outputTokens ?? Math.ceil((result.output?.length ?? 0) / 4);
-    const model = invocationOpts.model;
-    const stepCost = estimateCost(promptTokens, outputTokens, model);
+    const stepCost = result.usage?.costUsd ?? estimateCost(promptTokens, outputTokens, invocationOpts.model);
     costTracker = recordCostEntry(costTracker, {
       phase: currentState.phase,
       tokensIn: promptTokens,
@@ -874,10 +873,10 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         console.log(`  Committed: feat(${deferred.slice}/${deferred.task}): [implement] deferred recovery`);
       }
 
-      // Track cost (use real usage from JSON output when available)
+      // Track cost (use actual cost from CLI when available)
       const promptTokens = retryResult.usage?.inputTokens ?? Math.ceil(retryPrompt.length / 4);
       const outputTokens = retryResult.usage?.outputTokens ?? Math.ceil((retryResult.output?.length ?? 0) / 4);
-      const stepCost = estimateCost(promptTokens, outputTokens, retryOpts.model);
+      const stepCost = retryResult.usage?.costUsd ?? estimateCost(promptTokens, outputTokens, retryOpts.model);
       costTracker = recordCostEntry(costTracker, {
         phase: "EXECUTE_TASK" as Phase,
         tokensIn: promptTokens,
@@ -956,6 +955,7 @@ async function runSingleStep(projectRoot: string, config: OrchestratorConfig) {
 interface InvocationUsage {
   inputTokens: number;
   outputTokens: number;
+  costUsd: number | null;  // actual cost from CLI (total_cost_usd)
 }
 
 interface InvocationResult {
@@ -1026,18 +1026,25 @@ async function invokeClaudeHeadless(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Build CLI flags from invocation options
-    const modelFlag = options ? `--model ${options.model}` : "";
-    const effortFlag = options ? `--effort ${options.effort}` : "";
-    const extraFlags = [modelFlag, effortFlag, "--no-session-persistence", "--output-format json"]
-      .filter(Boolean)
-      .join(" ");
+    // Build CLI args array (avoids shell escaping issues with prompt content)
+    const args = [
+      "claude", "-p", "-",
+      "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
+      "--no-session-persistence",
+      "--output-format", "json",
+    ];
+    if (options) {
+      args.push("--model", options.model);
+      args.push("--effort", options.effort);
+    }
 
     try {
-      const proc = Bun.spawn(
-        ["sh", "-c", `claude -p "$(cat ${tmpFile})" --allowedTools "Read,Write,Edit,Bash,Glob,Grep" ${extraFlags} 2>&1`],
-        { signal: controller.signal, stdout: "pipe", stderr: "pipe" }
-      );
+      const proc = Bun.spawn(args, {
+        signal: controller.signal,
+        stdout: "pipe",
+        stderr: "pipe",
+        stdin: Bun.file(tmpFile),
+      });
 
       const rawOutput = await new Response(proc.stdout).text();
       const exitCode = await proc.exited;
@@ -1047,7 +1054,7 @@ async function invokeClaudeHeadless(
       // Cleanup temp file (keep debug copy)
       await Bun.$`rm -f ${tmpFile}`.quiet();
 
-      // Parse JSON output — extract result text and usage stats
+      // Parse JSON output — extract result text, usage stats, and actual cost
       let output: string | null = null;
       let usage: InvocationUsage | null = null;
       let sessionId: string | null = null;
@@ -1056,6 +1063,7 @@ async function invokeClaudeHeadless(
         const json = JSON.parse(rawOutput) as {
           result?: string;
           session_id?: string;
+          total_cost_usd?: number;
           usage?: { input_tokens?: number; output_tokens?: number };
         };
         output = json.result ?? null;
@@ -1064,6 +1072,7 @@ async function invokeClaudeHeadless(
           usage = {
             inputTokens: json.usage.input_tokens ?? 0,
             outputTokens: json.usage.output_tokens ?? 0,
+            costUsd: json.total_cost_usd ?? null,
           };
         }
       } catch {
