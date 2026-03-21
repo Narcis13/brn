@@ -3,15 +3,13 @@ task: T05
 slice: S05
 milestone: M001
 status: pending
+strategy: test-after
+complexity: standard
 ---
 
 ## Goal
 Toast Notifications System
 
----
-strategy: test-after
-complexity: standard
----
 **Goal:** Create toast notification system for success/error feedback
 
 #### TDD Sequence

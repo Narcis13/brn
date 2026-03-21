@@ -3,15 +3,13 @@ task: T02
 slice: S04
 milestone: M001
 status: pending
+strategy: test-after
+complexity: standard
 ---
 
 ## Goal
 Authentication Components & Flow
 
----
-strategy: test-after
-complexity: standard
----
 **Goal:** Create login/signup forms and auth state management with API integration
 
 #### TDD Sequence

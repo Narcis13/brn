@@ -3,15 +3,13 @@ task: T01
 slice: S05
 milestone: M001
 status: pending
+strategy: test-after
+complexity: standard
 ---
 
 ## Goal
 App Layout & Navigation Header
 
----
-strategy: test-after
-complexity: standard
----
 **Goal:** Create app-wide layout wrapper with navigation header showing user info and logout
 
 #### TDD Sequence

@@ -108,7 +108,7 @@ export async function writeSessionReport(
   projectRoot: string,
   report: SessionReport
 ): Promise<void> {
-  const dir = `${projectRoot}/${PATHS.history}`;
+  const dir = `${projectRoot}/${PATHS.history}/sessions`;
   await Bun.$`mkdir -p ${dir}`.quiet();
 
   const md = generateSessionReport(report);
@@ -123,7 +123,7 @@ export async function loadSessionReport(
   projectRoot: string,
   sessionId: string
 ): Promise<SessionReport | null> {
-  const path = `${projectRoot}/${PATHS.history}/session-${sessionId}.md`;
+  const path = `${projectRoot}/${PATHS.history}/sessions/session-${sessionId}.md`;
   const file = Bun.file(path);
 
   if (!(await file.exists())) {

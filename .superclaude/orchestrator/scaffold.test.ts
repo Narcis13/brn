@@ -133,6 +133,69 @@ test("readReviewAttemptCount returns 0 after clearReviewFeedback", async () => {
   expect(count).toBe(0);
 });
 
+test("scaffoldTask promotes strategy/complexity from inline block to frontmatter", async () => {
+  await scaffoldMilestone(TEST_ROOT, "M001", "Test");
+  await scaffoldSlice(TEST_ROOT, "M001", "S01", "Demo");
+
+  // Write a slice PLAN.md with inline strategy/complexity blocks (architect format)
+  const slicePlanPath = `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/PLAN.md`;
+  await Bun.write(slicePlanPath, `---
+slice: S01
+milestone: M001
+status: planned
+---
+
+## Tasks
+
+### T01: Setup
+---
+strategy: verify-only
+complexity: simple
+---
+**Goal:** Infrastructure setup
+
+#### TDD Sequence
+- Test file(s): N/A
+
+#### Must-Haves
+**Artifacts:** src/index.ts — entry point, 10+ lines
+
+### T02: Auth Logic
+---
+strategy: test-after
+complexity: complex
+---
+**Goal:** Implement authentication
+
+#### TDD Sequence
+- Test file(s): src/auth.test.ts
+
+#### Must-Haves
+**Artifacts:** src/auth.ts — auth module, 80+ lines
+`);
+
+  await scaffoldTask(TEST_ROOT, "M001", "S01", "T01", "Setup");
+  await scaffoldTask(TEST_ROOT, "M001", "S01", "T02", "Auth Logic");
+
+  const t01Plan = await Bun.file(
+    `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T01/PLAN.md`
+  ).text();
+  // strategy/complexity must be in the frontmatter (first --- block)
+  const t01Fm = t01Plan.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+  expect(t01Fm).toContain("strategy: verify-only");
+  expect(t01Fm).toContain("complexity: simple");
+  // inline block must NOT remain in the body
+  const t01Body = t01Plan.split("---").slice(2).join("---");
+  expect(t01Body).not.toMatch(/^---\nstrategy:/m);
+
+  const t02Plan = await Bun.file(
+    `${TEST_ROOT}/.superclaude/state/milestones/M001/slices/S01/tasks/T02/PLAN.md`
+  ).text();
+  const t02Fm = t02Plan.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+  expect(t02Fm).toContain("strategy: test-after");
+  expect(t02Fm).toContain("complexity: complex");
+});
+
 test("initializeProject creates PROJECT.md, DECISIONS.md, and vault INDEX.md", async () => {
   mkdirSync(`${TEST_ROOT}/.superclaude/state`, { recursive: true });
   await initializeProject(TEST_ROOT, "TestProject", "A test project");

@@ -3,15 +3,13 @@ task: T04
 slice: S05
 milestone: M001
 status: pending
+strategy: tdd-strict
+complexity: complex
 ---
 
 ## Goal
 API Error Handling & Token Expiration
 
----
-strategy: tdd-strict
-complexity: complex
----
 **Goal:** Add centralized API error handling with automatic logout on token expiration
 
 #### TDD Sequence

@@ -618,18 +618,18 @@ async function loadDebugOutputs(projectRoot: string): Promise<string[]> {
  */
 async function loadRecentSessionReports(projectRoot: string): Promise<string[]> {
   const docs: string[] = [];
-  const historyDir = `${projectRoot}/${PATHS.history}`;
+  const sessionsDir = `${projectRoot}/${PATHS.history}/sessions`;
 
   try {
     const glob = new Bun.Glob("session-*.md");
     const paths: string[] = [];
-    for await (const path of glob.scan({ cwd: historyDir })) {
+    for await (const path of glob.scan({ cwd: sessionsDir })) {
       paths.push(path);
     }
     // Sort by name (contains timestamp) and take last 3
     const sorted = paths.sort().reverse().slice(0, 3);
     for (const path of sorted) {
-      const content = await loadFile(projectRoot, `${PATHS.history}/${path}`);
+      const content = await loadFile(projectRoot, `${PATHS.history}/sessions/${path}`);
       if (content) docs.push(`## Session Report: ${path}\n${content}`);
     }
   } catch {

@@ -3,15 +3,13 @@ task: T03
 slice: S04
 milestone: M001
 status: pending
+strategy: test-after
+complexity: standard
 ---
 
 ## Goal
 Board List & Management UI
 
----
-strategy: test-after
-complexity: standard
----
 **Goal:** Create board listing, creation, and basic management interface
 
 #### TDD Sequence

@@ -160,12 +160,29 @@ export async function scaffoldTask(
     taskBody = `## Goal\n${goal}\n\n## TDD Sequence\n- _TBD_\n\n## Must-Haves\n- _To be defined_`;
   }
 
+  // Extract strategy/complexity from inline ---/--- block and promote to frontmatter.
+  // The architect embeds these in the body, but plan-parser reads frontmatter only.
+  let strategy = "tdd-strict";
+  let complexity = "standard";
+  const inlineBlockMatch = taskBody.match(/^(## Goal\n[^\n]*\n\n)---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (inlineBlockMatch?.[2]) {
+    const blockYaml = inlineBlockMatch[2];
+    const strategyMatch = blockYaml.match(/^strategy:\s*(.+)$/m);
+    if (strategyMatch?.[1]) strategy = strategyMatch[1].trim();
+    const complexityMatch = blockYaml.match(/^complexity:\s*(.+)$/m);
+    if (complexityMatch?.[1]) complexity = complexityMatch[1].trim();
+    // Rebuild body without the inline block
+    taskBody = (inlineBlockMatch[1] + inlineBlockMatch[3]).trim();
+  }
+
   const content = [
     "---",
     `task: ${taskId}`,
     `slice: ${sliceId}`,
     `milestone: ${milestoneId}`,
     "status: pending",
+    `strategy: ${strategy}`,
+    `complexity: ${complexity}`,
     "---",
     "",
     taskBody,

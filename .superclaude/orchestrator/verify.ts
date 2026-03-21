@@ -478,6 +478,140 @@ export async function preflight(
   };
 }
 
+// ─── Frontend Smoke Check ────────────────────────────────────────
+
+export interface FrontendSmokeResult {
+  isFrontendSlice: boolean;
+  checks: VerificationCheck[];
+}
+
+/**
+ * Detect if a slice has frontend artifacts and verify servability.
+ * Checks:
+ * 1. HTML entry point exists (index.html)
+ * 2. Server entry has static file serving wired
+ * 3. Frontend build succeeds (if build script exists)
+ */
+export async function runFrontendSmoke(
+  projectRoot: string,
+  slicePlanContent: string
+): Promise<FrontendSmokeResult> {
+  const checks: VerificationCheck[] = [];
+
+  // Detect frontend: .tsx/.jsx artifacts or frontend keywords
+  const hasTsxArtifacts = /\.tsx\b/.test(slicePlanContent);
+  const hasFrontendKeywords = /\b(?:React|frontend|UI|client|component)\b/i.test(slicePlanContent);
+
+  if (!hasTsxArtifacts && !hasFrontendKeywords) {
+    return { isFrontendSlice: false, checks: [] };
+  }
+
+  // 1. Check HTML entry point exists
+  const htmlCandidates = [
+    `${projectRoot}/playground/public/index.html`,
+    `${projectRoot}/playground/index.html`,
+    `${projectRoot}/public/index.html`,
+    `${projectRoot}/index.html`,
+  ];
+
+  let htmlFound = false;
+  let htmlPath = "";
+  for (const candidate of htmlCandidates) {
+    if (await Bun.file(candidate).exists()) {
+      htmlFound = true;
+      htmlPath = candidate;
+      break;
+    }
+  }
+
+  checks.push({
+    name: "frontend:html-entry",
+    type: "static",
+    passed: htmlFound,
+    message: htmlFound
+      ? `HTML entry point found: ${htmlPath}`
+      : "No HTML entry point found (checked public/index.html, index.html)",
+  });
+
+  // 2. Check server has static file serving
+  const serverCandidates = [
+    `${projectRoot}/playground/src/index.ts`,
+    `${projectRoot}/playground/src/server.ts`,
+    `${projectRoot}/src/index.ts`,
+    `${projectRoot}/src/server.ts`,
+  ];
+
+  let serverHasStaticServing = false;
+  let serverPath = "not found";
+
+  for (const candidate of serverCandidates) {
+    const file = Bun.file(candidate);
+    if (await file.exists()) {
+      serverPath = candidate;
+      const content = await file.text();
+      // Detect static file serving patterns
+      serverHasStaticServing =
+        /serveStatic/.test(content) ||
+        /\.sendFile\b/.test(content) ||
+        /static.*?middleware/i.test(content) ||
+        /index\.html/.test(content) ||
+        /Bun\.file.*?\.html/.test(content) ||
+        /app\.use\(.*?["']\/?\*/.test(content) && /public|static|dist/.test(content);
+      break;
+    }
+  }
+
+  checks.push({
+    name: "frontend:static-serving",
+    type: "static",
+    passed: serverHasStaticServing,
+    message: serverHasStaticServing
+      ? `Server at ${serverPath} has static file serving`
+      : `Server at ${serverPath} is missing static file serving — frontend won't be accessible`,
+  });
+
+  // 3. Check frontend build (if build script exists)
+  const pkgJsonCandidates = [
+    `${projectRoot}/playground/package.json`,
+    `${projectRoot}/package.json`,
+  ];
+
+  for (const pkgPath of pkgJsonCandidates) {
+    const pkgFile = Bun.file(pkgPath);
+    if (await pkgFile.exists()) {
+      try {
+        const pkg = await pkgFile.json() as { scripts?: Record<string, string> };
+        if (pkg.scripts?.build) {
+          const pkgDir = pkgPath.substring(0, pkgPath.lastIndexOf("/"));
+          try {
+            await Bun.$`cd ${pkgDir} && bun run build 2>&1`.quiet().text();
+            checks.push({
+              name: "frontend:build",
+              type: "command",
+              passed: true,
+              message: "Frontend build succeeded",
+            });
+          } catch (err: unknown) {
+            const output = err instanceof Error ? err.message : String(err);
+            const truncated = output.length > 300 ? output.slice(0, 300) + "..." : output;
+            checks.push({
+              name: "frontend:build",
+              type: "command",
+              passed: false,
+              message: `Frontend build failed: ${truncated}`,
+            });
+          }
+        }
+      } catch {
+        // Can't parse package.json — skip build check
+      }
+      break;
+    }
+  }
+
+  return { isFrontendSlice: true, checks };
+}
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 interface ParsedKeyLink {

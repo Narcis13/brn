@@ -58,7 +58,7 @@ import {
   createSessionMetrics,
   writeSessionMetrics,
 } from "./metrics.ts";
-import { runCommandVerification } from "./verify.ts";
+import { runCommandVerification, runFrontendSmoke } from "./verify.ts";
 import {
   acquireLock,
   releaseLock,
@@ -626,6 +626,26 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
         console.log(`  CMD VERIFY OK: ${cmdChecks.map(c => c.name).join(", ")} passed`);
       }
 
+      // 12.2b Frontend smoke check — verify servability for frontend slices
+      if (currentState.currentMilestone && currentState.currentSlice) {
+        const slicePlanPath = `${projectRoot}/${PATHS.slicePath(currentState.currentMilestone, currentState.currentSlice)}/PLAN.md`;
+        const slicePlanContent = await Bun.file(slicePlanPath).text().catch(() => "");
+        const frontendResult = await runFrontendSmoke(projectRoot, slicePlanContent);
+
+        if (frontendResult.isFrontendSlice) {
+          const frontendFails = frontendResult.checks.filter((c) => !c.passed);
+          if (frontendFails.length > 0) {
+            console.log(`  FRONTEND SMOKE FAIL: ${frontendFails.length} check(s) failed`);
+            for (const f of frontendFails) {
+              console.log(`    ✗ ${f.name}: ${f.message}`);
+            }
+            session.issuesEncountered.push(`Frontend smoke: ${frontendFails.map(f => f.name).join(", ")} failed on ${currentState.currentSlice}`);
+          } else {
+            console.log(`  FRONTEND SMOKE OK: ${frontendResult.checks.length} check(s) passed`);
+          }
+        }
+      }
+
       // 12.3 Reviewer quality gate (runs once for the entire slice)
       const reviewResult = await runReviewerQualityGate(
         projectRoot, currentState, context, pressure, config.timeouts.hard
@@ -904,7 +924,7 @@ async function runAutoLoop(projectRoot: string, config: OrchestratorConfig) {
   }
 
   console.log(`[SUPER_CLAUDE] Loop complete. ${iterations} iterations, ~$${costTracker.totalCost.toFixed(2)} total.`);
-  console.log(`  Session report: .superclaude/history/session-${sessionId}.md`);
+  console.log(`  Session report: .superclaude/history/sessions/session-${sessionId}.md`);
   console.log(`  Cost tracker: .superclaude/history/metrics/cost-tracker-${sessionId}.md`);
   console.log(`  Dashboard: .superclaude/state/DASHBOARD.md`);
 }
@@ -1006,7 +1026,10 @@ export function getAgentRoleForPhase(
     case "PLAN_SLICE":
       return "architect";
     case "EXECUTE_TASK":
-      return "implementer";
+      // Skip skill loading — prompt-builder generates complete strategy-specific
+      // instructions (tdd-strict, test-after, verify-only). The implementer skill
+      // hardcodes TDD-strict language that contradicts test-after/verify-only prompts.
+      return null;
     case "COMPLETE_SLICE":
     case "COMPLETE_MILESTONE":
       return "scribe";

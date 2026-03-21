@@ -3,15 +3,13 @@ task: T01
 slice: S04
 milestone: M001
 status: pending
+strategy: verify-only
+complexity: simple
 ---
 
 ## Goal
 React Foundation & Routing
 
----
-strategy: verify-only
-complexity: simple
----
 **Goal:** Set up React application foundation with basic routing structure
 
 #### TDD Sequence

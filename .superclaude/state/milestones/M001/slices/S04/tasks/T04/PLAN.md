@@ -3,15 +3,13 @@ task: T04
 slice: S04
 milestone: M001
 status: pending
+strategy: test-after
+complexity: complex
 ---
 
 ## Goal
 Kanban Board View & Card Display
 
----
-strategy: test-after
-complexity: complex
----
 **Goal:** Implement the kanban board view with three columns and card display
 
 #### TDD Sequence

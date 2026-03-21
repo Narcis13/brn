@@ -172,9 +172,9 @@ describe("getAgentRoleForPhase", () => {
     expect(getAgentRoleForPhase("PLAN_SLICE", null)).toBe("architect");
   });
 
-  test("maps EXECUTE_TASK to implementer", () => {
-    expect(getAgentRoleForPhase("EXECUTE_TASK", "IMPLEMENT")).toBe("implementer");
-    expect(getAgentRoleForPhase("EXECUTE_TASK", null)).toBe("implementer");
+  test("maps EXECUTE_TASK to null (prompt-builder handles strategy-specific prompts)", () => {
+    expect(getAgentRoleForPhase("EXECUTE_TASK", "IMPLEMENT")).toBeNull();
+    expect(getAgentRoleForPhase("EXECUTE_TASK", null)).toBeNull();
   });
 
   test("maps COMPLETE_SLICE to scribe", () => {

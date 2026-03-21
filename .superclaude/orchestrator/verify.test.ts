@@ -10,6 +10,7 @@ import {
   runLinter,
   runCommandVerification,
   preflight,
+  runFrontendSmoke,
 } from "./verify.ts";
 import type { MustHaves } from "./types.ts";
 import { rmSync, mkdirSync, writeFileSync } from "node:fs";
@@ -439,5 +440,98 @@ describe("preflight", () => {
     const result = await preflight(TEST_ROOT, state, taskPlan);
     expect(result.fixes.length).toBeGreaterThan(0);
     expect(result.fixes[0]!.fixed).toBe("playground/src/auth.test.ts");
+  });
+});
+
+// ─── Frontend Smoke Check ────────────────────────────────────────
+
+describe("runFrontendSmoke", () => {
+  test("returns not-frontend for backend-only slice", async () => {
+    const planContent = `### T01: User Repository
+**Goal:** Create user data model and database operations.
+#### Must-Haves
+**Artifacts:**
+- src/user.repo.ts — user repository, 80+ lines`;
+
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+    expect(result.isFrontendSlice).toBe(false);
+    expect(result.checks).toHaveLength(0);
+  });
+
+  test("detects frontend slice from .tsx artifacts", async () => {
+    const planContent = `### T01: React Setup
+**Goal:** Set up React app.
+#### Must-Haves
+**Artifacts:**
+- playground/src/client/App.tsx — main component, 30+ lines`;
+
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+    expect(result.isFrontendSlice).toBe(true);
+    expect(result.checks.length).toBeGreaterThan(0);
+  });
+
+  test("detects frontend slice from keywords", async () => {
+    const planContent = `### T01: Frontend Shell
+**Goal:** Create React frontend with routing and components.`;
+
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+    expect(result.isFrontendSlice).toBe(true);
+  });
+
+  test("checks HTML entry point exists", async () => {
+    mkdirSync(`${TEST_ROOT}/playground/public`, { recursive: true });
+    writeFileSync(`${TEST_ROOT}/playground/public/index.html`, `<!DOCTYPE html><div id="root"></div>`);
+
+    const planContent = `#### Artifacts\n- playground/src/client/App.tsx — main app`;
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+
+    const htmlCheck = result.checks.find((c) => c.name === "frontend:html-entry");
+    expect(htmlCheck).toBeDefined();
+    expect(htmlCheck!.passed).toBe(true);
+  });
+
+  test("fails HTML check when no entry point", async () => {
+    const planContent = `#### Artifacts\n- playground/src/client/App.tsx — main app`;
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+
+    const htmlCheck = result.checks.find((c) => c.name === "frontend:html-entry");
+    expect(htmlCheck).toBeDefined();
+    expect(htmlCheck!.passed).toBe(false);
+  });
+
+  test("checks server has static file serving", async () => {
+    mkdirSync(`${TEST_ROOT}/playground/src`, { recursive: true });
+    writeFileSync(
+      `${TEST_ROOT}/playground/src/index.ts`,
+      `import { Hono } from "hono";
+import { serveStatic } from "hono/bun";
+const app = new Hono();
+app.use("/*", serveStatic({ root: "./public" }));`
+    );
+
+    const planContent = `#### Artifacts\n- playground/src/client/App.tsx — component`;
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+
+    const staticCheck = result.checks.find((c) => c.name === "frontend:static-serving");
+    expect(staticCheck).toBeDefined();
+    expect(staticCheck!.passed).toBe(true);
+  });
+
+  test("fails static serving check when not wired", async () => {
+    mkdirSync(`${TEST_ROOT}/playground/src`, { recursive: true });
+    writeFileSync(
+      `${TEST_ROOT}/playground/src/index.ts`,
+      `import { Hono } from "hono";
+const app = new Hono();
+app.get("/api/health", (c) => c.json({ ok: true }));`
+    );
+
+    const planContent = `#### Artifacts\n- playground/src/client/App.tsx — component`;
+    const result = await runFrontendSmoke(TEST_ROOT, planContent);
+
+    const staticCheck = result.checks.find((c) => c.name === "frontend:static-serving");
+    expect(staticCheck).toBeDefined();
+    expect(staticCheck!.passed).toBe(false);
+    expect(staticCheck!.message).toContain("missing static file serving");
   });
 });

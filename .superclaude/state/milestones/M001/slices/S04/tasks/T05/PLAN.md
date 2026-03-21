@@ -3,15 +3,13 @@ task: T05
 slice: S04
 milestone: M001
 status: pending
+strategy: test-after
+complexity: standard
 ---
 
 ## Goal
 Card Creation & Basic Actions
 
----
-strategy: test-after
-complexity: standard
----
 **Goal:** Add card creation form and basic card actions (edit, delete)
 
 #### TDD Sequence

@@ -491,6 +491,13 @@ ${ctx.taskPlan}
 1. Write SUMMARY.md — what was built, decisions, patterns
 2. Write UAT.md — human-readable acceptance test script with copy-pasteable commands
 
+## Frontend Servability (if this slice has UI components)
+If this slice includes frontend/React/.tsx artifacts, the UAT MUST include:
+- A command to start the server and verify the UI loads in a browser
+- Verification that the server serves the HTML entry point (e.g. GET / returns HTML)
+- If the UI is NOT servable (no static file serving, no build wired), flag this as a **MUST-FIX** gap
+Do NOT claim frontend features are "working" unless they are actually accessible via HTTP.
+
 ## CRITICAL: Output Files
 You MUST write these files using the Write tool:
 - **${summaryPath}**
@@ -605,7 +612,14 @@ ${ctx.taskPlan}
 1. Does the roadmap still make sense?
 2. Should any slices be reordered, added, removed, or modified?
 3. If changes are needed, update the roadmap file at: **${roadmapPath}**
-4. If no changes needed, output "No changes to roadmap."`;
+4. If no changes needed, output "No changes to roadmap."
+
+## CRITICAL: Verify Claims Before Marking Complete
+Do NOT claim a slice delivered functionality unless you verify it works end-to-end:
+- **Backend slices**: API endpoints must be reachable (routes mounted, server starts)
+- **Frontend slices**: UI must be servable — the server must serve the HTML entry point and the app must load in a browser. File existence alone is NOT sufficient.
+- If a slice claims to absorb work from future slices (e.g. "S04 delivered S05 and S06"), verify EACH claimed feature actually works, not just that files exist.
+- Mark downstream slices as redundant ONLY if their demo sentences are fully satisfied by the completed work.`;
 }
 
 function buildCompleteMilestonePrompt(state: ProjectState, ctx: ContextPayload): string {

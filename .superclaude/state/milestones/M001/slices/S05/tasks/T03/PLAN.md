@@ -3,15 +3,13 @@ task: T03
 slice: S05
 milestone: M001
 status: pending
+strategy: test-after
+complexity: simple
 ---
 
 ## Goal
 Empty States & Loading Improvements
 
----
-strategy: test-after
-complexity: simple
----
 **Goal:** Create reusable empty state components and improve loading feedback
 
 #### TDD Sequence

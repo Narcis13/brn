@@ -3,15 +3,13 @@ task: T06
 slice: S04
 milestone: M001
 status: pending
+strategy: test-after
+complexity: complex
 ---
 
 ## Goal
 Drag & Drop Card Movement
 
----
-strategy: test-after
-complexity: complex
----
 **Goal:** Implement drag-and-drop functionality to move cards between columns
 
 #### TDD Sequence

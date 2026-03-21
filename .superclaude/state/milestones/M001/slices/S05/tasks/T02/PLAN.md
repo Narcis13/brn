@@ -3,15 +3,13 @@ task: T02
 slice: S05
 milestone: M001
 status: pending
+strategy: tdd-strict
+complexity: simple
 ---
 
 ## Goal
 Board Navigation & Header Actions
 
----
-strategy: tdd-strict
-complexity: simple
----
 **Goal:** Add back navigation to BoardView and board name editing to board header
 
 #### TDD Sequence
