@@ -38,26 +38,6 @@ describe("index.ts", () => {
     });
   });
 
-  describe("default export", () => {
-    test("exports configuration object with port and fetch", async () => {
-      const { default: config } = await import("./index.ts");
-      
-      expect(config).toBeDefined();
-      expect(config.port).toBeDefined();
-      expect(typeof config.port).toBe("number");
-      expect(config.fetch).toBeDefined();
-      expect(config.fetch).toBe(app.fetch);
-    });
-
-    test("port configuration is a number", async () => {
-      const { default: config } = await import("./index.ts");
-      
-      expect(config.port).toBeDefined();
-      expect(typeof config.port).toBe("number");
-      expect(config.port).toBeGreaterThanOrEqual(0);
-    });
-  });
-
   describe("environment variables", () => {
     test("handles missing environment variables gracefully", async () => {
       delete Bun.env.PORT;

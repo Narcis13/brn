@@ -22,7 +22,7 @@ complexity: standard
 **Truths:** 
 - Header displays app title "Kanban Board"
 - Shows current user email from auth context
-- Logout button calls logout from auth context and navigates to login
+- Logout button calls logout from auth context
 - Wraps child content in consistent layout container
 
 **Artifacts:** 
@@ -30,7 +30,7 @@ complexity: standard
 - playground/src/client/components/layout/AppLayout.test.tsx — test file, 60+ lines
 
 **Key Links:** 
-- AppLayout imports useAuth from contexts/AuthContext.tsx
+- AppLayout imports useAuth from playground/src/client/contexts/AuthContext.tsx
 - AppLayout receives navigateTo function as prop
 - App.tsx wraps authenticated views with AppLayout
 
@@ -65,7 +65,7 @@ complexity: simple
 - playground/src/client/components/board/BoardHeader.test.tsx — test file, 80+ lines
 
 **Key Links:**
-- BoardHeader imports updateBoard from api/boards.ts
+- BoardHeader imports updateBoard from playground/src/client/api/boards.ts
 - BoardView imports and uses BoardHeader
 - BoardHeader receives board, onBack, and onBoardUpdate props
 
@@ -136,8 +136,8 @@ complexity: complex
 - playground/src/client/api/client.test.ts — test file, 80+ lines
 
 **Key Links:**
-- All api/*.ts files import and use apiClient
-- apiClient imports getToken and clearToken from api/auth.ts
+- All playground/src/client/api/*.ts files import and use apiClient
+- apiClient imports getToken and clearToken from playground/src/client/api/auth.ts
 - Error handler accesses auth context for logout
 
 #### Must-NOT-Haves

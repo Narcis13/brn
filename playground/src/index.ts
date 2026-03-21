@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { getDb, runMigrations } from "./db.ts";
-import type { Serve } from "bun";
 import { authRoutes } from "./routes/auth";
 import { boardRoutes } from "./routes/boards";
 import { cardRoutes } from "./routes/cards";
@@ -50,10 +49,3 @@ if (import.meta.main) {
   });
 }
 
-// Export server configuration for testing with explicit return type
-const serverConfig: Partial<Serve> = {
-  port: Number(Bun.env.PORT ?? 3000),
-  fetch: app.fetch,
-};
-
-export default serverConfig;
