@@ -1,6 +1,6 @@
 ---
 milestone: M001
-status: complete
+status: in-progress
 ---
 
 ## Slices
@@ -71,7 +71,21 @@ status: complete
 - Auth context from S04
 **Note:** Original S05 scope (board list component, creation form) was delivered earlier in S04/T03.
 
-### ~~S06: Kanban Board Interface~~ — ABSORBED INTO S04
+### S06: Integration & Wiring
+**Demo:** After this, the user can open localhost:3000 in a browser and see the full app with layout, toasts, and empty states
+**Depends on:** S04, S05
+**Risk:** low
+**Produces:**
+- Static file serving from Hono (serve `public/dist/` or `public/index.html`)
+- `App.tsx` updated to wrap with `AppLayout` and `ToastProvider`
+- `EmptyState` and `LoadingSpinner` wired into `BoardList` and `BoardView`
+- `BoardHeader` integrated into board view navigation
+- Token expiration error handler wired to trigger logout + toast
+**Consumes:**
+- `AppLayout`, `ToastContext`, `EmptyState`, `LoadingSpinner`, `BoardHeader` from S05
+- Hono server from S04
+
+### ~~S07: Kanban Board Interface~~ — ABSORBED INTO S04
 **Demo:** ~~After this, the user can see a three-column Kanban board, add cards, and drag them between columns~~
 **Status:** Redundant — fully delivered by S04
 **Evidence:**
@@ -79,6 +93,7 @@ status: complete
 - S04/T05: Card Creation & Basic Actions → `CreateCard.tsx`, `EditCard.tsx`, `DeleteCardButton.tsx`
 - S04/T06: Drag & Drop Card Movement → `DraggableCard.tsx`, `useDragDrop` hook
 - All three columns (TODO/IN_PROGRESS/DONE) rendered; drag-and-drop position updates confirmed in codebase
+**Note:** Renumbered from S06 — original S06 slot now holds Integration & Wiring slice
 
 ## Reassessment (2026-03-19)
 
@@ -158,3 +173,25 @@ Roadmap updated with S04 marked complete and reassessment added. The key finding
 **Milestone M001 is complete.** All planned backend (S01-S03) and frontend (S04-S05, S06 absorbed) deliverables are in place. The milestone status has been updated from `planned` to `complete`.
 
 No further slices are needed.
+
+## Reassessment (2026-03-21) — Post-S05 End-to-End Verification
+
+**Previous reassessment was based on file existence only — this corrects the record.**
+
+Verified by inspecting the actual running surface, not just file presence.
+
+**Two integration gaps found:**
+
+1. **Server does not serve the frontend.** `playground/src/index.ts` mounts only `/api/auth`, `/api/boards`, `/api/cards`, and `/health`. There is no `serveStatic` or equivalent for `public/`. The S04 demo sentence ("user can access a React app at localhost:3000") is **not satisfied** — a browser hitting port 3000 gets a 404 for `/`.
+
+2. **S05 components are not wired into the app.** `App.tsx` imports nothing from S05. `AppLayout`, `ToastProvider`/`ToastContext`, `EmptyState`, `LoadingSpinner`, and `BoardHeader` all exist as files in `src/client/components/` but are orphaned — never imported by `App.tsx` or any parent. The S05 demo sentence ("app has consistent layout, empty states, toast notifications, and resilient error handling") is **not satisfied** end-to-end.
+
+**Corrective action taken:**
+- Milestone status reverted from `complete` → `in-progress`
+- New **S06: Integration & Wiring** slice added to close both gaps:
+  - Add static file serving to Hono server
+  - Wire `AppLayout` + `ToastProvider` into `App.tsx` root
+  - Integrate `EmptyState`/`LoadingSpinner` into `BoardList`/`BoardView`
+  - Integrate `BoardHeader` into board view
+  - Wire token expiration error → logout + toast flow
+- Former S06 (Kanban absorbed) renumbered to S07 for clarity
