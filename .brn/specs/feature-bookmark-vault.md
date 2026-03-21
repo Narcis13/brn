@@ -1,6 +1,6 @@
 ---
 title: Bookmark Vault — Personal Link Saver
-status: ready
+status: done
 priority: high
 ---
 
