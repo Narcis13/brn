@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/auth/Login';
 import { Signup } from './components/auth/Signup';
+import { BoardList } from './components/boards/BoardList';
 
 function AppContent(): JSX.Element {
   const [currentView, setCurrentView] = useState<'login' | 'signup' | 'boards' | 'board'>('login');
@@ -44,7 +45,7 @@ function AppContent(): JSX.Element {
           navigateToLogin={() => navigateTo('login')}
         />
       )}
-      {currentView === 'boards' && <div>Boards View - placeholder</div>}
+      {currentView === 'boards' && <BoardList navigateTo={navigateTo} />}
       {currentView === 'board' && <div>Board View - placeholder (Board ID: {currentBoardId})</div>}
     </div>
   );
