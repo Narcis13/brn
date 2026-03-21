@@ -3,7 +3,7 @@ title: Vault Index
 type: index
 created: 2026-03-18
 updated: 2026-03-21
-updated_by: evolver
+updated_by: evolver-s05
 ---
 
 # Vault — Map of Content
@@ -41,6 +41,11 @@ The vault is the system's long-term memory. Agents read from and write to these 
 - [[learnings/integration-wiring-missing]] — Components built but never wired into App.tsx render tree
 - [[learnings/centralized-client-not-adopted]] — New abstraction built without migrating existing callers
 - [[learnings/react-timer-leak]] — setTimeout in React context must be tracked and cancelled on dismiss/unmount
+- [[learnings/split-brain-auth-handlers]] — Duplicate auth wrappers create divergent 401 handling; migrate all callers when centralizing
+- [[learnings/setstate-during-render]] — Never call setState in render body; derive state or use useEffect
+- [[learnings/generic-undefined-cast]] — `undefined as T` in generic functions is type-unsound for non-void type params
+- [[learnings/inline-keyframes-per-instance]] — @keyframes in component render injects duplicate style tags per instance
+- [[learnings/sequential-batch-operations]] — Sequential await in loops creates N+1 network calls; use Promise.all
 
 ## Playbooks
 - [[playbooks/test-failure-recovery]] — Recovering from test failures in suite vs individual runs
