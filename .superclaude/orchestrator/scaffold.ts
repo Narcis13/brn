@@ -93,10 +93,23 @@ function extractTaskSection(slicePlanContent: string, taskId: string): string | 
 
   const body = afterHeading.slice(headingLineEnd + 1);
 
-  // Find the end boundary
-  const nextTaskMatch = body.match(/\n### T\d{2}/);
-  const nextSectionMatch = body.match(/\n## [^#]/);
-  const nextSeparatorMatch = body.match(/\n---\s*$/m);
+  // Skip inline task frontmatter (---\n...\n---\n) if present.
+  // The architect may embed strategy/complexity metadata in a YAML-like block
+  // that uses --- delimiters. We must not treat the closing --- as a section boundary.
+  let boundarySearchStart = 0;
+  if (body.startsWith("---")) {
+    const closingIdx = body.indexOf("\n---", 3);
+    if (closingIdx !== -1) {
+      const afterClose = body.indexOf("\n", closingIdx + 4);
+      boundarySearchStart = afterClose !== -1 ? afterClose + 1 : closingIdx + 4;
+    }
+  }
+
+  // Search for end boundary AFTER any inline frontmatter
+  const searchRegion = body.slice(boundarySearchStart);
+  const nextTaskMatch = searchRegion.match(/\n### T\d{2}/);
+  const nextSectionMatch = searchRegion.match(/\n## [^#]/);
+  const nextSeparatorMatch = searchRegion.match(/\n---\s*$/m);
 
   const boundaries = [
     nextTaskMatch?.index ?? Infinity,
@@ -104,7 +117,10 @@ function extractTaskSection(slicePlanContent: string, taskId: string): string | 
     nextSeparatorMatch?.index ?? Infinity,
   ];
   const endIdx = Math.min(...boundaries);
-  const taskBody = endIdx === Infinity ? body.trim() : body.slice(0, endIdx).trim();
+
+  // Map back to the full body (offset by the frontmatter we skipped)
+  const actualEnd = endIdx === Infinity ? Infinity : endIdx + boundarySearchStart;
+  const taskBody = actualEnd === Infinity ? body.trim() : body.slice(0, actualEnd).trim();
 
   // Extract goal from heading line
   const headingLine = afterHeading.slice(0, headingLineEnd);

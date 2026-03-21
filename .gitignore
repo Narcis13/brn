@@ -37,6 +37,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .superclaude/state/auto.lock
 .superclaude/state/milestones/**/CONTINUE.md
 
+# Prevent vault duplication in playground (vault lives at .superclaude/vault/ only)
+playground/.superclaude/
+
 # SUPER_CLAUDE per-developer data
 .superclaude/history/metrics/
 .superclaude/history/sessions/
