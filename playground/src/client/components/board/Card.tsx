@@ -1,4 +1,7 @@
+import { useState } from "react";
 import type { Card as CardType } from "../../types";
+import { EditCard } from "./EditCard";
+import { DeleteCardButton } from "./DeleteCardButton";
 
 interface CardProps {
   card: CardType;
@@ -6,6 +9,7 @@ interface CardProps {
 }
 
 export function Card({ card, onUpdate }: CardProps): JSX.Element {
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
     const now = new Date();
@@ -48,55 +52,68 @@ export function Card({ card, onUpdate }: CardProps): JSX.Element {
   };
 
   const handleClick = (): void => {
-    // For now, just log - in a real app, this would open a detail view
-    console.log("Card clicked:", card.id);
-    if (onUpdate) {
-      // Could trigger update here
-    }
+    setIsEditOpen(true);
   };
 
   return (
-    <div 
-      data-testid={`card-${card.id}`}
-      className={getCardClassName()}
-      draggable
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onClick={handleClick}
-      style={{
-        backgroundColor: "#fff",
-        borderRadius: "8px",
-        padding: "12px",
-        marginBottom: "8px",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)",
-        cursor: "pointer",
-        transition: "all 0.2s ease",
-        userSelect: "none",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)";
-        e.currentTarget.style.transform = "translateY(-2px)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
-        e.currentTarget.style.transform = "translateY(0)";
-      }}
-    >
-      <h4 style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: "600" }}>
-        {card.title}
-      </h4>
-      
-      {card.description && (
-        <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666", lineHeight: "1.4" }}>
-          {card.description}
-        </p>
-      )}
-      
-      <div style={{ fontSize: "11px", color: "#999" }}>
-        <time dateTime={card.updatedAt} title={card.updatedAt}>
-          {formatDate(card.updatedAt)}
-        </time>
+    <>
+      <div 
+        data-testid={`card-${card.id}`}
+        className={getCardClassName()}
+        draggable
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onClick={handleClick}
+        style={{
+          backgroundColor: "#fff",
+          borderRadius: "8px",
+          padding: "12px",
+          marginBottom: "8px",
+          boxShadow: "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)",
+          cursor: "pointer",
+          transition: "all 0.2s ease",
+          userSelect: "none",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = "0 3px 6px rgba(0,0,0,0.16), 0 3px 6px rgba(0,0,0,0.23)";
+          e.currentTarget.style.transform = "translateY(-2px)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = "0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)";
+          e.currentTarget.style.transform = "translateY(0)";
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+          <h4 style={{ margin: "0 0 8px 0", fontSize: "14px", fontWeight: "600", flex: 1 }}>
+            {card.title}
+          </h4>
+          <div onClick={(e) => e.stopPropagation()}>
+            <DeleteCardButton
+              cardId={card.id}
+              onDelete={onUpdate || (() => {})}
+            />
+          </div>
+        </div>
+        
+        {card.description && (
+          <p style={{ margin: "0 0 8px 0", fontSize: "13px", color: "#666", lineHeight: "1.4" }}>
+            {card.description}
+          </p>
+        )}
+        
+        <div style={{ fontSize: "11px", color: "#999" }}>
+          <time dateTime={card.updatedAt} title={card.updatedAt}>
+            {formatDate(card.updatedAt)}
+          </time>
+        </div>
       </div>
-    </div>
+      
+      <EditCard
+        card={card}
+        isOpen={isEditOpen}
+        onClose={() => setIsEditOpen(false)}
+        onUpdate={onUpdate || (() => {})}
+      />
+    </>
   );
 }

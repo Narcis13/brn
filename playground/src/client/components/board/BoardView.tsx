@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Column } from "./Column";
 import { getBoard } from "../../api/boards";
-import { getCardsByBoardId } from "../../api/cards";
-import type { Board, Card, CardColumn } from "../../types";
+import { useCards } from "../../hooks/useCards";
+import type { Board, CardColumn } from "../../types";
 
 interface BoardViewProps {
   boardId: string;
@@ -10,40 +10,30 @@ interface BoardViewProps {
 
 export function BoardView({ boardId }: BoardViewProps): JSX.Element {
   const [board, setBoard] = useState<Board | null>(null);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [boardLoading, setBoardLoading] = useState(true);
+  const [boardError, setBoardError] = useState<string | null>(null);
+  const { cards, loading: cardsLoading, error: cardsError, refetch: refreshCards } = useCards(boardId);
 
   useEffect(() => {
-    async function loadBoardData() {
+    async function loadBoard() {
       try {
-        setLoading(true);
-        setError(null);
-
-        // Load board and cards in parallel
-        const [boardData, cardsData] = await Promise.all([
-          getBoard(boardId),
-          getCardsByBoardId(boardId),
-        ]);
-
+        setBoardLoading(true);
+        setBoardError(null);
+        const boardData = await getBoard(boardId);
         setBoard(boardData);
-        setCards(cardsData);
       } catch (err) {
         const message = err instanceof Error ? err.message : "Unknown error";
-        if (message.includes("board")) {
-          setError(`Error loading board: ${message}`);
-        } else if (message.includes("cards")) {
-          setError(`Error loading cards: ${message}`);
-        } else {
-          setError(`Error loading board: ${message}`);
-        }
+        setBoardError(`Error loading board: ${message}`);
       } finally {
-        setLoading(false);
+        setBoardLoading(false);
       }
     }
 
-    loadBoardData();
+    loadBoard();
   }, [boardId]);
+
+  const loading = boardLoading || cardsLoading;
+  const error = boardError || cardsError;
 
   if (loading) {
     return (
@@ -70,20 +60,11 @@ export function BoardView({ boardId }: BoardViewProps): JSX.Element {
   }
 
   const getCardsForColumn = useCallback(
-    (column: CardColumn): Card[] => {
+    (column: CardColumn) => {
       return cards.filter((card) => card.column === column);
     },
     [cards]
   );
-
-  const refreshCards = useCallback(async () => {
-    try {
-      const updatedCards = await getCardsByBoardId(boardId);
-      setCards(updatedCards);
-    } catch (err) {
-      console.error("Error refreshing cards:", err);
-    }
-  }, [boardId]);
 
   const handleCardUpdate = useCallback(() => {
     refreshCards();
@@ -133,18 +114,21 @@ export function BoardView({ boardId }: BoardViewProps): JSX.Element {
           title="Todo"
           columnType="todo"
           cards={getCardsForColumn("todo")}
+          boardId={boardId}
           onCardUpdate={handleCardUpdate}
         />
         <Column
           title="Doing"
           columnType="doing"
           cards={getCardsForColumn("doing")}
+          boardId={boardId}
           onCardUpdate={handleCardUpdate}
         />
         <Column
           title="Done"
           columnType="done"
           cards={getCardsForColumn("done")}
+          boardId={boardId}
           onCardUpdate={handleCardUpdate}
         />
       </div>

@@ -1,14 +1,16 @@
 import { Card } from "./Card";
+import { CreateCard } from "./CreateCard";
 import type { Card as CardType, CardColumn } from "../../types";
 
 interface ColumnProps {
   title: string;
   columnType: CardColumn;
   cards: CardType[];
+  boardId?: string;
   onCardUpdate?: () => void;
 }
 
-export function Column({ title, columnType, cards, onCardUpdate }: ColumnProps): JSX.Element {
+export function Column({ title, columnType, cards, boardId, onCardUpdate }: ColumnProps): JSX.Element {
   const sortedCards = [...cards].sort((a, b) => a.position - b.position);
 
   const getColumnStyle = (): React.CSSProperties => {
@@ -94,6 +96,15 @@ export function Column({ title, columnType, cards, onCardUpdate }: ColumnProps):
               onUpdate={onCardUpdate}
             />
           ))
+        )}
+        
+        {boardId && (
+          <CreateCard
+            boardId={boardId}
+            column={columnType}
+            position={sortedCards.length}
+            onCardCreated={onCardUpdate || (() => {})}
+          />
         )}
       </div>
     </div>
