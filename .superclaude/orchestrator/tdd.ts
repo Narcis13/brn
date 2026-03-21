@@ -5,6 +5,32 @@
 
 import type { TDDSequence, TDDSubPhase, VerificationStrategy } from "./types.ts";
 
+// ─── Test CWD Resolution ─────────────────────────────────────────
+
+/**
+ * Resolve the correct working directory for running a test file.
+ * If the test file lives under a subdirectory with its own bunfig.toml
+ * (e.g., playground/), use that directory so Bun picks up test preloads
+ * and config. Otherwise, use the project root.
+ *
+ * Accepts both absolute and relative paths.
+ */
+async function resolveTestCwd(projectRoot: string, testFile: string): Promise<string> {
+  // Normalize to absolute path
+  const absPath = testFile.startsWith("/") ? testFile : `${projectRoot}/${testFile}`;
+
+  // Walk up from the test file's directory toward projectRoot
+  let dir = absPath.substring(0, absPath.lastIndexOf("/"));
+  while (dir.length > projectRoot.length) {
+    const hasBunfig = await Bun.file(`${dir}/bunfig.toml`).exists();
+    if (hasBunfig) {
+      return dir;
+    }
+    dir = dir.substring(0, dir.lastIndexOf("/"));
+  }
+  return projectRoot;
+}
+
 // ─── Types ──────────────────────────────────────────────────────
 
 export interface TestResult {
@@ -74,8 +100,16 @@ export async function runTests(
 
   for (const file of testFiles) {
     try {
-      const proc = Bun.spawn(["bun", "test", file], {
-        cwd: projectRoot,
+      // Resolve the correct cwd: if the test file is under a subdirectory
+      // with its own bunfig.toml (e.g., playground/), run from there so
+      // Bun picks up test preloads (happy-dom, etc.)
+      const cwd = await resolveTestCwd(projectRoot, file);
+      // Make test path relative to the resolved cwd
+      const absFile = file.startsWith("/") ? file : `${projectRoot}/${file}`;
+      const relativeFile = absFile.startsWith(cwd + "/") ? absFile.slice(cwd.length + 1) : file;
+
+      const proc = Bun.spawn(["bun", "test", relativeFile], {
+        cwd,
         stdout: "pipe",
         stderr: "pipe",
       });
