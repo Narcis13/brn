@@ -16,12 +16,13 @@ Bun.serve({
     }
 
     // Static files served directly
-    const filePath = `playground/public${url.pathname === "/" ? "/index.html" : url.pathname}`;
+    const basePath = import.meta.dir + "/../public";
+    const filePath = `${basePath}${url.pathname === "/" ? "/index.html" : url.pathname}`;
     const file = Bun.file(filePath);
     if (await file.exists()) return new Response(file);
 
     // SPA fallback
-    return new Response(Bun.file("playground/public/index.html"));
+    return new Response(Bun.file(`${basePath}/index.html`));
   },
 });
 
