@@ -35,7 +35,24 @@ export async function startServer(): Promise<void> {
     console.log(`Starting server on port ${port}...`);
     const server = Bun.serve({
       port,
-      fetch: app.fetch,
+      async fetch(req) {
+        const url = new URL(req.url);
+
+        // Serve API routes via Hono
+        if (url.pathname.startsWith("/api/") || url.pathname === "/health") {
+          return app.fetch(req);
+        }
+
+        // Serve static files from public directory
+        const filePath = `public${url.pathname === "/" ? "/index.html" : url.pathname}`;
+        const file = Bun.file(filePath);
+        if (await file.exists()) {
+          return new Response(file);
+        }
+
+        // SPA fallback — serve index.html for client-side routing
+        return new Response(Bun.file("public/index.html"));
+      },
     });
     console.log(`Server running at http://localhost:${server.port}`);
   }
@@ -48,4 +65,3 @@ if (import.meta.main) {
     process.exit(1);
   });
 }
-

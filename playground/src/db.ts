@@ -1,4 +1,6 @@
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 /**
  * Open (or create) a SQLite database at the given path.
@@ -6,6 +8,7 @@ import { Database } from "bun:sqlite";
  * @returns Database instance configured with auto-create enabled
  */
 export function getDb(dbPath: string): Database {
+  mkdirSync(dirname(dbPath), { recursive: true });
   return new Database(dbPath, { create: true });
 }
 
