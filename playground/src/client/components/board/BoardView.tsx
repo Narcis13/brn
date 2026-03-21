@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Column } from "./Column";
+import { BoardHeader } from "./BoardHeader";
 import { getBoard } from "../../api/boards";
 import { useCards } from "../../hooks/useCards";
 import { useDragDrop } from "../../hooks/useDragDrop";
@@ -7,9 +8,10 @@ import type { Board, CardColumn } from "../../types";
 
 interface BoardViewProps {
   boardId: string;
+  onBack: () => void;
 }
 
-export function BoardView({ boardId }: BoardViewProps): JSX.Element {
+export function BoardView({ boardId, onBack }: BoardViewProps): JSX.Element {
   const [board, setBoard] = useState<Board | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [boardError, setBoardError] = useState<string | null>(null);
@@ -83,36 +85,11 @@ export function BoardView({ boardId }: BoardViewProps): JSX.Element {
 
   return (
     <div style={{ padding: "24px", height: "100vh", backgroundColor: "#fafafa" }}>
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: "24px",
-      }}>
-        <h1 style={{ 
-          margin: "0", 
-          fontSize: "24px", 
-          fontWeight: "600",
-          color: "#333",
-        }}>
-          {board.name}
-        </h1>
-        <button
-          onClick={refreshCards}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#4a90e2",
-            color: "#fff",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-            fontSize: "14px",
-            fontWeight: "500",
-          }}
-        >
-          Refresh Cards
-        </button>
-      </div>
+      <BoardHeader
+        board={board}
+        onBack={onBack}
+        onBoardUpdate={(updatedBoard) => setBoard(updatedBoard)}
+      />
 
       <div style={{
         display: "grid",

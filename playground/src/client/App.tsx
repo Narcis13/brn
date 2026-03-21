@@ -48,7 +48,7 @@ function AppContent(): JSX.Element {
       )}
       {currentView === 'boards' && <BoardList navigateTo={navigateTo} />}
       {currentView === 'board' && currentBoardId && (
-        <BoardView boardId={currentBoardId} />
+        <BoardView boardId={currentBoardId} onBack={() => navigateTo('boards')} />
       )}
     </div>
   );
