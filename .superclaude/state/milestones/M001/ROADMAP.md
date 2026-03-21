@@ -41,7 +41,7 @@ status: planned
 - JWT auth middleware from S01
 - Board ID validation from S02
 
-### S04: React Frontend Shell
+### S04: React Frontend Shell ✓
 **Demo:** After this, the user can access a React app at localhost:3000 with routing and auth state
 **Depends on:** S01
 **Risk:** low
@@ -50,6 +50,9 @@ status: planned
 - Auth context and protected routes
 - Login/Signup forms
 - Static file serving from Hono
+- Board list component and creation form
+- Kanban board view with drag-and-drop
+- Card creation and management UI
 **Consumes:**
 - Auth API endpoints from S01
 
@@ -116,4 +119,27 @@ The roadmap structure continues to prove effective. No changes needed beyond mar
 ## Reassessment (2026-03-20)
 
 Roadmap updated with S03 marked complete and reassessment added.
+
+## Reassessment (2026-03-21)
+
+With S04 now complete, an interesting pattern emerged:
+- S04 actually delivered functionality originally planned for S05 and S06
+- The implementation combined all frontend features into a cohesive single slice
+- This demonstrates the frontend work was less complex than initially estimated
+- S05 and S06 are now redundant as their planned features have been delivered
+
+The roadmap structure proved mostly accurate, but the frontend implementation was more efficient than anticipated. The three backend slices (S01-S03) provided exactly the right foundation, and the frontend came together naturally in S04.
+
+Given that S04 has delivered all the frontend functionality:
+- Board list and creation UI (originally S05)
+- Kanban board with drag-and-drop (originally S06)
+- All features are working and integrated
+
+**Recommendation:** The milestone M001 is functionally complete. S05 and S06 can be considered absorbed into S04.
+
+
+
+## Reassessment (2026-03-21)
+
+Roadmap updated with S04 marked complete and reassessment added. The key finding is that S04 delivered all the frontend functionality originally planned for S05 and S06, making those slices redundant.
 
