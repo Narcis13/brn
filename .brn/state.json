@@ -1,0 +1,26 @@
+{
+  "feature": "bookmark-vault",
+  "spec": "feature-bookmark-vault.md",
+  "branch": "feat/bookmark-vault",
+  "status": "planning",
+  "acceptance_criteria": [
+    { "id": "AC1", "text": "POST /api/bookmarks saves a URL with auto-extracted title and optional tags", "met": false },
+    { "id": "AC2", "text": "GET /api/bookmarks returns all bookmarks sorted newest first", "met": false },
+    { "id": "AC3", "text": "GET /api/bookmarks?q= searches bookmarks by title/URL", "met": false },
+    { "id": "AC4", "text": "GET /api/bookmarks?tag= filters bookmarks by tag", "met": false },
+    { "id": "AC5", "text": "DELETE /api/bookmarks/:id deletes a bookmark", "met": false },
+    { "id": "AC6", "text": "SQLite persistence at playground/data/bookmarks.db with correct schema", "met": false },
+    { "id": "AC7", "text": "React SPA served at localhost:3000 with clean, styled UI", "met": false },
+    { "id": "AC8", "text": "URL input + tag input + Save button, search bar with real-time filtering", "met": false },
+    { "id": "AC9", "text": "Tag pills on bookmarks, clickable to filter by tag", "met": false },
+    { "id": "AC10", "text": "Each bookmark shows title (linked), tags, date, delete button", "met": false },
+    { "id": "AC11", "text": "Empty state, loading spinner, error messages for invalid/duplicate URLs", "met": false },
+    { "id": "AC12", "text": "Duplicate URLs rejected, invalid URLs auto-prepend https://, long titles truncated", "met": false },
+    { "id": "AC13", "text": "Responsive layout — desktop and mobile", "met": false }
+  ],
+  "run_count": 0,
+  "current_focus": null,
+  "last_run": null,
+  "retry_count": 0,
+  "blocked": false
+}
