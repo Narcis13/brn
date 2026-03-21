@@ -1026,9 +1026,9 @@ async function invokeClaudeHeadless(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    // Build CLI args array (avoids shell escaping issues with prompt content)
+    // Build CLI args array — prompt is piped via stdin (no shell escaping issues)
     const args = [
-      "claude", "-p", "-",
+      "claude", "-p",
       "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep",
       "--no-session-persistence",
       "--output-format", "json",
