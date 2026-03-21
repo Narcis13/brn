@@ -7,7 +7,7 @@
   "effort": "high",
   "tests_passed": true,
   "types_clean": true,
-  "commit": "",
+  "commit": "82d63de",
   "acceptance_criteria_met": ["AC7", "AC8", "AC9", "AC10", "AC11", "AC13"],
   "vault_updates": [],
   "retry": false
