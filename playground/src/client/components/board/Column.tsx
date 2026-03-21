@@ -1,4 +1,4 @@
-import { Card } from "./Card";
+import { DraggableCard } from "./DraggableCard";
 import { CreateCard } from "./CreateCard";
 import type { Card as CardType, CardColumn } from "../../types";
 
@@ -8,9 +8,25 @@ interface ColumnProps {
   cards: CardType[];
   boardId?: string;
   onCardUpdate?: () => void;
+  onCardDragStart?: (card: CardType) => void;
+  onCardDragEnd?: () => void;
+  onCardDrop?: (targetColumn: CardColumn, targetCard: CardType | null) => Promise<void>;
+  isDragActive?: boolean;
+  draggedCard?: CardType | null;
 }
 
-export function Column({ title, columnType, cards, boardId, onCardUpdate }: ColumnProps): JSX.Element {
+export function Column({ 
+  title, 
+  columnType, 
+  cards, 
+  boardId, 
+  onCardUpdate,
+  onCardDragStart,
+  onCardDragEnd,
+  onCardDrop,
+  isDragActive = false,
+  draggedCard = null
+}: ColumnProps): JSX.Element {
   const sortedCards = [...cards].sort((a, b) => a.position - b.position);
 
   const getColumnStyle = (): React.CSSProperties => {
@@ -20,7 +36,14 @@ export function Column({ title, columnType, cards, boardId, onCardUpdate }: Colu
       padding: "16px",
       minHeight: "400px",
       width: "100%",
+      transition: "all 0.2s ease",
     };
+
+    // Highlight column when dragging over it
+    if (isDragActive && draggedCard?.column !== columnType) {
+      baseStyle.backgroundColor = "#e3f2fd";
+      baseStyle.boxShadow = "0 0 0 2px #2196f3";
+    }
 
     return baseStyle;
   };
@@ -47,10 +70,19 @@ export function Column({ title, columnType, cards, boardId, onCardUpdate }: Colu
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>): void => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>): Promise<void> => {
     e.preventDefault();
-    // Drag and drop will be implemented in next task
-    console.log(`Dropped in ${columnType} column`);
+    
+    if (onCardDrop) {
+      // Dropping at the end of the column
+      await onCardDrop(columnType, null);
+    }
+  };
+
+  const handleCardDrop = async (targetCard: CardType): Promise<void> => {
+    if (onCardDrop) {
+      await onCardDrop(columnType, targetCard);
+    }
   };
 
   return (
@@ -90,11 +122,26 @@ export function Column({ title, columnType, cards, boardId, onCardUpdate }: Colu
           </p>
         ) : (
           sortedCards.map((card) => (
-            <Card 
-              key={card.id} 
-              card={card} 
-              onUpdate={onCardUpdate}
-            />
+            <div
+              key={card.id}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleCardDrop(card);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <DraggableCard 
+                card={card} 
+                onUpdate={onCardUpdate || (() => {})}
+                onDragStart={onCardDragStart}
+                onDragEnd={onCardDragEnd}
+                disabled={false}
+              />
+            </div>
           ))
         )}
         

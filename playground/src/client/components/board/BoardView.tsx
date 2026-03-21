@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Column } from "./Column";
 import { getBoard } from "../../api/boards";
 import { useCards } from "../../hooks/useCards";
+import { useDragDrop } from "../../hooks/useDragDrop";
 import type { Board, CardColumn } from "../../types";
 
 interface BoardViewProps {
@@ -12,7 +13,17 @@ export function BoardView({ boardId }: BoardViewProps): JSX.Element {
   const [board, setBoard] = useState<Board | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [boardError, setBoardError] = useState<string | null>(null);
-  const { cards, loading: cardsLoading, error: cardsError, refetch: refreshCards } = useCards(boardId);
+  const { cards, loading: cardsLoading, error: cardsError, refetch: refreshCards, moveCard } = useCards(boardId);
+  const { 
+    isDragging, 
+    draggedCard,
+    activeDropZone,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop
+  } = useDragDrop(cards, moveCard);
 
   useEffect(() => {
     async function loadBoard() {
@@ -110,27 +121,57 @@ export function BoardView({ boardId }: BoardViewProps): JSX.Element {
         height: "calc(100vh - 120px)",
         alignItems: "start",
       }}>
-        <Column
-          title="Todo"
-          columnType="todo"
-          cards={getCardsForColumn("todo")}
-          boardId={boardId}
-          onCardUpdate={handleCardUpdate}
-        />
-        <Column
-          title="Doing"
-          columnType="doing"
-          cards={getCardsForColumn("doing")}
-          boardId={boardId}
-          onCardUpdate={handleCardUpdate}
-        />
-        <Column
-          title="Done"
-          columnType="done"
-          cards={getCardsForColumn("done")}
-          boardId={boardId}
-          onCardUpdate={handleCardUpdate}
-        />
+        <div
+          onDragOver={() => handleDragOver("todo")}
+          onDragLeave={handleDragLeave}
+        >
+          <Column
+            title="Todo"
+            columnType="todo"
+            cards={getCardsForColumn("todo")}
+            boardId={boardId}
+            onCardUpdate={handleCardUpdate}
+            onCardDragStart={handleDragStart}
+            onCardDragEnd={handleDragEnd}
+            onCardDrop={handleDrop}
+            isDragActive={activeDropZone === "todo"}
+            draggedCard={draggedCard}
+          />
+        </div>
+        <div
+          onDragOver={() => handleDragOver("doing")}
+          onDragLeave={handleDragLeave}
+        >
+          <Column
+            title="Doing"
+            columnType="doing"
+            cards={getCardsForColumn("doing")}
+            boardId={boardId}
+            onCardUpdate={handleCardUpdate}
+            onCardDragStart={handleDragStart}
+            onCardDragEnd={handleDragEnd}
+            onCardDrop={handleDrop}
+            isDragActive={activeDropZone === "doing"}
+            draggedCard={draggedCard}
+          />
+        </div>
+        <div
+          onDragOver={() => handleDragOver("done")}
+          onDragLeave={handleDragLeave}
+        >
+          <Column
+            title="Done"
+            columnType="done"
+            cards={getCardsForColumn("done")}
+            boardId={boardId}
+            onCardUpdate={handleCardUpdate}
+            onCardDragStart={handleDragStart}
+            onCardDragEnd={handleDragEnd}
+            onCardDrop={handleDrop}
+            isDragActive={activeDropZone === "done"}
+            draggedCard={draggedCard}
+          />
+        </div>
       </div>
     </div>
   );
