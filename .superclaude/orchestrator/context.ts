@@ -141,6 +141,41 @@ export async function loadCodeFilesForTask(
     }
   }
 
+  // Extract file paths from Key Links prose.
+  // Handles: "FileA imports X from path/to/module" or "imports X from path/to/module.ts"
+  const keyLinksSection = taskPlan.match(/\*\*Key Links:\*\*\n([\s\S]*?)(?=\n####|\n##|\n---|\n\*\*|$)/);
+  if (keyLinksSection?.[1]) {
+    const linkLines = keyLinksSection[1].split("\n").filter((l) => l.trim().startsWith("-"));
+    for (const line of linkLines) {
+      // "imports X from api/boards.ts" or "imports X from ./boards"
+      const fromMatch = line.match(/from\s+([\w/.,-]+(?:\.(?:ts|tsx|js|jsx))?)/);
+      if (fromMatch?.[1]) {
+        let modulePath = fromMatch[1];
+        // Add .ts extension if missing
+        if (!modulePath.match(/\.(?:ts|tsx|js|jsx)$/)) {
+          modulePath += ".ts";
+        }
+        foundPaths.add(modulePath);
+        // Also try with playground/src/client/ prefix for bare relative paths
+        if (!modulePath.startsWith("playground/") && !modulePath.startsWith("src/")) {
+          foundPaths.add(`playground/src/client/${modulePath}`);
+        }
+      }
+
+      // "FileA imports and uses FileB" — extract both component names and try to resolve
+      const usesMatch = line.match(/^-\s*(\w+)\s+imports?\s+(?:and uses\s+)?(\w+)/);
+      if (usesMatch) {
+        // Resolve both the source file and the imported component
+        for (const name of [usesMatch[1], usesMatch[2]]) {
+          if (!name) continue;
+          foundPaths.add(`playground/src/client/components/board/${name}.tsx`);
+          foundPaths.add(`playground/src/client/components/boards/${name}.tsx`);
+          foundPaths.add(`playground/src/client/components/auth/${name}.tsx`);
+        }
+      }
+    }
+  }
+
   for (const relPath of foundPaths) {
     const content = await loadFile(projectRoot, relPath);
     if (content) {
@@ -213,13 +248,18 @@ export async function assembleContext(
       if (m && s && t) {
         payload.taskPlan = await loadFile(projectRoot, `${PATHS.taskPath(m, s, t)}/PLAN.md`);
 
-        // Load continue-here if it exists (continue-here protocol)
+        // Load continue-here if it exists AND belongs to the current task.
+        // Session-end writes CONTINUE.md to the current task dir, but if state
+        // already advanced to the next task, it's a leftover — skip it.
         const continueHere = await loadFile(
           projectRoot,
           `${PATHS.taskPath(m, s, t)}/CONTINUE.md`
         );
         if (continueHere) {
-          payload.taskPlan += "\n\n## Continue From\n" + continueHere;
+          const continueTask = continueHere.match(/^task:\s*(\S+)/m)?.[1];
+          if (continueTask === t) {
+            payload.taskPlan += "\n\n## Continue From\n" + continueHere;
+          }
         }
 
         // Load review feedback if it exists (reviewer quality gate §8.3)
@@ -231,15 +271,17 @@ export async function assembleContext(
           payload.taskPlan += "\n\n## Review Feedback (MUST FIX)\n" + reviewFeedback;
         }
 
-        // Load upstream task summaries (skip for simple tasks)
-        if (complexity !== "simple") {
+        // Load upstream task summaries
+        // Simple tasks with Key Links still need upstream context to integrate correctly
+        const hasKeyLinks = payload.taskPlan.includes("**Key Links:**");
+        if (complexity !== "simple" || hasKeyLinks) {
           payload.upstreamSummaries = await loadUpstreamTaskSummaries(projectRoot, m, s, t);
           if (payload.upstreamSummaries.length === 0) {
             payload.upstreamSummaries = await loadUpstreamTaskPlans(projectRoot, m, s, t);
           }
         }
 
-        // Load vault docs (skip for simple tasks)
+        // Load vault docs (skip for simple tasks without Key Links)
         if (complexity !== "simple") {
           payload.vaultDocs = await loadRelevantVaultDocs(projectRoot, payload.taskPlan);
           const learnings = await loadAllVaultByType(projectRoot, "learnings");

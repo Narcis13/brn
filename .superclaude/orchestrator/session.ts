@@ -214,6 +214,17 @@ export async function writeSessionContinue(
   const summaryPath = `${projectRoot}/${PATHS.taskPath(m, s, t)}/SUMMARY.md`;
   if (await Bun.file(summaryPath).exists()) return;
 
+  // Don't write if this task wasn't actually worked on this session.
+  // State may have advanced to the next task after completing the previous one,
+  // so the current task is fresh — writing a CONTINUE.md would inject stale context.
+  const taskPlanPath = `${projectRoot}/${PATHS.taskPath(m, s, t)}/PLAN.md`;
+  const taskPlanFile = Bun.file(taskPlanPath);
+  if (await taskPlanFile.exists()) {
+    const planContent = await taskPlanFile.text();
+    const taskStatus = planContent.match(/^status:\s*(\S+)/m)?.[1];
+    if (taskStatus === "pending") return; // Task was never started — don't pollute it
+  }
+
   const lines: string[] = [
     "---",
     `task: ${t}`,
