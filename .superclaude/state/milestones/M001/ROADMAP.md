@@ -1,6 +1,6 @@
 ---
 milestone: M001
-status: planned
+status: complete
 ---
 
 ## Slices
@@ -56,30 +56,29 @@ status: planned
 **Consumes:**
 - Auth API endpoints from S01
 
-### S05: Board UI Components
-**Demo:** After this, the user can view their boards in a list and create new boards through the UI
+### S05: UX Polish & Infrastructure ✓
+**Demo:** After this, the app has consistent layout, empty states, toast notifications, and resilient error handling
 **Depends on:** S02, S04
 **Risk:** low
 **Produces:**
-- Board list component
-- Board creation form
-- API client hooks for boards
+- App layout and navigation header (AppLayout.tsx)
+- Board navigation and header actions (BoardHeader.tsx)
+- Empty states and loading improvements (EmptyState.tsx, LoadingSpinner.tsx)
+- API error handling and token expiration flow
+- Toast notifications system (Toast.tsx, ToastContext.tsx)
 **Consumes:**
 - Board API from S02
 - Auth context from S04
+**Note:** Original S05 scope (board list component, creation form) was delivered earlier in S04/T03.
 
-### S06: Kanban Board Interface
-**Demo:** After this, the user can see a three-column Kanban board, add cards, and drag them between columns
-**Depends on:** S03, S04, S05
-**Risk:** high
-**Produces:**
-- Kanban board component with three columns
-- Card components with drag-and-drop
-- Real-time position updates
-**Consumes:**
-- Card API from S03
-- Board context from S05
-- Auth context from S04
+### ~~S06: Kanban Board Interface~~ — ABSORBED INTO S04
+**Demo:** ~~After this, the user can see a three-column Kanban board, add cards, and drag them between columns~~
+**Status:** Redundant — fully delivered by S04
+**Evidence:**
+- S04/T04: Kanban Board View & Card Display → `BoardView.tsx`, `Column.tsx`, `Card.tsx`
+- S04/T05: Card Creation & Basic Actions → `CreateCard.tsx`, `EditCard.tsx`, `DeleteCardButton.tsx`
+- S04/T06: Drag & Drop Card Movement → `DraggableCard.tsx`, `useDragDrop` hook
+- All three columns (TODO/IN_PROGRESS/DONE) rendered; drag-and-drop position updates confirmed in codebase
 
 ## Reassessment (2026-03-19)
 
@@ -143,3 +142,19 @@ Given that S04 has delivered all the frontend functionality:
 
 Roadmap updated with S04 marked complete and reassessment added. The key finding is that S04 delivered all the frontend functionality originally planned for S05 and S06, making those slices redundant.
 
+## Reassessment (2026-03-21) — Post-S05
+
+**S05 is confirmed complete.** Verified via SUMMARY.md and file existence:
+- `AppLayout.tsx`, `BoardHeader.tsx` — navigation and layout
+- `EmptyState.tsx`, `LoadingSpinner.tsx` — empty/loading states
+- `Toast.tsx`, `ToastContext.tsx` — toast notification system
+- API error handling and token expiration flow implemented
+
+**S06 is formally marked absorbed.** All Kanban Interface features were delivered by S04:
+- `BoardView.tsx`, `Column.tsx` — three-column board rendering
+- `DraggableCard.tsx`, `useDragDrop` hook — drag-and-drop movement
+- `CreateCard.tsx`, `EditCard.tsx`, `DeleteCardButton.tsx` — card actions
+
+**Milestone M001 is complete.** All planned backend (S01-S03) and frontend (S04-S05, S06 absorbed) deliverables are in place. The milestone status has been updated from `planned` to `complete`.
+
+No further slices are needed.
