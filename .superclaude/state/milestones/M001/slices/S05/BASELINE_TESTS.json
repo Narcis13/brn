@@ -1,0 +1,9 @@
+{
+  "timestamp": "2026-03-21T14:19:57.528Z",
+  "totalTests": 195,
+  "passedTests": 194,
+  "failedTests": 1,
+  "failingTestNames": [
+    "authMiddleware > request with expired token returns 401 [3506.03ms]"
+  ]
+}
