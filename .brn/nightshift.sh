@@ -20,7 +20,6 @@ while [ $run -lt $MAX_RUNS ]; do
 
   claude -p \
     --model opus \
-    --effort high \
     --dangerously-skip-permissions \
     --max-turns 100 \
     "/next" 2>&1 | tee -a "$LOGFILE"

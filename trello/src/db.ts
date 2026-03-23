@@ -84,6 +84,58 @@ function migrate(db: Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // Add new columns to cards table if they don't exist
+  const cardColumns = db.prepare("PRAGMA table_info(cards)").all() as { name: string }[];
+  const cardColumnNames = cardColumns.map(c => c.name);
+  
+  if (!cardColumnNames.includes('due_date')) {
+    db.exec("ALTER TABLE cards ADD COLUMN due_date TEXT DEFAULT NULL");
+  }
+  if (!cardColumnNames.includes('start_date')) {
+    db.exec("ALTER TABLE cards ADD COLUMN start_date TEXT DEFAULT NULL");
+  }
+  if (!cardColumnNames.includes('checklist')) {
+    db.exec("ALTER TABLE cards ADD COLUMN checklist TEXT DEFAULT '[]'");
+  }
+  if (!cardColumnNames.includes('updated_at')) {
+    db.exec("ALTER TABLE cards ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+    // Set updated_at to created_at for existing cards
+    db.exec("UPDATE cards SET updated_at = created_at WHERE updated_at = datetime('now')");
+  }
+
+  // Create labels table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS labels (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      name TEXT NOT NULL CHECK(length(name) <= 30),
+      color TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      UNIQUE(board_id, name)
+    )
+  `);
+
+  // Create card_labels junction table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS card_labels (
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      label_id TEXT NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+      PRIMARY KEY (card_id, label_id)
+    )
+  `);
+
+  // Create activity table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activity (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      action TEXT NOT NULL,
+      detail TEXT DEFAULT NULL,
+      timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 // --- Types ---
@@ -116,10 +168,36 @@ export interface CardRow {
   position: number;
   column_id: string;
   created_at: string;
+  due_date: string | null;
+  start_date: string | null;
+  checklist: string;
+  updated_at: string;
 }
 
 export interface ColumnWithCards extends ColumnRow {
   cards: CardRow[];
+}
+
+export interface LabelRow {
+  id: string;
+  board_id: string;
+  name: string;
+  color: string;
+  position: number;
+}
+
+export interface CardLabelRow {
+  card_id: string;
+  label_id: string;
+}
+
+export interface ActivityRow {
+  id: string;
+  card_id: string;
+  board_id: string;
+  action: string;
+  detail: string | null;
+  timestamp: string;
 }
 
 // --- User helpers ---
@@ -199,7 +277,7 @@ export function getAllColumns(db: Database, boardId: string): ColumnWithCards[] 
   const colIds = cols.map((c) => c.id);
   const placeholders = colIds.map(() => "?").join(",");
   const cards = db.query(
-    `SELECT id, title, description, position, column_id, created_at FROM cards WHERE column_id IN (${placeholders}) ORDER BY position`
+    `SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE column_id IN (${placeholders}) ORDER BY position`
   ).all(...colIds) as CardRow[];
 
   const cardsByColumn = new Map<string, CardRow[]>();
@@ -256,7 +334,7 @@ export function deleteColumn(db: Database, id: string): boolean {
 
 export function getCardById(db: Database, id: string): CardRow | null {
   return db.query(
-    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+    "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
   ).get(id) as CardRow | null;
 }
 
@@ -279,7 +357,7 @@ export function createCard(
   ).run(id, title, description, position, columnId);
 
   return db.query(
-    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+    "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
   ).get(id) as CardRow;
 }
 
@@ -289,7 +367,7 @@ export function updateCard(
   updates: { title?: string; description?: string; columnId?: string; position?: number }
 ): CardRow | null {
   const existing = db.query(
-    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+    "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
   ).get(id) as CardRow | null;
   if (!existing) return null;
 
@@ -312,11 +390,11 @@ export function updateCard(
   }
 
   db.query(
-    "UPDATE cards SET title = ?, description = ?, position = ?, column_id = ? WHERE id = ?"
+    "UPDATE cards SET title = ?, description = ?, position = ?, column_id = ?, updated_at = datetime('now') WHERE id = ?"
   ).run(newTitle, newDescription, newPosition, newColumnId, id);
 
   return db.query(
-    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+    "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
   ).get(id) as CardRow;
 }
 

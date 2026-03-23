@@ -1,0 +1,1 @@
+This is the builder prompt from run 001 of the rich-cards feature. It instructs the Builder agent to create the database migration — adding labels, card-labels junction, and activity tables, plus new columns on cards (`due_date`, `start_date`, `checklist`, `updated_at`). The schema targets `/trello/src/db.ts`.
