@@ -17,7 +17,6 @@ export function getDb(path: string = DB_PATH): Database {
   _db.exec("PRAGMA journal_mode = WAL");
   _db.exec("PRAGMA foreign_keys = ON");
   migrate(_db);
-  seed(_db);
   return _db;
 }
 
@@ -35,13 +34,46 @@ export function resetDb(): void {
 }
 
 function migrate(db: Database): void {
+  // Handle legacy schema (columns without board_id)
+  const tableExists = db.query(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='columns'"
+  ).get();
+  if (tableExists) {
+    const colInfo = db.prepare("PRAGMA table_info(columns)").all() as { name: string }[];
+    const hasBoardId = colInfo.some((c) => c.name === "board_id");
+    if (!hasBoardId) {
+      db.exec("DROP TABLE IF EXISTS cards");
+      db.exec("DROP TABLE IF EXISTS columns");
+    }
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS boards (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS columns (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
-      position INTEGER NOT NULL
+      position INTEGER NOT NULL,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE
     )
   `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS cards (
       id TEXT PRIMARY KEY,
@@ -54,23 +86,27 @@ function migrate(db: Database): void {
   `);
 }
 
-function seed(db: Database): void {
-  const count = db.query("SELECT COUNT(*) as c FROM columns").get() as { c: number };
-  if (count.c > 0) return;
+// --- Types ---
 
-  const defaults = ["To Do", "In Progress", "Done"];
-  const insert = db.prepare("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)");
-  for (let i = 0; i < defaults.length; i++) {
-    insert.run(nanoid(), defaults[i]!, i);
-  }
+export interface UserRow {
+  id: string;
+  username: string;
+  password_hash: string;
+  created_at: string;
 }
 
-// --- Column helpers ---
+export interface BoardRow {
+  id: string;
+  title: string;
+  user_id: string;
+  created_at: string;
+}
 
 export interface ColumnRow {
   id: string;
   title: string;
   position: number;
+  board_id: string;
 }
 
 export interface CardRow {
@@ -86,9 +122,85 @@ export interface ColumnWithCards extends ColumnRow {
   cards: CardRow[];
 }
 
-export function getAllColumns(db: Database): ColumnWithCards[] {
-  const cols = db.query("SELECT id, title, position FROM columns ORDER BY position").all() as ColumnRow[];
-  const cards = db.query("SELECT id, title, description, position, column_id, created_at FROM cards ORDER BY position").all() as CardRow[];
+// --- User helpers ---
+
+export function createUser(db: Database, username: string, passwordHash: string): UserRow {
+  const id = nanoid();
+  db.query("INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)").run(
+    id,
+    username,
+    passwordHash
+  );
+  return db.query("SELECT id, username, password_hash, created_at FROM users WHERE id = ?").get(
+    id
+  ) as UserRow;
+}
+
+export function getUserByUsername(db: Database, username: string): UserRow | null {
+  return db.query(
+    "SELECT id, username, password_hash, created_at FROM users WHERE username = ?"
+  ).get(username) as UserRow | null;
+}
+
+export function getUserById(db: Database, id: string): UserRow | null {
+  return db.query("SELECT id, username, password_hash, created_at FROM users WHERE id = ?").get(
+    id
+  ) as UserRow | null;
+}
+
+// --- Board helpers ---
+
+export function getUserBoards(db: Database, userId: string): BoardRow[] {
+  return db.query(
+    "SELECT id, title, user_id, created_at FROM boards WHERE user_id = ? ORDER BY created_at DESC"
+  ).all(userId) as BoardRow[];
+}
+
+export function createBoard(db: Database, title: string, userId: string): BoardRow {
+  const id = nanoid();
+  db.query("INSERT INTO boards (id, title, user_id) VALUES (?, ?, ?)").run(id, title, userId);
+
+  // Seed 3 default columns
+  const defaults = ["To Do", "In Progress", "Done"];
+  const insert = db.prepare(
+    "INSERT INTO columns (id, title, position, board_id) VALUES (?, ?, ?, ?)"
+  );
+  for (let i = 0; i < defaults.length; i++) {
+    insert.run(nanoid(), defaults[i]!, i, id);
+  }
+
+  return db.query("SELECT id, title, user_id, created_at FROM boards WHERE id = ?").get(
+    id
+  ) as BoardRow;
+}
+
+export function getBoardById(db: Database, id: string): BoardRow | null {
+  return db.query("SELECT id, title, user_id, created_at FROM boards WHERE id = ?").get(
+    id
+  ) as BoardRow | null;
+}
+
+export function deleteBoard(db: Database, id: string): boolean {
+  const existing = db.query("SELECT id FROM boards WHERE id = ?").get(id);
+  if (!existing) return false;
+  db.query("DELETE FROM boards WHERE id = ?").run(id);
+  return true;
+}
+
+// --- Column helpers ---
+
+export function getAllColumns(db: Database, boardId: string): ColumnWithCards[] {
+  const cols = db.query(
+    "SELECT id, title, position, board_id FROM columns WHERE board_id = ? ORDER BY position"
+  ).all(boardId) as ColumnRow[];
+
+  if (cols.length === 0) return [];
+
+  const colIds = cols.map((c) => c.id);
+  const placeholders = colIds.map(() => "?").join(",");
+  const cards = db.query(
+    `SELECT id, title, description, position, column_id, created_at FROM cards WHERE column_id IN (${placeholders}) ORDER BY position`
+  ).all(...colIds) as CardRow[];
 
   const cardsByColumn = new Map<string, CardRow[]>();
   for (const card of cards) {
@@ -103,16 +215,31 @@ export function getAllColumns(db: Database): ColumnWithCards[] {
   }));
 }
 
-export function createColumn(db: Database, title: string): ColumnRow {
-  const maxPos = db.query("SELECT COALESCE(MAX(position), -1) as m FROM columns").get() as { m: number };
+export function getColumnById(db: Database, id: string): ColumnRow | null {
+  return db.query("SELECT id, title, position, board_id FROM columns WHERE id = ?").get(
+    id
+  ) as ColumnRow | null;
+}
+
+export function createColumn(db: Database, boardId: string, title: string): ColumnRow {
+  const maxPos = db.query(
+    "SELECT COALESCE(MAX(position), -1) as m FROM columns WHERE board_id = ?"
+  ).get(boardId) as { m: number };
   const id = nanoid();
   const position = maxPos.m + 1;
-  db.query("INSERT INTO columns (id, title, position) VALUES (?, ?, ?)").run(id, title, position);
-  return { id, title, position };
+  db.query("INSERT INTO columns (id, title, position, board_id) VALUES (?, ?, ?, ?)").run(
+    id,
+    title,
+    position,
+    boardId
+  );
+  return { id, title, position, board_id: boardId };
 }
 
 export function updateColumn(db: Database, id: string, title: string): ColumnRow | null {
-  const existing = db.query("SELECT id, title, position FROM columns WHERE id = ?").get(id) as ColumnRow | null;
+  const existing = db.query("SELECT id, title, position, board_id FROM columns WHERE id = ?").get(
+    id
+  ) as ColumnRow | null;
   if (!existing) return null;
   db.query("UPDATE columns SET title = ? WHERE id = ?").run(title, id);
   return { ...existing, title };
@@ -127,17 +254,33 @@ export function deleteColumn(db: Database, id: string): boolean {
 
 // --- Card helpers ---
 
-export function createCard(db: Database, title: string, columnId: string, description: string = ""): CardRow | null {
+export function getCardById(db: Database, id: string): CardRow | null {
+  return db.query(
+    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+  ).get(id) as CardRow | null;
+}
+
+export function createCard(
+  db: Database,
+  title: string,
+  columnId: string,
+  description: string = ""
+): CardRow | null {
   const col = db.query("SELECT id FROM columns WHERE id = ?").get(columnId);
   if (!col) return null;
 
-  const maxPos = db.query("SELECT COALESCE(MAX(position), -1) as m FROM cards WHERE column_id = ?").get(columnId) as { m: number };
+  const maxPos = db.query(
+    "SELECT COALESCE(MAX(position), -1) as m FROM cards WHERE column_id = ?"
+  ).get(columnId) as { m: number };
   const id = nanoid();
   const position = maxPos.m + 1;
-  db.query("INSERT INTO cards (id, title, description, position, column_id) VALUES (?, ?, ?, ?, ?)").run(id, title, description, position, columnId);
+  db.query(
+    "INSERT INTO cards (id, title, description, position, column_id) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, title, description, position, columnId);
 
-  const row = db.query("SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?").get(id) as CardRow;
-  return row;
+  return db.query(
+    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+  ).get(id) as CardRow;
 }
 
 export function updateCard(
@@ -145,7 +288,9 @@ export function updateCard(
   id: string,
   updates: { title?: string; description?: string; columnId?: string; position?: number }
 ): CardRow | null {
-  const existing = db.query("SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?").get(id) as CardRow | null;
+  const existing = db.query(
+    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+  ).get(id) as CardRow | null;
   if (!existing) return null;
 
   const newTitle = updates.title ?? existing.title;
@@ -157,39 +302,35 @@ export function updateCard(
   const positionChanged = newPosition !== existing.position;
 
   if (columnChanged || positionChanged) {
-    // Remove from old position
-    db.query("UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?").run(
-      existing.column_id,
-      existing.position
-    );
+    db.query(
+      "UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?"
+    ).run(existing.column_id, existing.position);
 
-    // Make space in target column
-    db.query("UPDATE cards SET position = position + 1 WHERE column_id = ? AND position >= ?").run(
-      newColumnId,
-      newPosition
-    );
+    db.query(
+      "UPDATE cards SET position = position + 1 WHERE column_id = ? AND position >= ?"
+    ).run(newColumnId, newPosition);
   }
 
-  db.query("UPDATE cards SET title = ?, description = ?, position = ?, column_id = ? WHERE id = ?").run(
-    newTitle,
-    newDescription,
-    newPosition,
-    newColumnId,
-    id
-  );
+  db.query(
+    "UPDATE cards SET title = ?, description = ?, position = ?, column_id = ? WHERE id = ?"
+  ).run(newTitle, newDescription, newPosition, newColumnId, id);
 
-  return db.query("SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?").get(id) as CardRow;
+  return db.query(
+    "SELECT id, title, description, position, column_id, created_at FROM cards WHERE id = ?"
+  ).get(id) as CardRow;
 }
 
 export function deleteCard(db: Database, id: string): boolean {
-  const existing = db.query("SELECT id, position, column_id FROM cards WHERE id = ?").get(id) as { id: string; position: number; column_id: string } | null;
+  const existing = db.query("SELECT id, position, column_id FROM cards WHERE id = ?").get(id) as {
+    id: string;
+    position: number;
+    column_id: string;
+  } | null;
   if (!existing) return false;
 
   db.query("DELETE FROM cards WHERE id = ?").run(id);
-  // Reorder remaining cards
-  db.query("UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?").run(
-    existing.column_id,
-    existing.position
-  );
+  db.query(
+    "UPDATE cards SET position = position - 1 WHERE column_id = ? AND position > ?"
+  ).run(existing.column_id, existing.position);
   return true;
 }

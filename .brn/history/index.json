@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "run-001",
+    "timestamp": "2026-03-23T14:36:42Z",
+    "status": "success",
+    "focus": "Complete backend — auth, boards, scoped endpoints",
+    "summary": "Built entire backend: users/boards tables, JWT auth (register/login/me), auth middleware, board CRUD with column seeding, scoped column/card endpoints with board ownership verification. 31 tests pass, types clean.",
+    "ac_met": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7", "AC8", "AC9"],
+    "ac_progress": "9/13",
+    "vault_entries_added": 3,
+    "files_changed": 3
+  }
+]
