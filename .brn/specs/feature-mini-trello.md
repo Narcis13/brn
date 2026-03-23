@@ -1,6 +1,6 @@
 ---
 title: Mini Trello — Single-Board Kanban
-status: ready
+status: active
 priority: high
 ---
 
