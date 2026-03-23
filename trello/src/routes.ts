@@ -16,6 +16,7 @@ import {
   getCardById,
   createCard,
   updateCard,
+  updateCardWithActivity,
   deleteCard,
   getBoardLabels,
   getLabelById,
@@ -25,6 +26,9 @@ import {
   getCardLabels,
   assignLabelToCard,
   removeLabelFromCard,
+  createActivity,
+  getCardActivity,
+  getCardDetail,
   type BoardRow,
 } from "./db.ts";
 
@@ -258,9 +262,35 @@ export function createApp(db: Database): Hono<Env> {
       description?: string;
       columnId?: string;
       position?: number;
+      due_date?: string | null;
+      start_date?: string | null;
+      checklist?: string;
     }>();
     if (body.title !== undefined && body.title.trim() === "") {
       return c.json({ error: "title cannot be empty" }, 400);
+    }
+
+    // Validate dates if provided
+    if (body.start_date && body.due_date && body.start_date > body.due_date) {
+      return c.json({ error: "start_date must be before or equal to due_date" }, 400);
+    }
+
+    // Validate checklist if provided
+    if (body.checklist !== undefined) {
+      try {
+        const parsed = JSON.parse(body.checklist);
+        if (!Array.isArray(parsed)) {
+          return c.json({ error: "checklist must be a JSON array" }, 400);
+        }
+        // Validate each item has required fields
+        for (const item of parsed) {
+          if (typeof item !== 'object' || !item.id || !item.text || typeof item.checked !== 'boolean') {
+            return c.json({ error: "checklist items must have id, text, and checked fields" }, 400);
+          }
+        }
+      } catch {
+        return c.json({ error: "checklist must be valid JSON" }, 400);
+      }
     }
 
     // If moving to a different column, verify target column belongs to this board
@@ -271,13 +301,16 @@ export function createApp(db: Database): Hono<Env> {
       }
     }
 
-    const card = updateCard(db, cardId, {
+    const card = updateCardWithActivity(db, cardId, board.id, {
       title: body.title?.trim(),
       description: body.description?.trim(),
       columnId: body.columnId,
       position: body.position,
+      dueDate: body.due_date,
+      startDate: body.start_date,
+      checklist: body.checklist,
     });
-    if (!card) return c.json({ error: "card not found" }, 404);
+    if (!card) return c.json({ error: "card not found or invalid date range" }, 404);
     return c.json(card);
   });
 
@@ -406,6 +439,9 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "label already assigned to card" }, 409);
     }
     
+    // Create activity entry
+    createActivity(db, cardId, board.id, "label_added");
+    
     return c.json({ ok: true }, 201);
   });
 
@@ -429,7 +465,51 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "label not assigned to card" }, 404);
     }
     
+    // Create activity entry
+    createActivity(db, cardId, board.id, "label_removed");
+    
     return c.json({ ok: true });
+  });
+
+  // --- New Card Detail routes ---
+
+  app.get("/api/boards/:boardId/cards/:cardId", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const cardId = c.req.param("cardId");
+    const cardDetail = getCardDetail(db, cardId);
+    if (!cardDetail) return c.json({ error: "card not found" }, 404);
+    
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, cardDetail.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+    
+    return c.json(cardDetail);
+  });
+
+  app.get("/api/boards/:boardId/cards/:cardId/activity", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+    
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+    
+    // Get offset from query param
+    const url = new URL(c.req.url);
+    const offset = parseInt(url.searchParams.get("offset") || "0", 10);
+    
+    const activity = getCardActivity(db, cardId, 50, offset);
+    return c.json({ activity });
   });
 
   return app;

@@ -344,7 +344,7 @@ export function createCard(
   columnId: string,
   description: string = ""
 ): CardRow | null {
-  const col = db.query("SELECT id FROM columns WHERE id = ?").get(columnId);
+  const col = db.query("SELECT id, board_id FROM columns WHERE id = ?").get(columnId) as { id: string; board_id: string } | null;
   if (!col) return null;
 
   const maxPos = db.query(
@@ -356,6 +356,9 @@ export function createCard(
     "INSERT INTO cards (id, title, description, position, column_id) VALUES (?, ?, ?, ?, ?)"
   ).run(id, title, description, position, columnId);
 
+  // Create activity for card creation
+  createActivity(db, id, col.board_id, "created");
+
   return db.query(
     "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
   ).get(id) as CardRow;
@@ -364,7 +367,15 @@ export function createCard(
 export function updateCard(
   db: Database,
   id: string,
-  updates: { title?: string; description?: string; columnId?: string; position?: number }
+  updates: {
+    title?: string;
+    description?: string;
+    columnId?: string;
+    position?: number;
+    dueDate?: string | null;
+    startDate?: string | null;
+    checklist?: string;
+  }
 ): CardRow | null {
   const existing = db.query(
     "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
@@ -375,6 +386,14 @@ export function updateCard(
   const newDescription = updates.description ?? existing.description;
   const newColumnId = updates.columnId ?? existing.column_id;
   const newPosition = updates.position ?? existing.position;
+  const newDueDate = updates.dueDate !== undefined ? updates.dueDate : existing.due_date;
+  const newStartDate = updates.startDate !== undefined ? updates.startDate : existing.start_date;
+  const newChecklist = updates.checklist ?? existing.checklist;
+
+  // Validate dates
+  if (newStartDate && newDueDate && newStartDate > newDueDate) {
+    return null; // Invalid date range
+  }
 
   const columnChanged = newColumnId !== existing.column_id;
   const positionChanged = newPosition !== existing.position;
@@ -390,8 +409,8 @@ export function updateCard(
   }
 
   db.query(
-    "UPDATE cards SET title = ?, description = ?, position = ?, column_id = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(newTitle, newDescription, newPosition, newColumnId, id);
+    "UPDATE cards SET title = ?, description = ?, position = ?, column_id = ?, due_date = ?, start_date = ?, checklist = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(newTitle, newDescription, newPosition, newColumnId, newDueDate, newStartDate, newChecklist, id);
 
   return db.query(
     "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
@@ -525,4 +544,138 @@ export function removeLabelFromCard(db: Database, cardId: string, labelId: strin
     "DELETE FROM card_labels WHERE card_id = ? AND label_id = ?"
   ).run(cardId, labelId);
   return result.changes > 0;
+}
+
+// --- Activity helpers ---
+
+export function createActivity(
+  db: Database,
+  cardId: string,
+  boardId: string,
+  action: string,
+  detail: unknown = null
+): ActivityRow {
+  const id = nanoid();
+  const detailJson = detail ? JSON.stringify(detail) : null;
+  
+  db.query(
+    "INSERT INTO activity (id, card_id, board_id, action, detail) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, cardId, boardId, action, detailJson);
+  
+  return db.query(
+    "SELECT id, card_id, board_id, action, detail, timestamp FROM activity WHERE id = ?"
+  ).get(id) as ActivityRow;
+}
+
+export function getCardActivity(
+  db: Database,
+  cardId: string,
+  limit: number = 50,
+  offset: number = 0
+): ActivityRow[] {
+  return db.query(
+    `SELECT id, card_id, board_id, action, detail, timestamp 
+     FROM activity 
+     WHERE card_id = ? 
+     ORDER BY timestamp DESC 
+     LIMIT ? OFFSET ?`
+  ).all(cardId, limit, offset) as ActivityRow[];
+}
+
+export function updateCardWithActivity(
+  db: Database,
+  id: string,
+  boardId: string,
+  updates: {
+    title?: string;
+    description?: string;
+    columnId?: string;
+    position?: number;
+    dueDate?: string | null;
+    startDate?: string | null;
+    checklist?: string;
+  }
+): CardRow | null {
+  const existing = db.query(
+    "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
+  ).get(id) as CardRow | null;
+  if (!existing) return null;
+
+  // Track what changed for activity logging
+  const changes: string[] = [];
+  const columnChanged = updates.columnId && updates.columnId !== existing.column_id;
+
+  if (updates.title !== undefined && updates.title !== existing.title) {
+    changes.push("title");
+  }
+  if (updates.description !== undefined && updates.description !== existing.description) {
+    changes.push("description");
+  }
+  if ((updates.dueDate !== undefined && updates.dueDate !== existing.due_date) ||
+      (updates.startDate !== undefined && updates.startDate !== existing.start_date)) {
+    changes.push("dates");
+  }
+  if (updates.checklist !== undefined && updates.checklist !== existing.checklist) {
+    changes.push("checklist");
+  }
+
+  // Perform the update
+  const updatedCard = updateCard(db, id, updates);
+  if (!updatedCard) return null;
+
+  // Create activity entries
+  if (columnChanged) {
+    // Get column names for the activity detail
+    const oldCol = getColumnById(db, existing.column_id);
+    const newCol = getColumnById(db, updates.columnId!);
+    if (oldCol && newCol) {
+      createActivity(db, id, boardId, "moved", {
+        from: oldCol.title,
+        to: newCol.title
+      });
+    }
+  } else if (changes.length > 0) {
+    // Log edited activity if not a move
+    if (changes.includes("dates")) {
+      createActivity(db, id, boardId, "dates_changed");
+    } else {
+      createActivity(db, id, boardId, "edited");
+    }
+  }
+
+  return updatedCard;
+}
+
+export interface CardDetail extends CardRow {
+  labels: LabelRow[];
+  activity: ActivityRow[];
+  checklist_total: number;
+  checklist_done: number;
+}
+
+export function getCardDetail(db: Database, cardId: string): CardDetail | null {
+  const card = getCardById(db, cardId);
+  if (!card) return null;
+
+  const labels = getCardLabels(db, cardId);
+  const activity = getCardActivity(db, cardId, 50); // Last 50 entries
+
+  // Parse checklist to compute total/done
+  let checklistTotal = 0;
+  let checklistDone = 0;
+  try {
+    const checklist = JSON.parse(card.checklist) as Array<{ id: string; text: string; checked: boolean }>;
+    checklistTotal = checklist.length;
+    checklistDone = checklist.filter(item => item.checked).length;
+  } catch {
+    // Invalid JSON, defaults to 0
+  }
+
+  return {
+    ...card,
+    labels,
+    activity,
+    checklist_total: checklistTotal,
+    checklist_done: checklistDone
+  };
 }

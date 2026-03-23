@@ -7,8 +7,8 @@
     {"id": "AC1", "text": "Labels table (id, board_id, name, color, position) with UNIQUE(board_id, name); Card-Labels junction table with CASCADE deletes", "met": true},
     {"id": "AC2", "text": "Cards table gains description, due_date, start_date, checklist (JSON), created_at, updated_at columns — migration non-destructive", "met": true},
     {"id": "AC3", "text": "Activity table (id, card_id, board_id, action enum, detail JSON, timestamp) with CASCADE deletes", "met": true},
-    {"id": "AC4", "text": "Label CRUD endpoints: GET/POST/PATCH/DELETE under /api/boards/:boardId/labels with position ordering and duplicate name validation", "met": false},
-    {"id": "AC5", "text": "Card-Label assignment: POST/DELETE under /api/boards/:boardId/cards/:cardId/labels with 409 on duplicate, 404 if label not on board", "met": false},
+    {"id": "AC4", "text": "Label CRUD endpoints: GET/POST/PATCH/DELETE under /api/boards/:boardId/labels with position ordering and duplicate name validation", "met": true},
+    {"id": "AC5", "text": "Card-Label assignment: POST/DELETE under /api/boards/:boardId/cards/:cardId/labels with 409 on duplicate, 404 if label not on board", "met": true},
     {"id": "AC6", "text": "Enhanced PATCH /cards/:cardId accepts description, due_date, start_date, checklist, column_id; validates start_date <= due_date; creates activity entries on changes", "met": false},
     {"id": "AC7", "text": "GET /cards/:cardId returns full detail: labels array, activity log (last 50), checklist_total, checklist_done", "met": false},
     {"id": "AC8", "text": "GET /cards/:cardId/activity returns paginated activity (limit 50, offset param), newest first", "met": false},
@@ -22,9 +22,9 @@
     {"id": "AC16", "text": "All changes in card detail save immediately on blur/change (optimistic UI, no save button)", "met": false},
     {"id": "AC17", "text": "Empty/edge states handled: empty checklist placeholder, no labels prompt, no activity message, no search results message", "met": false}
   ],
-  "run_count": 1,
-  "current_focus": "database migration",
-  "last_run": "2026-03-23T12:00:00Z",
+  "run_count": 3,
+  "current_focus": "search and column reorder endpoints",
+  "last_run": "2026-03-23T19:30:00Z",
   "retry_count": 0,
   "blocked": false
 }
