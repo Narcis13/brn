@@ -16,8 +16,16 @@
       "summary": "Implemented enhanced card endpoints with dates, checklist, activity tracking, and full detail retrieval. Added comprehensive test coverage.",
       "acceptance_criteria_met": ["AC6", "AC7", "AC8"],
       "files_changed": 3
+    },
+    {
+      "run": 4,
+      "timestamp": "2026-03-23T18:26:32Z",
+      "focus": "search and column reorder endpoints",
+      "summary": "Completed AC9 and AC10 with board search, due-date filters, wildcard escaping, column reorder validation, and focused endpoint coverage.",
+      "acceptance_criteria_met": ["AC9", "AC10"],
+      "files_changed": 3
     }
   ],
-  "total_runs": 2,
+  "total_runs": 3,
   "status": "in_progress"
 }

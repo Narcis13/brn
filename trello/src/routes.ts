@@ -29,7 +29,10 @@ import {
   createActivity,
   getCardActivity,
   getCardDetail,
+  searchCards,
+  reorderColumns,
   type BoardRow,
+  type SearchDueFilter,
 } from "./db.ts";
 
 type Env = { Variables: { userId: string; username: string } };
@@ -44,6 +47,10 @@ function getVerifiedBoard(db: Database, boardId: string, userId: string): BoardR
   const board = getBoardById(db, boardId);
   if (!board || board.user_id !== userId) return null;
   return board;
+}
+
+function isSearchDueFilter(value: string): value is SearchDueFilter {
+  return value === "overdue" || value === "today" || value === "week" || value === "none";
 }
 
 export function createApp(db: Database): Hono<Env> {
@@ -192,6 +199,27 @@ export function createApp(db: Database): Hono<Env> {
     }
     const col = createColumn(db, board.id, body.title.trim());
     return c.json(col, 201);
+  });
+
+  app.patch("/api/boards/:boardId/columns/reorder", async (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{ column_ids?: unknown }>();
+    if (!body.column_ids || !Array.isArray(body.column_ids)) {
+      return c.json({ error: "column_ids array is required" }, 400);
+    }
+
+    if (!body.column_ids.every((id) => typeof id === "string")) {
+      return c.json({ error: "column_ids must be an array of strings" }, 400);
+    }
+
+    const success = reorderColumns(db, board.id, body.column_ids);
+    if (!success) {
+      return c.json({ error: "column_ids must match all existing columns for this board" }, 400);
+    }
+
+    return c.json({ ok: true });
   });
 
   app.patch("/api/boards/:boardId/columns/:id", async (c) => {
@@ -510,6 +538,37 @@ export function createApp(db: Database): Hono<Env> {
     
     const activity = getCardActivity(db, cardId, 50, offset);
     return c.json({ activity });
+  });
+
+  // --- Search route ---
+
+  app.get("/api/boards/:boardId/search", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const url = new URL(c.req.url);
+    const q = url.searchParams.get("q")?.trim() || undefined;
+    const labelId = url.searchParams.get("label") || undefined;
+    const dueParam = url.searchParams.get("due") || undefined;
+    
+    // Validate due parameter
+    let due: SearchDueFilter | undefined;
+    if (dueParam && isSearchDueFilter(dueParam)) {
+      due = dueParam;
+    } else if (dueParam) {
+      return c.json({ error: "invalid due parameter, must be one of: overdue, today, week, none" }, 400);
+    }
+    
+    // Validate label exists and belongs to board
+    if (labelId) {
+      const label = getLabelById(db, labelId);
+      if (!label || label.board_id !== board.id) {
+        return c.json({ error: "label not found" }, 404);
+      }
+    }
+    
+    const cards = searchCards(db, board.id, { q, labelId, due });
+    return c.json({ cards });
   });
 
   return app;

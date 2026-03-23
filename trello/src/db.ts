@@ -679,3 +679,152 @@ export function getCardDetail(db: Database, cardId: string): CardDetail | null {
     checklist_done: checklistDone
   };
 }
+
+// --- Search helpers ---
+
+function formatDateOnly(date: Date): string {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, "\\$&");
+}
+
+export type SearchDueFilter = "overdue" | "today" | "week" | "none";
+
+export interface CardSearchResult extends CardRow {
+  column_title: string;
+  labels: LabelRow[];
+}
+
+export function searchCards(
+  db: Database,
+  boardId: string,
+  params: {
+    q?: string;
+    labelId?: string;
+    due?: SearchDueFilter;
+  }
+): CardSearchResult[] {
+  let sql = `
+    SELECT DISTINCT 
+      c.id, c.title, c.description, c.position, c.column_id, c.created_at,
+      c.due_date, c.start_date, c.checklist, c.updated_at,
+      col.title as column_title
+    FROM cards c
+    JOIN columns col ON c.column_id = col.id
+    WHERE col.board_id = ?
+  `;
+  const sqlParams: (string | number)[] = [boardId];
+
+  // Text search in title or description
+  const query = params.q?.trim();
+  if (query) {
+    sql += " AND (LOWER(c.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(c.description) LIKE LOWER(?) ESCAPE '\\')";
+    const searchPattern = `%${escapeLikePattern(query)}%`;
+    sqlParams.push(searchPattern, searchPattern);
+  }
+
+  // Label filter
+  if (params.labelId) {
+    sql += " AND EXISTS (SELECT 1 FROM card_labels cl WHERE cl.card_id = c.id AND cl.label_id = ?)";
+    sqlParams.push(params.labelId);
+  }
+
+  // Due date filter
+  if (params.due) {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const todayStr = formatDateOnly(today);
+
+    switch (params.due) {
+      case "overdue":
+        sql += " AND c.due_date IS NOT NULL AND c.due_date < ?";
+        sqlParams.push(todayStr);
+        break;
+      case "today":
+        sql += " AND c.due_date = ?";
+        sqlParams.push(todayStr);
+        break;
+      case "week":
+        const weekFromNow = new Date(today);
+        weekFromNow.setDate(weekFromNow.getDate() + 7);
+        const weekStr = formatDateOnly(weekFromNow);
+        sql += " AND c.due_date IS NOT NULL AND c.due_date > ? AND c.due_date <= ?";
+        sqlParams.push(todayStr, weekStr);
+        break;
+      case "none":
+        sql += " AND c.due_date IS NULL";
+        break;
+    }
+  }
+
+  sql += " ORDER BY col.position, c.position";
+
+  const cards = db.query(sql).all(...sqlParams) as (CardRow & { column_title: string })[];
+
+  // Fetch labels for all cards
+  const cardIds = cards.map(c => c.id);
+  if (cardIds.length === 0) return [];
+
+  const placeholders = cardIds.map(() => "?").join(",");
+  const labels = db.query(`
+    SELECT cl.card_id, l.id, l.board_id, l.name, l.color, l.position
+    FROM card_labels cl
+    JOIN labels l ON cl.label_id = l.id
+    WHERE cl.card_id IN (${placeholders})
+    ORDER BY l.position
+  `).all(...cardIds) as (LabelRow & { card_id: string })[];
+
+  // Group labels by card
+  const labelsByCard = new Map<string, LabelRow[]>();
+  for (const labelWithCard of labels) {
+    const { card_id, ...label } = labelWithCard;
+    const list = labelsByCard.get(card_id) ?? [];
+    list.push(label);
+    labelsByCard.set(card_id, list);
+  }
+
+  // Combine cards with their labels
+  return cards.map(card => ({
+    ...card,
+    labels: labelsByCard.get(card.id) ?? []
+  }));
+}
+
+// --- Column reorder helpers ---
+
+export function reorderColumns(db: Database, boardId: string, columnIds: string[]): boolean {
+  // Verify all columns exist and belong to the board
+  const existing = db.query(
+    "SELECT id FROM columns WHERE board_id = ? ORDER BY position"
+  ).all(boardId) as { id: string }[];
+
+  const existingIds = existing.map(col => col.id);
+  const existingSet = new Set(existingIds);
+  const providedSet = new Set(columnIds);
+
+  // Check if all existing columns are in the provided list
+  if (
+    existingIds.length !== columnIds.length ||
+    providedSet.size !== columnIds.length ||
+    !columnIds.every((id) => existingSet.has(id))
+  ) {
+    return false;
+  }
+
+  // Update positions
+  const updateStmt = db.prepare("UPDATE columns SET position = ? WHERE id = ?");
+  for (let i = 0; i < columnIds.length; i++) {
+    const columnId = columnIds[i];
+    if (columnId === undefined) {
+      return false;
+    }
+    updateStmt.run(i, columnId);
+  }
+
+  return true;
+}

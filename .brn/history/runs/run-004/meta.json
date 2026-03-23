@@ -1,0 +1,58 @@
+{
+  "run": 4,
+  "timestamp": "2026-03-23T18:26:32Z",
+  "duration_ms": 393000,
+  "status": "completed",
+  "focus": "search and column reorder endpoints",
+  "acceptance_criteria_progress": {
+    "AC9": {
+      "before": false,
+      "after": true,
+      "notes": "Implemented board search with text, label, and due buckets, plus explicit SQLite wildcard escaping."
+    },
+    "AC10": {
+      "before": false,
+      "after": true,
+      "notes": "Implemented column reorder validation and fixed route precedence so the endpoint resolves before /columns/:id."
+    }
+  },
+  "files": {
+    "modified": [
+      "/trello/src/db.ts",
+      "/trello/src/routes.ts",
+      "/.brn/state.json",
+      "/.brn/history/index.json"
+    ],
+    "created": [
+      "/trello/src/routes-search-reorder.test.ts",
+      "/.brn/history/runs/run-004/prompt.md",
+      "/.brn/history/runs/run-004/output.md",
+      "/.brn/history/runs/run-004/narrative.md",
+      "/.brn/history/runs/run-004/verification.md",
+      "/.brn/history/runs/run-004/meta.json",
+      "/.brn/vault/patterns/sqlite-like-search-escaping.md",
+      "/.brn/vault/anti-patterns/hono-static-route-shadowing.md",
+      "/.brn/vault/codebase/local-date-only-filters.md"
+    ]
+  },
+  "verification": {
+    "tests": {
+      "command": "bun test",
+      "passed": 93,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bunx tsc --noEmit",
+      "passed": true
+    },
+    "build": {
+      "command": "cd trello && bun run build.ts",
+      "passed": true
+    }
+  },
+  "state_repairs": [
+    "Marked AC6-AC8 met in state.json to match already-verified run-002 backend work.",
+    "Replaced a stale future last_run value with the completed timestamp from run-004."
+  ],
+  "summary": "Completed the rich-cards backend search and column reorder slice, hardened date/filter behavior, and verified the full repository successfully."
+}
