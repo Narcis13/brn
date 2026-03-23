@@ -17,6 +17,14 @@ import {
   createCard,
   updateCard,
   deleteCard,
+  getBoardLabels,
+  getLabelById,
+  createLabel,
+  updateLabel,
+  deleteLabel,
+  getCardLabels,
+  assignLabelToCard,
+  removeLabelFromCard,
   type BoardRow,
 } from "./db.ts";
 
@@ -287,6 +295,140 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     deleteCard(db, cardId);
+    return c.json({ ok: true });
+  });
+
+  // --- Label routes ---
+
+  app.get("/api/boards/:boardId/labels", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    const labels = getBoardLabels(db, board.id);
+    return c.json({ labels });
+  });
+
+  app.post("/api/boards/:boardId/labels", async (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const body = await c.req.json<{ name?: string; color?: string }>();
+    if (!body.name || body.name.trim() === "" || body.name.length > 30) {
+      return c.json({ error: "name is required and must be 30 characters or less" }, 400);
+    }
+    if (!body.color || !/^#[0-9a-fA-F]{6}$/.test(body.color)) {
+      return c.json({ error: "color must be a valid hex color (e.g., #e74c3c)" }, 400);
+    }
+    
+    try {
+      const label = createLabel(db, board.id, body.name.trim(), body.color);
+      return c.json(label, 201);
+    } catch (err) {
+      // UNIQUE constraint violation
+      return c.json({ error: "A label with this name already exists on this board" }, 400);
+    }
+  });
+
+  app.patch("/api/boards/:boardId/labels/:labelId", async (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const labelId = c.req.param("labelId");
+    const existing = getLabelById(db, labelId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "label not found" }, 404);
+    }
+    
+    const body = await c.req.json<{ name?: string; color?: string; position?: number }>();
+    
+    if (body.name !== undefined && (body.name.trim() === "" || body.name.length > 30)) {
+      return c.json({ error: "name must be 30 characters or less and not empty" }, 400);
+    }
+    if (body.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(body.color)) {
+      return c.json({ error: "color must be a valid hex color (e.g., #e74c3c)" }, 400);
+    }
+    
+    try {
+      const label = updateLabel(db, labelId, {
+        name: body.name?.trim(),
+        color: body.color,
+        position: body.position,
+      });
+      return c.json(label);
+    } catch (err) {
+      // UNIQUE constraint violation
+      return c.json({ error: "A label with this name already exists on this board" }, 400);
+    }
+  });
+
+  app.delete("/api/boards/:boardId/labels/:labelId", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const labelId = c.req.param("labelId");
+    const existing = getLabelById(db, labelId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "label not found" }, 404);
+    }
+    
+    deleteLabel(db, labelId);
+    return c.json({ ok: true });
+  });
+
+  // --- Card-Label assignment routes ---
+
+  app.post("/api/boards/:boardId/cards/:cardId/labels", async (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+    
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+    
+    const body = await c.req.json<{ labelId?: string }>();
+    if (!body.labelId) {
+      return c.json({ error: "labelId is required" }, 400);
+    }
+    
+    // Verify label belongs to this board
+    const label = getLabelById(db, body.labelId);
+    if (!label || label.board_id !== board.id) {
+      return c.json({ error: "label not found on this board" }, 404);
+    }
+    
+    const success = assignLabelToCard(db, cardId, body.labelId);
+    if (!success) {
+      return c.json({ error: "label already assigned to card" }, 409);
+    }
+    
+    return c.json({ ok: true }, 201);
+  });
+
+  app.delete("/api/boards/:boardId/cards/:cardId/labels/:labelId", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+    
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+    
+    const labelId = c.req.param("labelId");
+    const removed = removeLabelFromCard(db, cardId, labelId);
+    if (!removed) {
+      return c.json({ error: "label not assigned to card" }, 404);
+    }
+    
     return c.json({ ok: true });
   });
 

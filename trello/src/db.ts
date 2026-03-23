@@ -412,3 +412,117 @@ export function deleteCard(db: Database, id: string): boolean {
   ).run(existing.column_id, existing.position);
   return true;
 }
+
+// --- Label helpers ---
+
+export function getBoardLabels(db: Database, boardId: string): LabelRow[] {
+  return db.query(
+    "SELECT id, board_id, name, color, position FROM labels WHERE board_id = ? ORDER BY position"
+  ).all(boardId) as LabelRow[];
+}
+
+export function getLabelById(db: Database, id: string): LabelRow | null {
+  return db.query("SELECT id, board_id, name, color, position FROM labels WHERE id = ?").get(
+    id
+  ) as LabelRow | null;
+}
+
+export function createLabel(db: Database, boardId: string, name: string, color: string): LabelRow {
+  const id = nanoid();
+  
+  // Get next position
+  const result = db.query(
+    "SELECT MAX(position) as maxPos FROM labels WHERE board_id = ?"
+  ).get(boardId) as { maxPos: number | null };
+  const position = (result.maxPos ?? -1) + 1;
+  
+  db.query(
+    "INSERT INTO labels (id, board_id, name, color, position) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, boardId, name, color, position);
+  
+  return db.query(
+    "SELECT id, board_id, name, color, position FROM labels WHERE id = ?"
+  ).get(id) as LabelRow;
+}
+
+export function updateLabel(
+  db: Database,
+  id: string,
+  updates: { name?: string; color?: string; position?: number }
+): LabelRow | null {
+  const existing = db.query(
+    "SELECT id, board_id, name, color, position FROM labels WHERE id = ?"
+  ).get(id) as LabelRow | null;
+  if (!existing) return null;
+  
+  const newName = updates.name ?? existing.name;
+  const newColor = updates.color ?? existing.color;
+  const newPosition = updates.position ?? existing.position;
+  
+  // Handle position reordering if position changed
+  if (updates.position !== undefined && newPosition !== existing.position) {
+    // Remove from current position
+    db.query(
+      "UPDATE labels SET position = position - 1 WHERE board_id = ? AND position > ?"
+    ).run(existing.board_id, existing.position);
+    
+    // Make room at new position
+    db.query(
+      "UPDATE labels SET position = position + 1 WHERE board_id = ? AND position >= ?"
+    ).run(existing.board_id, newPosition);
+  }
+  
+  db.query(
+    "UPDATE labels SET name = ?, color = ?, position = ? WHERE id = ?"
+  ).run(newName, newColor, newPosition, id);
+  
+  return db.query(
+    "SELECT id, board_id, name, color, position FROM labels WHERE id = ?"
+  ).get(id) as LabelRow;
+}
+
+export function deleteLabel(db: Database, id: string): boolean {
+  const existing = db.query(
+    "SELECT id, board_id, position FROM labels WHERE id = ?"
+  ).get(id) as { id: string; board_id: string; position: number } | null;
+  if (!existing) return false;
+  
+  // Delete label (cascade will remove card-label associations)
+  db.query("DELETE FROM labels WHERE id = ?").run(id);
+  
+  // Update positions
+  db.query(
+    "UPDATE labels SET position = position - 1 WHERE board_id = ? AND position > ?"
+  ).run(existing.board_id, existing.position);
+  
+  return true;
+}
+
+// --- Card-Label helpers ---
+
+export function getCardLabels(db: Database, cardId: string): LabelRow[] {
+  return db.query(
+    `SELECT l.id, l.board_id, l.name, l.color, l.position 
+     FROM labels l 
+     JOIN card_labels cl ON l.id = cl.label_id 
+     WHERE cl.card_id = ? 
+     ORDER BY l.position`
+  ).all(cardId) as LabelRow[];
+}
+
+export function assignLabelToCard(db: Database, cardId: string, labelId: string): boolean {
+  try {
+    db.query("INSERT INTO card_labels (card_id, label_id) VALUES (?, ?)").run(cardId, labelId);
+    return true;
+  } catch (err) {
+    // Will fail if already assigned (unique constraint) or if card/label doesn't exist (FK constraint)
+    return false;
+  }
+}
+
+export function removeLabelFromCard(db: Database, cardId: string, labelId: string): boolean {
+  const result = db.query(
+    "DELETE FROM card_labels WHERE card_id = ? AND label_id = ?"
+  ).run(cardId, labelId);
+  return result.changes > 0;
+}

@@ -3,3 +3,17 @@ Feature: rich-cards
 Started: Mon Mar 23 18:52:58 EET 2026
 
 [18:52:58] ━━━ Run 1 starting ━━━
+## Summary
+
+Run 001 completed successfully. Database migration for the rich-cards feature has been implemented:
+
+- ✅ Created labels, card_labels, and activity tables
+- ✅ Enhanced cards table with new columns (due_date, start_date, checklist, updated_at)  
+- ✅ Migration is non-destructive and idempotent
+- ✅ All tests pass (35 total, 2 new)
+- ✅ AC1, AC2, AC3 completed
+
+Next run should focus on implementing label CRUD API endpoints (AC4).
+[19:00:33] Run 1 finished in 455s | AC: 3/17 | Vault: 11 entries | Status: in_progress
+
+[19:00:43] ━━━ Run 2 starting ━━━
