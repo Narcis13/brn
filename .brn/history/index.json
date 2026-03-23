@@ -1,14 +1,1 @@
-[
-  {
-    "id": "run-001",
-    "timestamp": "2026-03-23T00:00:00Z",
-    "status": "success",
-    "focus": "Backend: database schema, API endpoints, server, auto-seeding"
-  },
-  {
-    "id": "run-002",
-    "timestamp": "2026-03-23T01:00:00Z",
-    "status": "success",
-    "focus": "Frontend: React kanban board UI with columns, cards, drag-and-drop, card modal, column management, styling"
-  }
-]
+[]
