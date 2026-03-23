@@ -1,14 +1,24 @@
 [
   {
     "id": "run-001",
-    "timestamp": "2026-03-22T00:00:00Z",
+    "timestamp": "2026-03-23T14:36:42Z",
     "status": "success",
-    "focus": "Backend: project setup, DB, API routes, tests"
+    "focus": "Complete backend — auth, boards, scoped endpoints",
+    "summary": "Built entire backend: users/boards tables, JWT auth (register/login/me), auth middleware, board CRUD with column seeding, scoped column/card endpoints with board ownership verification. 31 tests pass, types clean.",
+    "ac_met": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7", "AC8", "AC9"],
+    "ac_progress": "9/13",
+    "vault_entries_added": 3,
+    "files_changed": 3
   },
   {
     "id": "run-002",
-    "timestamp": "2026-03-22T12:00:00Z",
+    "timestamp": "2026-03-23T15:03:19Z",
     "status": "success",
-    "focus": "React SPA: full frontend with styled UI, search, tag filtering, all states"
+    "focus": "Frontend — auth UI, board list, scoped board view (AC10-AC13)",
+    "summary": "Built complete frontend: login/register page with validation, board list dashboard with create/delete, kanban board view scoped to boardId, token management with localStorage and 401 redirect. All 13/13 AC met.",
+    "ac_met": ["AC10", "AC11", "AC12", "AC13"],
+    "ac_progress": "13/13",
+    "vault_entries_added": 2,
+    "files_changed": 7
   }
 ]

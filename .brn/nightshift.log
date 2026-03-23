@@ -1,0 +1,61 @@
+**Run 1 complete.** Backend is done — AC1 through AC5 met.
+
+| Criteria | Status |
+|----------|--------|
+| AC1: SQLite schema (columns + cards, FK, cascade) | met |
+| AC2: GET /api/columns with nested cards | met |
+| AC3: Column CRUD with auto-position | met |
+| AC4: Card CRUD with reordering | met |
+| AC5: Auto-seed 3 default columns | met |
+| AC6-AC10: Frontend (UI, modal, drag-drop, column mgmt, edge cases) | next |
+
+19 tests passing, types clean. Next `/next` will build the React frontend with styled kanban board UI.
+**Run 002 complete. Feature done.**
+
+All 10 acceptance criteria met in 2 runs:
+- **Run 001**: Backend — SQLite schema, API endpoints, auto-seeding
+- **Run 002**: Frontend — React board, drag-and-drop, card modal, column management, full Trello-like styling
+
+PR created: https://github.com/Narcis13/brn/pull/2
+
+Start with `bun run trello/src/index.ts` and open http://localhost:3001 to verify.
+=== BRN NIGHT SHIFT ===
+Feature: auth-and-boards
+Started: Mon Mar 23 14:29:19 EET 2026
+
+[14:29:19] ━━━ Run 1 starting ━━━
+**Run 001 complete.** 
+
+**Results:** 9/13 acceptance criteria met (AC1-AC9). 31 tests passing, types clean.
+
+**What was built:**
+- Database: users + boards tables, board_id on columns, cascading deletes
+- Auth: JWT register/login/me with `hono/jwt` + `Bun.password`
+- Middleware: protects all `/api/*` except auth routes
+- Boards: list (user-scoped), create (seeds 3 columns), delete (cascades)
+- Scoped endpoints: all column/card routes under `/api/boards/:boardId/*` with ownership checks
+
+**One fix during run:** `hono/jwt`'s `verify()` now requires explicit algorithm (`"HS256"`) — caught and resolved via tests.
+
+**Next run (002):** Frontend — Login/Register UI, Board list dashboard, scoped Board view with navigation (AC10-AC13).
+[14:41:53] Run 1 finished in 754s | AC: 9/13 | Vault: 7 entries | Status: in-progress
+
+[14:42:03] ━━━ Run 2 starting ━━━
+**Feature complete: auth-and-boards — 13/13 AC met in 2 runs.**
+
+**Run 002 summary:**
+- Built the complete frontend in one step: login/register page, board list dashboard, scoped kanban board view, and token management
+- 3 new components (`LoginPage`, `BoardList`, `BoardView`), rewrote `App.tsx` with auth state machine, rewrote `api.ts` with token injection and board-scoped routes
+- 31 tests pass, types clean, build clean
+- PR created: https://github.com/Narcis13/brn/pull/3
+
+Next `/next` will archive this feature and pick up the next `ready` spec.
+[14:51:10] Run 2 finished in 547s | AC: 13/13 | Vault: 9 entries | Status: done
+
+[14:51:10] ✓ FEATURE COMPLETE in 2 runs (1311s total)
+
+=== NIGHT SHIFT ENDED ===
+Total runs: 2
+Total time: 1311s
+Final status: done
+Vault entries: 9
