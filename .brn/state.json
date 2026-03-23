@@ -2,7 +2,7 @@
   "feature": "rich-cards",
   "spec": "feature-rich-cards.md",
   "branch": "feat/rich-cards",
-  "status": "in_progress",
+  "status": "done",
   "acceptance_criteria": [
     {"id": "AC1", "text": "Labels table (id, board_id, name, color, position) with UNIQUE(board_id, name); Card-Labels junction table with CASCADE deletes", "met": true},
     {"id": "AC2", "text": "Cards table gains description, due_date, start_date, checklist (JSON), created_at, updated_at columns — migration non-destructive", "met": true},
@@ -16,15 +16,15 @@
     {"id": "AC10", "text": "PATCH /boards/:boardId/columns/reorder accepts column_ids array, reassigns positions, 400 on mismatch", "met": true},
     {"id": "AC11", "text": "Card Detail Modal: opens on card click, full-width (max 700px), editable title, labels, dates, description with formatting, checklist with progress bar, activity log, close via X/Escape/backdrop", "met": true},
     {"id": "AC12", "text": "Board card face shows: label color dots, due date badge (red/orange/yellow/gray by status), checklist progress mini bar", "met": true},
-    {"id": "AC13", "text": "Column drag-reorder using HTML5 drag-and-drop on column headers", "met": false},
-    {"id": "AC14", "text": "Search bar above columns with real-time client-side filtering and debounced API search; filter bar with label pills toggle", "met": false},
+    {"id": "AC13", "text": "Column drag-reorder using HTML5 drag-and-drop on column headers", "met": true},
+    {"id": "AC14", "text": "Search bar above columns with real-time client-side filtering and debounced API search; filter bar with label pills toggle", "met": true},
     {"id": "AC15", "text": "Label Picker in card detail: dropdown with color swatches, create new label with preset palette, toggle assignment, checkmarks on assigned", "met": true},
     {"id": "AC16", "text": "All changes in card detail save immediately on blur/change (optimistic UI, no save button)", "met": true},
-    {"id": "AC17", "text": "Empty/edge states handled: empty checklist placeholder, no labels prompt, no activity message, no search results message", "met": false}
+    {"id": "AC17", "text": "Empty/edge states handled: empty checklist placeholder, no labels prompt, no activity message, no search results message", "met": true}
   ],
-  "run_count": 5,
-  "current_focus": "board-level search and filter UI plus column drag-reordering",
-  "last_run": "2026-03-23T19:12:33Z",
+  "run_count": 6,
+  "current_focus": "feature complete",
+  "last_run": "2026-03-23T19:29:09Z",
   "retry_count": 0,
   "blocked": false
 }

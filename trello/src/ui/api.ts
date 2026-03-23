@@ -44,6 +44,10 @@ export interface CardDetail extends BoardCard {
   activity: Activity[];
 }
 
+export interface SearchCard extends BoardCard {
+  column_title: string;
+}
+
 export interface Column {
   id: string;
   title: string;
@@ -193,6 +197,16 @@ export function deleteColumn(
   return request(`/boards/${boardId}/columns/${id}`, { method: "DELETE" });
 }
 
+export function reorderColumns(
+  boardId: string,
+  columnIds: string[]
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/columns/reorder`, {
+    method: "PATCH",
+    body: JSON.stringify({ column_ids: columnIds }),
+  });
+}
+
 // --- Cards (board-scoped) ---
 
 export function createCard(
@@ -244,6 +258,27 @@ export function fetchBoardLabels(
   boardId: string
 ): Promise<{ labels: Label[] }> {
   return request(`/boards/${boardId}/labels`);
+}
+
+export function searchBoard(
+  boardId: string,
+  filters: { q?: string; labelId?: string },
+  signal?: AbortSignal
+): Promise<{ cards: SearchCard[] }> {
+  const params = new URLSearchParams();
+
+  if (filters.q && filters.q.trim() !== "") {
+    params.set("q", filters.q.trim());
+  }
+
+  if (filters.labelId) {
+    params.set("label", filters.labelId);
+  }
+
+  const query = params.toString();
+  return request(`/boards/${boardId}/search${query ? `?${query}` : ""}`, {
+    signal,
+  });
 }
 
 export function createLabel(

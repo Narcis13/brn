@@ -1,6 +1,6 @@
 ---
 title: Rich Cards & Real Workflow — Transform cards from title-only stubs into full productivity objects with labels, due dates, checklists, descriptions, activity tracking, search, and column reordering
-status: active
+status: done
 priority: high
 ---
 

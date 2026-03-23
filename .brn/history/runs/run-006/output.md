@@ -1,0 +1,1 @@
+Completed the remaining `rich-cards` board-surface work. This run added board-level search and label filtering with instant local visibility updates plus a debounced `/search` reconciliation call, introduced a centered no-results state, and finished HTML5 column drag-reordering with optimistic local ordering backed by the existing reorder endpoint.

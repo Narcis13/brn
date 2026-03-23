@@ -32,8 +32,16 @@
       "summary": "Completed the frontend rich-card slice with an optimistic card detail modal, richer board card summaries, and updated board styling.",
       "acceptance_criteria_met": ["AC11", "AC12", "AC15", "AC16"],
       "files_changed": 8
+    },
+    {
+      "run": 6,
+      "timestamp": "2026-03-23T19:29:09Z",
+      "focus": "board search/filter UX and column drag-reordering",
+      "summary": "Finished the board workspace controls with instant local filtering, debounced server search reconciliation, label-pill toggles, a no-results state, and optimistic column drag-reordering.",
+      "acceptance_criteria_met": ["AC13", "AC14", "AC17"],
+      "files_changed": 10
     }
   ],
-  "total_runs": 4,
-  "status": "in_progress"
+  "total_runs": 5,
+  "status": "done"
 }
