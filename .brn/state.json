@@ -2,7 +2,7 @@
   "feature": "auth-and-boards",
   "spec": "feature-auth-and-boards.md",
   "branch": "feat/auth-and-boards",
-  "status": "in-progress",
+  "status": "done",
   "acceptance_criteria": [
     { "id": "AC1", "text": "Users table in SQLite with id, username (unique), password_hash, created_at", "met": true },
     { "id": "AC2", "text": "Boards table with id, title, user_id (FK → users), created_at; columns table gains board_id (FK → boards); all cascading deletes", "met": true },
@@ -13,14 +13,14 @@
     { "id": "AC7", "text": "GET /api/boards — lists authenticated user's boards ordered by created_at desc", "met": true },
     { "id": "AC8", "text": "POST /api/boards — creates board with title, seeds 3 default columns; DELETE /api/boards/:id cascades", "met": true },
     { "id": "AC9", "text": "Column/card endpoints scoped to /api/boards/:boardId/*; old flat routes removed; board ownership verified", "met": true },
-    { "id": "AC10", "text": "Login/Register UI: centered card, toggle between forms, validation errors, username-taken/wrong-credentials feedback", "met": false },
-    { "id": "AC11", "text": "Board list page: responsive grid of boards, New Board button, delete with confirmation, empty state message, username + logout in header", "met": false },
-    { "id": "AC12", "text": "Board view: existing kanban scoped to selected board, back button/breadcrumb, board title in header", "met": false },
-    { "id": "AC13", "text": "Token stored in localStorage, sent in all API requests, 401 clears token and redirects to login, survives page refresh", "met": false }
+    { "id": "AC10", "text": "Login/Register UI: centered card, toggle between forms, validation errors, username-taken/wrong-credentials feedback", "met": true },
+    { "id": "AC11", "text": "Board list page: responsive grid of boards, New Board button, delete with confirmation, empty state message, username + logout in header", "met": true },
+    { "id": "AC12", "text": "Board view: existing kanban scoped to selected board, back button/breadcrumb, board title in header", "met": true },
+    { "id": "AC13", "text": "Token stored in localStorage, sent in all API requests, 401 clears token and redirects to login, survives page refresh", "met": true }
   ],
-  "run_count": 1,
-  "current_focus": "Frontend: Login/Register UI, Board list dashboard, scoped Board view (AC10-AC13)",
-  "last_run": "run-001",
+  "run_count": 2,
+  "current_focus": null,
+  "last_run": "run-002",
   "retry_count": 0,
   "blocked": false
 }

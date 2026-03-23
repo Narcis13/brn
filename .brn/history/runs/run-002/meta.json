@@ -1,0 +1,41 @@
+{
+  "id": "run-002",
+  "timestamp": "2026-03-23T15:03:19Z",
+  "duration_seconds": 296,
+  "status": "success",
+  "focus": "Frontend — auth UI, board list, scoped board view (AC10-AC13)",
+  "summary": "Built complete frontend: login/register page with validation, board list dashboard with create/delete, kanban board view scoped to boardId, token management with localStorage and 401 redirect. All 13/13 acceptance criteria now met.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [
+    "trello/src/ui/LoginPage.tsx",
+    "trello/src/ui/BoardList.tsx",
+    "trello/src/ui/BoardView.tsx"
+  ],
+  "files_modified": [
+    "trello/src/ui/api.ts",
+    "trello/src/ui/App.tsx",
+    "trello/public/styles.css",
+    "trello/public/index.html"
+  ],
+  "files_deleted": [],
+  "tests": {
+    "passed": 31,
+    "failed": 0,
+    "skipped": 0,
+    "total": 31
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC10", "AC11", "AC12", "AC13"],
+  "acceptance_criteria_progress": "13/13",
+  "vault_updates": [
+    "patterns/react-auth-state-machine.md",
+    "decisions/inline-board-creation.md"
+  ],
+  "retry": false,
+  "challenges": "Clean extraction of old App.tsx into BoardView.tsx with boardId-scoped API calls",
+  "next_focus": "Feature complete — create PR"
+}

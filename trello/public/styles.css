@@ -20,6 +20,31 @@ body {
 .app-header {
   background-color: rgba(0, 0, 0, 0.15);
   padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.header-back {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fff;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.header-back:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .app-header h1 {
@@ -27,6 +52,279 @@ body {
   font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.5px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header-username {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* === Auth Page === */
+.auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0079bf 0%, #026aa7 100%);
+}
+
+.auth-loading {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+}
+
+.auth-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 32px;
+  width: 380px;
+  max-width: 90vw;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.auth-card h2 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #172b4d;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.auth-card label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5e6c84;
+  margin-bottom: 4px;
+  margin-top: 16px;
+}
+
+.auth-card label:first-of-type {
+  margin-top: 0;
+}
+
+.auth-card input[type="text"],
+.auth-card input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 2px solid #dfe1e6;
+  border-radius: 6px;
+  outline: none;
+  color: #172b4d;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.auth-card input[type="text"]:focus,
+.auth-card input[type="password"]:focus {
+  border-color: #0079bf;
+}
+
+.auth-error {
+  color: #eb5a46;
+  font-size: 13px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #fff0f0;
+  border-radius: 6px;
+  border: 1px solid #ffcdd2;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px 20px;
+  font-size: 15px;
+}
+
+.auth-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.auth-toggle {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 13px;
+  color: #5e6c84;
+}
+
+.auth-toggle-btn {
+  background: none;
+  border: none;
+  color: #0079bf;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.auth-toggle-btn:hover {
+  color: #026aa7;
+}
+
+/* === Board List === */
+.board-list-page {
+  padding: 24px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.board-list-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 52px);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+}
+
+.board-list-error {
+  color: #fff;
+  background: #eb5a46;
+  padding: 10px 16px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 14px;
+}
+
+.board-list-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.board-card {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+  min-height: 100px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.board-card:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.board-card-title {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.board-card-date {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.board-card-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.board-card:hover .board-card-delete {
+  opacity: 1;
+}
+
+.board-card-delete:hover {
+  color: #fff;
+  background: rgba(235, 90, 70, 0.7);
+}
+
+/* New board card */
+.board-card-new {
+  border: 2px dashed rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-card-new p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.board-card-new:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.board-card-new:hover p {
+  color: #fff;
+}
+
+/* New board form */
+.board-card-new-form {
+  cursor: default;
+}
+
+.board-card-new-form:hover {
+  transform: none;
+}
+
+.board-new-input {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  outline: none;
+  font-family: inherit;
+}
+
+.board-new-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.board-new-input:focus {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.board-new-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.board-list-empty {
+  color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  font-size: 16px;
+  margin-top: 32px;
 }
 
 /* === Board === */
@@ -345,6 +643,11 @@ body {
   background-color: #ebecf0;
 }
 
+.btn-sm {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
 .btn-danger {
   background-color: #eb5a46;
   color: #fff;
@@ -391,5 +694,18 @@ body {
   .modal {
     width: 95vw;
     padding: 16px;
+  }
+
+  .auth-card {
+    padding: 24px;
+  }
+
+  .board-list-page {
+    padding: 16px;
+  }
+
+  .board-list-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
   }
 }
