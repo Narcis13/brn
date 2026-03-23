@@ -1,0 +1,12 @@
+**Run 1 complete.** Backend is done — AC1 through AC5 met.
+
+| Criteria | Status |
+|----------|--------|
+| AC1: SQLite schema (columns + cards, FK, cascade) | met |
+| AC2: GET /api/columns with nested cards | met |
+| AC3: Column CRUD with auto-position | met |
+| AC4: Card CRUD with reordering | met |
+| AC5: Auto-seed 3 default columns | met |
+| AC6-AC10: Frontend (UI, modal, drag-drop, column mgmt, edge cases) | next |
+
+19 tests passing, types clean. Next `/next` will build the React frontend with styled kanban board UI.

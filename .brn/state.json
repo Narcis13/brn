@@ -2,7 +2,7 @@
   "feature": "mini-trello",
   "spec": "feature-mini-trello.md",
   "branch": "feat/mini-trello",
-  "status": "in_progress",
+  "status": "done",
   "acceptance_criteria": [
     { "id": "AC1", "text": "SQLite database at trello/data/kanban.db with columns and cards tables (correct schema, FK, cascade delete)", "met": true },
     { "id": "AC2", "text": "GET /api/columns returns all columns with nested cards ordered by position", "met": true },
