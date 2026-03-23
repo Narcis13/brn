@@ -24,8 +24,16 @@
       "summary": "Completed AC9 and AC10 with board search, due-date filters, wildcard escaping, column reorder validation, and focused endpoint coverage.",
       "acceptance_criteria_met": ["AC9", "AC10"],
       "files_changed": 3
+    },
+    {
+      "run": 5,
+      "timestamp": "2026-03-23T19:12:33Z",
+      "focus": "frontend card detail modal and board card face enhancements",
+      "summary": "Completed the frontend rich-card slice with an optimistic card detail modal, richer board card summaries, and updated board styling.",
+      "acceptance_criteria_met": ["AC11", "AC12", "AC15", "AC16"],
+      "files_changed": 8
     }
   ],
-  "total_runs": 3,
+  "total_runs": 4,
   "status": "in_progress"
 }

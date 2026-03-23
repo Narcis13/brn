@@ -174,8 +174,14 @@ export interface CardRow {
   updated_at: string;
 }
 
+export interface BoardCard extends CardRow {
+  labels: LabelRow[];
+  checklist_total: number;
+  checklist_done: number;
+}
+
 export interface ColumnWithCards extends ColumnRow {
-  cards: CardRow[];
+  cards: BoardCard[];
 }
 
 export interface LabelRow {
@@ -287,9 +293,19 @@ export function getAllColumns(db: Database, boardId: string): ColumnWithCards[] 
     cardsByColumn.set(card.column_id, list);
   }
 
+  const labelsByCard = getLabelsByCardId(db, cards.map((card) => card.id));
+
   return cols.map((col) => ({
     ...col,
-    cards: cardsByColumn.get(col.id) ?? [],
+    cards: (cardsByColumn.get(col.id) ?? []).map((card) => {
+      const checklistStats = getChecklistStats(card.checklist);
+      return {
+        ...card,
+        labels: labelsByCard.get(card.id) ?? [],
+        checklist_total: checklistStats.total,
+        checklist_done: checklistStats.done,
+      };
+    }),
   }));
 }
 
@@ -582,6 +598,56 @@ export function getCardActivity(
   ).all(cardId, limit, offset) as ActivityRow[];
 }
 
+function getLabelsByCardId(
+  db: Database,
+  cardIds: string[]
+): Map<string, LabelRow[]> {
+  const labelsByCard = new Map<string, LabelRow[]>();
+  if (cardIds.length === 0) {
+    return labelsByCard;
+  }
+
+  const placeholders = cardIds.map(() => "?").join(",");
+  const labels = db.query(`
+    SELECT cl.card_id, l.id, l.board_id, l.name, l.color, l.position
+    FROM card_labels cl
+    JOIN labels l ON cl.label_id = l.id
+    WHERE cl.card_id IN (${placeholders})
+    ORDER BY l.position
+  `).all(...cardIds) as (LabelRow & { card_id: string })[];
+
+  for (const labelWithCard of labels) {
+    const { card_id, ...label } = labelWithCard;
+    const list = labelsByCard.get(card_id) ?? [];
+    list.push(label);
+    labelsByCard.set(card_id, list);
+  }
+
+  return labelsByCard;
+}
+
+function getChecklistStats(checklistJson: string): {
+  total: number;
+  done: number;
+} {
+  try {
+    const checklist = JSON.parse(checklistJson) as Array<{
+      id: string;
+      text: string;
+      checked: boolean;
+    }>;
+    return {
+      total: checklist.length,
+      done: checklist.filter((item) => item.checked).length,
+    };
+  } catch {
+    return {
+      total: 0,
+      done: 0,
+    };
+  }
+}
+
 export function updateCardWithActivity(
   db: Database,
   id: string,
@@ -660,23 +726,14 @@ export function getCardDetail(db: Database, cardId: string): CardDetail | null {
   const labels = getCardLabels(db, cardId);
   const activity = getCardActivity(db, cardId, 50); // Last 50 entries
 
-  // Parse checklist to compute total/done
-  let checklistTotal = 0;
-  let checklistDone = 0;
-  try {
-    const checklist = JSON.parse(card.checklist) as Array<{ id: string; text: string; checked: boolean }>;
-    checklistTotal = checklist.length;
-    checklistDone = checklist.filter(item => item.checked).length;
-  } catch {
-    // Invalid JSON, defaults to 0
-  }
+  const checklistStats = getChecklistStats(card.checklist);
 
   return {
     ...card,
     labels,
     activity,
-    checklist_total: checklistTotal,
-    checklist_done: checklistDone
+    checklist_total: checklistStats.total,
+    checklist_done: checklistStats.done
   };
 }
 
@@ -769,24 +826,7 @@ export function searchCards(
   // Fetch labels for all cards
   const cardIds = cards.map(c => c.id);
   if (cardIds.length === 0) return [];
-
-  const placeholders = cardIds.map(() => "?").join(",");
-  const labels = db.query(`
-    SELECT cl.card_id, l.id, l.board_id, l.name, l.color, l.position
-    FROM card_labels cl
-    JOIN labels l ON cl.label_id = l.id
-    WHERE cl.card_id IN (${placeholders})
-    ORDER BY l.position
-  `).all(...cardIds) as (LabelRow & { card_id: string })[];
-
-  // Group labels by card
-  const labelsByCard = new Map<string, LabelRow[]>();
-  for (const labelWithCard of labels) {
-    const { card_id, ...label } = labelWithCard;
-    const list = labelsByCard.get(card_id) ?? [];
-    list.push(label);
-    labelsByCard.set(card_id, list);
-  }
+  const labelsByCard = getLabelsByCardId(db, cardIds);
 
   // Combine cards with their labels
   return cards.map(card => ({

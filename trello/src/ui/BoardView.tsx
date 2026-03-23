@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { Column, Card } from "./api.ts";
+import type { Column, BoardCard, CardDetail } from "./api.ts";
 import * as api from "./api.ts";
+import { getDueBadge } from "./card-utils.ts";
 import { CardModal } from "./CardModal.tsx";
 
 interface BoardViewProps {
@@ -9,8 +10,56 @@ interface BoardViewProps {
 
 interface ModalState {
   open: boolean;
-  card: Card | null;
+  card: BoardCard | null;
   columnId: string;
+}
+
+function toBoardCard(card: BoardCard | CardDetail): BoardCard {
+  return {
+    id: card.id,
+    title: card.title,
+    description: card.description,
+    position: card.position,
+    column_id: card.column_id,
+    created_at: card.created_at,
+    due_date: card.due_date,
+    start_date: card.start_date,
+    checklist: card.checklist,
+    updated_at: card.updated_at,
+    labels: card.labels,
+    checklist_total: card.checklist_total,
+    checklist_done: card.checklist_done,
+  };
+}
+
+function replaceCardInColumns(
+  columns: Column[],
+  nextCard: BoardCard | CardDetail
+): Column[] {
+  const summary = toBoardCard(nextCard);
+
+  return columns.map((column) => {
+    const remainingCards = column.cards.filter((card) => card.id !== summary.id);
+    if (column.id !== summary.column_id) {
+      if (remainingCards.length === column.cards.length) {
+        return column;
+      }
+      return { ...column, cards: remainingCards };
+    }
+
+    return {
+      ...column,
+      cards: [...remainingCards, summary].sort((left, right) => left.position - right.position),
+    };
+  });
+}
+
+function truncateDescription(description: string): string {
+  const trimmed = description.trim();
+  if (trimmed.length <= 88) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, 88)}...`;
 }
 
 export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
@@ -40,8 +89,6 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     }
   }, [editingColumnId]);
 
-  // --- Column management ---
-
   async function handleAddColumn(): Promise<void> {
     await api.createColumn(boardId, "New Column");
     await loadBoard();
@@ -63,7 +110,7 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
   }
 
   async function handleDeleteColumn(id: string): Promise<void> {
-    const col = columns.find((c) => c.id === id);
+    const col = columns.find((column) => column.id === id);
     const msg =
       col && col.cards.length > 0
         ? `Delete "${col.title}" and its ${col.cards.length} card(s)?`
@@ -73,27 +120,25 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     await loadBoard();
   }
 
-  // --- Card modal ---
-
   function openAddCard(columnId: string): void {
     setModal({ open: true, card: null, columnId });
   }
 
-  function openEditCard(card: Card): void {
+  function openEditCard(card: BoardCard): void {
     setModal({ open: true, card, columnId: card.column_id });
   }
 
-  async function handleSaveCard(
+  async function handleCreateCard(
     title: string,
     description: string
   ): Promise<void> {
-    if (modal.card) {
-      await api.updateCard(boardId, modal.card.id, { title, description });
-    } else {
-      await api.createCard(boardId, title, modal.columnId, description);
-    }
+    await api.createCard(boardId, title, modal.columnId, description);
     setModal({ open: false, card: null, columnId: "" });
     await loadBoard();
+  }
+
+  function handleCardUpdated(card: BoardCard | CardDetail): void {
+    setColumns((current) => replaceCardInColumns(current, card));
   }
 
   async function handleDeleteCard(): Promise<void> {
@@ -103,14 +148,12 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     await loadBoard();
   }
 
-  // --- Drag and drop ---
-
   const dragCard = useRef<{
     cardId: string;
     sourceColumnId: string;
   } | null>(null);
 
-  function handleDragStart(e: React.DragEvent, card: Card): void {
+  function handleDragStart(e: React.DragEvent, card: BoardCard): void {
     dragCard.current = { cardId: card.id, sourceColumnId: card.column_id };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.id);
@@ -122,31 +165,24 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     dragCard.current = null;
     document
       .querySelectorAll(".drop-above, .drop-below, .drop-zone-active")
-      .forEach((el) => {
-        el.classList.remove("drop-above", "drop-below", "drop-zone-active");
+      .forEach((element) => {
+        element.classList.remove("drop-above", "drop-below", "drop-zone-active");
       });
   }
 
-  function handleDragOver(e: React.DragEvent): void {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-  }
-
-  function handleCardDragOver(e: React.DragEvent, _card: Card): void {
+  function handleCardDragOver(e: React.DragEvent): void {
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = "move";
-    const target = (e.target as HTMLElement).closest(
-      ".card"
-    ) as HTMLElement | null;
+    const target = (e.target as HTMLElement).closest(".card") as HTMLElement | null;
     if (!target) return;
     const rect = target.getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
 
     target.parentElement
       ?.querySelectorAll(".drop-above, .drop-below")
-      .forEach((el) => {
-        el.classList.remove("drop-above", "drop-below");
+      .forEach((element) => {
+        element.classList.remove("drop-above", "drop-below");
       });
 
     if (e.clientY < midY) {
@@ -177,14 +213,12 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
 
   async function handleDropOnCard(
     e: React.DragEvent,
-    targetCard: Card,
+    targetCard: BoardCard,
     columnId: string
   ): Promise<void> {
     e.preventDefault();
     e.stopPropagation();
-    const target = (e.target as HTMLElement).closest(
-      ".card"
-    ) as HTMLElement | null;
+    const target = (e.target as HTMLElement).closest(".card") as HTMLElement | null;
     target?.classList.remove("drop-above", "drop-below");
     target?.parentElement
       ?.querySelector(".drop-zone-active")
@@ -195,12 +229,8 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     if (cardId === targetCard.id) return;
 
     const rect = target?.getBoundingClientRect();
-    const dropAbove = rect
-      ? e.clientY < rect.top + rect.height / 2
-      : false;
-    const newPosition = dropAbove
-      ? targetCard.position
-      : targetCard.position + 1;
+    const dropAbove = rect ? e.clientY < rect.top + rect.height / 2 : false;
+    const newPosition = dropAbove ? targetCard.position : targetCard.position + 1;
 
     await api.updateCard(boardId, cardId, { columnId, position: newPosition });
     await loadBoard();
@@ -216,14 +246,12 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
 
     if (!dragCard.current) return;
     const { cardId } = dragCard.current;
+    const column = columns.find((entry) => entry.id === columnId);
+    const newPosition = column ? column.cards.length : 0;
 
-    const col = columns.find((c) => c.id === columnId);
-    const newPosition = col ? col.cards.length : 0;
     await api.updateCard(boardId, cardId, { columnId, position: newPosition });
     await loadBoard();
   }
-
-  // --- Render ---
 
   if (columns.length === 0) {
     return (
@@ -281,28 +309,70 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
               {col.cards.length === 0 && (
                 <p className="empty-column-msg">No cards yet</p>
               )}
-              {col.cards.map((card) => (
-                <div
-                  key={card.id}
-                  className="card"
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, card)}
-                  onDragEnd={handleDragEnd}
-                  onDragOver={(e) => handleCardDragOver(e, card)}
-                  onDragLeave={handleCardDragLeave}
-                  onDrop={(e) => void handleDropOnCard(e, card, col.id)}
-                  onClick={() => openEditCard(card)}
-                >
-                  <p className="card-title">{card.title}</p>
-                  {card.description && (
-                    <p className="card-desc">
-                      {card.description.length > 80
-                        ? card.description.slice(0, 80) + "..."
-                        : card.description}
-                    </p>
-                  )}
-                </div>
-              ))}
+              {col.cards.map((card) => {
+                const dueBadge = getDueBadge(card.due_date);
+                const checklistPercent =
+                  card.checklist_total > 0
+                    ? Math.round((card.checklist_done / card.checklist_total) * 100)
+                    : 0;
+
+                return (
+                  <div
+                    key={card.id}
+                    className="card"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, card)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={handleCardDragOver}
+                    onDragLeave={handleCardDragLeave}
+                    onDrop={(e) => void handleDropOnCard(e, card, col.id)}
+                    onClick={() => openEditCard(card)}
+                  >
+                    {card.labels.length > 0 && (
+                      <div className="card-label-dots">
+                        {card.labels.map((label) => (
+                          <span
+                            key={label.id}
+                            className="card-label-dot"
+                            style={{ backgroundColor: label.color }}
+                            title={label.name}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="card-title">{card.title}</p>
+
+                    {card.description.trim() !== "" && (
+                      <p className="card-desc">{truncateDescription(card.description)}</p>
+                    )}
+
+                    {(dueBadge || card.checklist_total > 0) && (
+                      <div className="card-meta">
+                        {dueBadge && (
+                          <span className={`card-due-badge due-${dueBadge.tone}`}>
+                            {dueBadge.label}
+                          </span>
+                        )}
+
+                        {card.checklist_total > 0 && (
+                          <div className="card-checklist-summary">
+                            <span className="card-checklist-count">
+                              {card.checklist_done}/{card.checklist_total}
+                            </span>
+                            <span className="card-progress-track">
+                              <span
+                                className="card-progress-fill"
+                                style={{ width: `${checklistPercent}%` }}
+                              />
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             <button
@@ -326,10 +396,12 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
 
       {modal.open && (
         <CardModal
+          boardId={boardId}
           card={modal.card}
           columnId={modal.columnId}
-          onSave={(t, d) => void handleSaveCard(t, d)}
-          onDelete={modal.card ? () => void handleDeleteCard() : null}
+          onCreate={handleCreateCard}
+          onDelete={modal.card ? () => handleDeleteCard() : null}
+          onCardUpdated={handleCardUpdated}
           onClose={() => setModal({ open: false, card: null, columnId: "" })}
         />
       )}

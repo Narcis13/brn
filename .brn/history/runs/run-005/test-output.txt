@@ -1,0 +1,119 @@
+bun test v1.3.8 (b64edcb4)
+
+trello/src/routes-search-reorder.test.ts:
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > searches title and description case-insensitively [84.22ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > combines text, label, and due filters [116.23ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > filters overdue, today, week, and none buckets [77.15ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > returns column info and labels [77.38ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > escapes SQL wildcard characters in the text query [76.08ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > rejects invalid due filters and cross-board label ids [73.67ms]
+(pass) Search and column reorder endpoints > GET /api/boards/:boardId/search > requires auth and board ownership [144.59ms]
+(pass) Search and column reorder endpoints > PATCH /api/boards/:boardId/columns/reorder > reorders columns and keeps cards in their columns [70.89ms]
+(pass) Search and column reorder endpoints > PATCH /api/boards/:boardId/columns/reorder > rejects invalid column id sets and invalid payload types [72.15ms]
+(pass) Search and column reorder endpoints > PATCH /api/boards/:boardId/columns/reorder > rejects columns from another board and enforces auth [150.95ms]
+
+trello/src/routes.test.ts:
+(pass) POST /api/auth/register > registers a new user and returns JWT + user [75.57ms]
+(pass) POST /api/auth/register > rejects short username [4.91ms]
+(pass) POST /api/auth/register > rejects invalid username characters [4.20ms]
+(pass) POST /api/auth/register > rejects short password [3.51ms]
+(pass) POST /api/auth/register > rejects duplicate username with 409 [78.29ms]
+(pass) POST /api/auth/login > authenticates valid credentials and returns JWT [154.54ms]
+(pass) POST /api/auth/login > rejects wrong password with 401 [141.41ms]
+(pass) POST /api/auth/login > rejects non-existent user with 401 [4.15ms]
+(pass) GET /api/auth/me > returns current user from valid JWT [73.13ms]
+(pass) GET /api/auth/me > returns 401 without token [4.30ms]
+(pass) GET /api/auth/me > returns 401 with invalid token [4.28ms]
+(pass) auth middleware > blocks protected routes without token [4.47ms]
+(pass) auth middleware > allows public routes without token [64.89ms]
+(pass) GET /api/boards > returns empty boards array initially [67.62ms]
+(pass) GET /api/boards > returns only the authenticated user's boards [115.50ms]
+(pass) POST /api/boards > creates a board and seeds 3 default columns [62.81ms]
+(pass) POST /api/boards > rejects empty title [66.30ms]
+(pass) DELETE /api/boards/:id > deletes board and cascades columns/cards [67.64ms]
+(pass) DELETE /api/boards/:id > returns 404 for other user's board [114.39ms]
+(pass) GET /api/boards/:boardId/columns > returns columns with nested cards [62.27ms]
+(pass) GET /api/boards/:boardId/columns > includes label and checklist metadata on board cards [62.70ms]
+(pass) GET /api/boards/:boardId/columns > returns 404 for other user's board [116.17ms]
+(pass) POST /api/boards/:boardId/columns > creates a column in the board [61.97ms]
+(pass) PATCH /api/boards/:boardId/columns/:id > renames a column [61.82ms]
+(pass) PATCH /api/boards/:boardId/columns/:id > returns 404 for column not on this board [63.43ms]
+(pass) DELETE /api/boards/:boardId/columns/:id > deletes a column and cascades cards [62.74ms]
+(pass) POST /api/boards/:boardId/cards > creates a card in a board's column [63.45ms]
+(pass) POST /api/boards/:boardId/cards > rejects card for column on another board [62.05ms]
+(pass) PATCH /api/boards/:boardId/cards/:id > updates card title and description [63.10ms]
+(pass) PATCH /api/boards/:boardId/cards/:id > moves card between columns [63.20ms]
+(pass) DELETE /api/boards/:boardId/cards/:id > deletes a card and reorders remaining [64.03ms]
+(pass) DELETE /api/boards/:boardId/cards/:id > returns 404 for card on another board [63.03ms]
+
+trello/src/routes-labels.test.ts:
+(pass) Label Routes > GET /api/boards/:boardId/labels > should return empty array for new board [62.19ms]
+(pass) Label Routes > GET /api/boards/:boardId/labels > should return 404 for non-existent board [61.64ms]
+(pass) Label Routes > GET /api/boards/:boardId/labels > should return 401 without auth [62.63ms]
+(pass) Label Routes > GET /api/boards/:boardId/labels > should return labels ordered by position [62.02ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should create a new label [62.14ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should trim name [65.19ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should reject empty name [67.26ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should reject name longer than 30 chars [68.82ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should reject invalid color format [67.16ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should reject duplicate name on same board [63.98ms]
+(pass) Label Routes > POST /api/boards/:boardId/labels > should auto-assign next position [68.79ms]
+(pass) Label Routes > PATCH /api/boards/:boardId/labels/:labelId > should update label name [67.22ms]
+(pass) Label Routes > PATCH /api/boards/:boardId/labels/:labelId > should update label color [69.35ms]
+(pass) Label Routes > PATCH /api/boards/:boardId/labels/:labelId > should update position and reorder [64.05ms]
+(pass) Label Routes > PATCH /api/boards/:boardId/labels/:labelId > should return 404 for non-existent label [65.43ms]
+(pass) Label Routes > PATCH /api/boards/:boardId/labels/:labelId > should reject duplicate name [70.09ms]
+(pass) Label Routes > DELETE /api/boards/:boardId/labels/:labelId > should delete label [69.49ms]
+(pass) Label Routes > DELETE /api/boards/:boardId/labels/:labelId > should update positions after delete [66.98ms]
+(pass) Label Routes > DELETE /api/boards/:boardId/labels/:labelId > should return 404 for non-existent label [69.07ms]
+
+trello/src/db-migration.test.ts:
+(pass) database migration creates all new tables and columns [7.39ms]
+(pass) migration is idempotent - can run multiple times safely [5.31ms]
+
+trello/src/routes-card-detail.test.ts:
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > updates card with due date and start date [68.90ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > validates start_date <= due_date [69.18ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > updates card with checklist [69.43ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > validates checklist format [68.93ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > validates checklist item structure [70.45ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > creates activity entry when moving card [70.25ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > creates activity entry when editing card [68.82ms]
+(pass) Enhanced Card Endpoints > PATCH /api/boards/:boardId/cards/:cardId (enhanced) > creates dates_changed activity when changing dates [69.95ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId > returns full card detail with labels and activity [71.76ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId > calculates checklist total and done correctly [70.11ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId > returns 404 for non-existent card [61.95ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId > returns 404 for card from another board [63.26ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId/activity > returns paginated activity for a card [68.79ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId/activity > respects offset parameter [61.78ms]
+(pass) Enhanced Card Endpoints > GET /api/boards/:boardId/cards/:cardId/activity > returns 404 for non-existent card [61.27ms]
+(pass) Enhanced Card Endpoints > Activity tracking for label operations > creates activity when adding label [62.09ms]
+(pass) Enhanced Card Endpoints > Activity tracking for label operations > creates activity when removing label [64.85ms]
+
+trello/src/routes-card-labels.test.ts:
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should assign label to card [64.63ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 404 for non-existent board [63.25ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 404 for non-existent card [62.98ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 400 without labelId [62.27ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 404 if label not on board [61.93ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 409 if label already assigned [63.35ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should allow multiple labels on same card [63.50ms]
+(pass) Card-Label Assignment Routes > POST /api/boards/:boardId/cards/:cardId/labels > should return 401 without auth [63.56ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should remove label from card [63.25ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should return 404 if label not assigned [62.70ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should return 404 for non-existent card [63.66ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should only remove specified label [63.43ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should not affect label itself [63.61ms]
+(pass) Card-Label Assignment Routes > DELETE /api/boards/:boardId/cards/:cardId/labels/:labelId > should return 401 without auth [62.01ms]
+
+trello/src/ui/card-utils.test.ts:
+(pass) parseChecklist > returns valid checklist items and ignores invalid entries
+(pass) parseChecklist > returns an empty array for invalid JSON
+(pass) getDueBadge > classifies overdue, today, soon, and future dates [7.84ms]
+(pass) getDueBadge > returns null when there is no due date
+(pass) describeActivity > renders move activity detail when available
+
+ 99 pass
+ 0 fail
+ 270 expect() calls
+Ran 99 tests across 7 files. [6.26s]

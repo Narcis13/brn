@@ -1,17 +1,54 @@
-export interface Card {
+export interface Label {
+  id: string;
+  board_id: string;
+  name: string;
+  color: string;
+  position: number;
+}
+
+export interface Activity {
+  id: string;
+  card_id: string;
+  board_id: string;
+  action: string;
+  detail: string | null;
+  timestamp: string;
+}
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
+export interface CardRecord {
   id: string;
   title: string;
   description: string;
   position: number;
   column_id: string;
   created_at: string;
+  due_date: string | null;
+  start_date: string | null;
+  checklist: string;
+  updated_at: string;
+}
+
+export interface BoardCard extends CardRecord {
+  labels: Label[];
+  checklist_total: number;
+  checklist_done: number;
+}
+
+export interface CardDetail extends BoardCard {
+  activity: Activity[];
 }
 
 export interface Column {
   id: string;
   title: string;
   position: number;
-  cards: Card[];
+  cards: BoardCard[];
 }
 
 export interface User {
@@ -163,7 +200,7 @@ export function createCard(
   title: string,
   columnId: string,
   description: string = ""
-): Promise<Card> {
+): Promise<CardRecord> {
   return request(`/boards/${boardId}/cards`, {
     method: "POST",
     body: JSON.stringify({ title, columnId, description }),
@@ -178,8 +215,11 @@ export function updateCard(
     description?: string;
     columnId?: string;
     position?: number;
+    due_date?: string | null;
+    start_date?: string | null;
+    checklist?: string;
   }
-): Promise<Card> {
+): Promise<CardRecord> {
   return request(`/boards/${boardId}/cards/${id}`, {
     method: "PATCH",
     body: JSON.stringify(updates),
@@ -191,4 +231,49 @@ export function deleteCard(
   id: string
 ): Promise<{ ok: boolean }> {
   return request(`/boards/${boardId}/cards/${id}`, { method: "DELETE" });
+}
+
+export function fetchCardDetail(
+  boardId: string,
+  id: string
+): Promise<CardDetail> {
+  return request(`/boards/${boardId}/cards/${id}`);
+}
+
+export function fetchBoardLabels(
+  boardId: string
+): Promise<{ labels: Label[] }> {
+  return request(`/boards/${boardId}/labels`);
+}
+
+export function createLabel(
+  boardId: string,
+  name: string,
+  color: string
+): Promise<Label> {
+  return request(`/boards/${boardId}/labels`, {
+    method: "POST",
+    body: JSON.stringify({ name, color }),
+  });
+}
+
+export function assignCardLabel(
+  boardId: string,
+  cardId: string,
+  labelId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/cards/${cardId}/labels`, {
+    method: "POST",
+    body: JSON.stringify({ labelId }),
+  });
+}
+
+export function removeCardLabel(
+  boardId: string,
+  cardId: string,
+  labelId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/cards/${cardId}/labels/${labelId}`, {
+    method: "DELETE",
+  });
 }
