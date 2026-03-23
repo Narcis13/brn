@@ -10,6 +10,8 @@ effort: high
 
 Launch the night shift — prepare a clean state, then loop `/next` until the feature is done.
 
+**CRITICAL**: This skill is fully autonomous. Do NOT use AskUserQuestion at any point. Do NOT ask for confirmation before launching. Do NOT pause for user input. The flow is: PREPARE → LAUNCH → done. The bash loop handles everything from there via headless `claude -p` invocations. If something is wrong (no spec, blocked with no steering), report the issue and stop — don't ask what to do.
+
 ## Instructions
 
 ### Phase 1: PREPARE (ensure clean state before looping)
@@ -165,30 +167,21 @@ echo "Vault entries: $(find .brn/vault -name '*.md' 2>/dev/null | wc -l | tr -d 
 
 2. Make it executable: `chmod +x .brn/nightshift.sh`
 
-3. Show the user:
+3. Clear the nightshift log: truncate `.brn/nightshift.log` to start fresh for this session.
+
+4. Show a brief status line:
 ```
-Night shift ready.
-
-Preparation complete:
-  - Archived: <old-feature> (if applicable)
-  - Initialized: <new-feature>
-  - Branch: feat/<feature-name>
-  - Acceptance criteria: <N> items
-
-To start:
-  cd <project_root> && .brn/nightshift.sh
-
-To run in background:
-  nohup .brn/nightshift.sh &
-
-To monitor:
-  tail -f .brn/nightshift.log
-
-To steer mid-run:
-  Edit .brn/steering.md (the next /next will pick it up)
-
-To stop:
-  Kill the process (Ctrl+C or kill <PID>)
+Night shift launching.
+  Feature: <feature-name>
+  Branch: feat/<feature-name>
+  Acceptance criteria: <N> items
+  Monitor: tail -f .brn/nightshift.log
+  Steer: edit .brn/steering.md
+  Stop: kill the process (Ctrl+C or kill <PID>)
 ```
 
-4. Ask if they want to launch it now. If yes, run it via Bash with `run_in_background: true`.
+5. **Immediately launch** the loop via Bash with `run_in_background: true`:
+```bash
+cd <project_root> && .brn/nightshift.sh
+```
+Do NOT ask the user for confirmation. Do NOT use AskUserQuestion. The whole point of `/nightshift` is autonomous execution — observe, orient, decide, act, repeat until done or blocked. Just launch it.
