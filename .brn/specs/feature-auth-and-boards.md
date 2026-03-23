@@ -1,6 +1,6 @@
 ---
 title: Auth & Multi-Board — JWT authentication with custom boards
-status: active
+status: done
 priority: high
 ---
 
