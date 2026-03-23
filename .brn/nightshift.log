@@ -10,3 +10,12 @@
 | AC6-AC10: Frontend (UI, modal, drag-drop, column mgmt, edge cases) | next |
 
 19 tests passing, types clean. Next `/next` will build the React frontend with styled kanban board UI.
+**Run 002 complete. Feature done.**
+
+All 10 acceptance criteria met in 2 runs:
+- **Run 001**: Backend — SQLite schema, API endpoints, auto-seeding
+- **Run 002**: Frontend — React board, drag-and-drop, card modal, column management, full Trello-like styling
+
+PR created: https://github.com/Narcis13/brn/pull/2
+
+Start with `bun run trello/src/index.ts` and open http://localhost:3001 to verify.

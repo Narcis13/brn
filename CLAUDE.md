@@ -53,7 +53,13 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
     codebase/             # Insights about this codebase
   history/                # Run history (reset per feature)
     runs/                 # One folder per /next run
-    index.json            # Quick-scan summary
+      run-NNN/
+        narrative.md      # Detailed story of what happened (the primary record)
+        meta.json         # Structured metadata (duration, files, tests, AC progress)
+        verification.md   # Test/type/build gate results
+        prompt.md         # Builder prompt (unattended mode)
+        output.md         # Builder output (unattended mode)
+    index.json            # Quick-scan summary with per-run summaries
   archive/                # Completed features (auto-created by /next)
     <feature-name>/       # Each completed feature gets archived here
       state.json          # Final state snapshot
@@ -91,11 +97,13 @@ When running via `claude -p`, you can't ask for help:
 - **Import not found**: check the exact path — use `.ts` extensions
 - **Scope unclear**: implement the minimum interpretation — don't guess at expanded scope
 - **Tests pass but something feels off**: if tests pass and acceptance criteria are met, you're done — don't gold-plate
-- **Retry limit**: max 1 retry per step. Extract learnings, push to vault, move on
+- **Retry limit**: max 1 retry per step. Extract learnings (always — even from success), push to vault, move on
 
 ## Vault Rules
-- Max 30 entries — merge duplicates, prune low-confidence entries
+- Max 50 entries — merge duplicates, prune low-confidence entries
+- Every run MUST produce vault entries — smooth runs have patterns, all runs have decisions
 - Only store knowledge NOT obvious from reading the code
 - Include Problem/Solution/Context for anti-patterns
 - Include Approach/Example/When-to-use for patterns
+- Include Choice/Alternatives/Rationale for decisions
 - Mark confidence: `speculative` → `verified`
