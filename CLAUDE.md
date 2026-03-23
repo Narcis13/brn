@@ -62,7 +62,7 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
 ```
 
 ## Feature Lifecycle
-1. Drop a spec in `.brn/specs/` with `status: ready` in frontmatter
+1. Run `/specify` to create a spec from any idea — or drop one manually in `.brn/specs/` with `status: ready`
 2. Run `/next` — it initializes state, creates branch, sets spec to `status: active`
 3. Keep running `/next` (or `/nightshift`) until all acceptance criteria pass
 4. `/next` creates a PR, sets spec to `status: done`, sets state to `done`
@@ -72,6 +72,7 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
 ## Skills
 | Command | Purpose |
 |---------|---------|
+| `/specify` | Transform a loose idea into a production-ready spec via adaptive interview |
 | `/next` | Advance the feature by one step (the core loop) |
 | `/status` | Show progress dashboard |
 | `/steer <directive>` | Add a steering directive |
