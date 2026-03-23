@@ -9,15 +9,15 @@
     { "id": "AC3", "text": "POST /api/columns creates a column with auto-assigned position; PATCH updates title; DELETE cascades cards", "met": true },
     { "id": "AC4", "text": "POST /api/cards creates a card with auto-assigned position; PATCH updates title/description/columnId/position with reordering; DELETE reorders remaining", "met": true },
     { "id": "AC5", "text": "Board auto-seeds 3 default columns (To Do, In Progress, Done) on first load", "met": true },
-    { "id": "AC6", "text": "Kanban board UI: horizontal columns, styled cards with shadow/rounded corners, Trello-like color scheme, responsive", "met": false },
-    { "id": "AC7", "text": "Add/edit card modal with title input, description textarea, validation (empty title rejected), Save/Cancel buttons", "met": false },
-    { "id": "AC8", "text": "HTML5 drag-and-drop: move cards between columns and reorder within, visual feedback (semi-transparent drag, drop zone highlight), position persisted via API", "met": false },
-    { "id": "AC9", "text": "Column management: add column button, inline rename on click, delete with cascade confirmation", "met": false },
-    { "id": "AC10", "text": "Edge cases: empty board message, empty column message, long title/description truncation, duplicate column titles allowed", "met": false }
+    { "id": "AC6", "text": "Kanban board UI: horizontal columns, styled cards with shadow/rounded corners, Trello-like color scheme, responsive", "met": true },
+    { "id": "AC7", "text": "Add/edit card modal with title input, description textarea, validation (empty title rejected), Save/Cancel buttons", "met": true },
+    { "id": "AC8", "text": "HTML5 drag-and-drop: move cards between columns and reorder within, visual feedback (semi-transparent drag, drop zone highlight), position persisted via API", "met": true },
+    { "id": "AC9", "text": "Column management: add column button, inline rename on click, delete with cascade confirmation", "met": true },
+    { "id": "AC10", "text": "Edge cases: empty board message, empty column message, long title/description truncation, duplicate column titles allowed", "met": true }
   ],
-  "run_count": 1,
-  "current_focus": "Frontend: React board UI with styled columns and cards",
-  "last_run": "run-001",
+  "run_count": 2,
+  "current_focus": "All acceptance criteria met — ready for final verification and PR",
+  "last_run": "run-002",
   "retry_count": 0,
   "blocked": false
 }
