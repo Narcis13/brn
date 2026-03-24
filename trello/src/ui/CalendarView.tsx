@@ -8,6 +8,8 @@ interface CalendarViewProps {
   onCardClick: (card: BoardCard) => void;
 }
 
+type CalendarMode = "month" | "week";
+
 interface CalendarCard extends BoardCard {
   column_title: string;
 }
@@ -32,6 +34,15 @@ const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
 ];
+
+// Time slots from 07:00 to 22:00 in 30-minute increments
+const TIME_SLOTS: string[] = [];
+for (let hour = 7; hour <= 22; hour++) {
+  TIME_SLOTS.push(`${hour}:00`);
+  if (hour < 22) {
+    TIME_SLOTS.push(`${hour}:30`);
+  }
+}
 
 function getMonthGrid(year: number, month: number): DateCell[] {
   const firstDay = new Date(year, month, 1);
@@ -67,6 +78,92 @@ function getMonthGrid(year: number, month: number): DateCell[] {
   }
   
   return cells;
+}
+
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+  return new Date(d.setDate(diff));
+}
+
+function getWeekEnd(date: Date): Date {
+  const weekStart = getWeekStart(date);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  return weekEnd;
+}
+
+function getWeekDays(date: Date): Date[] {
+  const weekStart = getWeekStart(date);
+  const days: Date[] = [];
+  
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(weekStart);
+    day.setDate(weekStart.getDate() + i);
+    days.push(day);
+  }
+  
+  return days;
+}
+
+function formatWeekRange(date: Date): string {
+  const weekStart = getWeekStart(date);
+  const weekEnd = getWeekEnd(date);
+  
+  const startMonth = MONTHS[weekStart.getMonth()] || "";
+  const endMonth = MONTHS[weekEnd.getMonth()] || "";
+  const startDay = weekStart.getDate();
+  const endDay = weekEnd.getDate();
+  const year = weekStart.getFullYear();
+  
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay} – ${endDay}, ${year}`;
+  } else {
+    return `${startMonth.slice(0, 3)} ${startDay} – ${endMonth.slice(0, 3)} ${endDay}, ${year}`;
+  }
+}
+
+function getTimeFromDate(dateStr: string | null | undefined): string | null {
+  if (!dateStr || !dateStr.includes("T")) return null;
+  const time = dateStr.split("T")[1];
+  return time || null;
+}
+
+function isCardInWeek(card: CalendarCard, weekStart: Date, weekEnd: Date): boolean {
+  if (!card.due_date && !card.start_date) return false;
+  
+  const weekStartStr = weekStart.toISOString().split("T")[0];
+  const weekEndStr = weekEnd.toISOString().split("T")[0];
+  
+  if (!weekStartStr || !weekEndStr) return false;
+  
+  // Check if due_date is in week
+  if (card.due_date) {
+    const dueDate = card.due_date.split("T")[0];
+    if (dueDate && dueDate >= weekStartStr && dueDate <= weekEndStr) {
+      return true;
+    }
+  }
+  
+  // Check if start_date is in week
+  if (card.start_date) {
+    const startDate = card.start_date.split("T")[0];
+    if (startDate && startDate >= weekStartStr && startDate <= weekEndStr) {
+      return true;
+    }
+  }
+  
+  // Check if card spans the week
+  if (card.start_date && card.due_date) {
+    const startDate = card.start_date.split("T")[0];
+    const dueDate = card.due_date.split("T")[0];
+    if (startDate && dueDate && startDate <= weekEndStr && dueDate >= weekStartStr) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 function formatDateRange(year: number, month: number): { start: string; end: string } {
@@ -153,13 +250,27 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
   const [currentDate, setCurrentDate] = useState(new Date());
   const [cards, setCards] = useState<CalendarCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   
   const loadCalendarData = useCallback(async (): Promise<void> => {
     setIsLoading(true);
-    const { start, end } = formatDateRange(year, month);
+    
+    let start: string, end: string;
+    
+    if (calendarMode === "month") {
+      const range = formatDateRange(year, month);
+      start = range.start;
+      end = range.end;
+    } else {
+      // Week mode
+      const weekStart = getWeekStart(currentDate);
+      const weekEnd = getWeekEnd(currentDate);
+      start = weekStart.toISOString().split("T")[0] || "";
+      end = weekEnd.toISOString().split("T")[0] || "";
+    }
     
     try {
       const response = await api.fetchCalendarCards(boardId, start, end);
@@ -167,7 +278,7 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
     } finally {
       setIsLoading(false);
     }
-  }, [boardId, year, month]);
+  }, [boardId, year, month, currentDate, calendarMode]);
   
   useEffect(() => {
     void loadCalendarData();
@@ -177,6 +288,14 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
     setCurrentDate(prev => {
       const newDate = new Date(prev);
       newDate.setMonth(prev.getMonth() + offset);
+      return newDate;
+    });
+  }
+  
+  function navigateWeek(offset: number): void {
+    setCurrentDate(prev => {
+      const newDate = new Date(prev);
+      newDate.setDate(prev.getDate() + (offset * 7));
       return newDate;
     });
   }
@@ -217,20 +336,20 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
       <div className="calendar-nav">
         <button 
           className="calendar-nav-btn"
-          onClick={() => navigateMonth(-1)}
-          title="Previous month"
+          onClick={() => calendarMode === "month" ? navigateMonth(-1) : navigateWeek(-1)}
+          title={calendarMode === "month" ? "Previous month" : "Previous week"}
         >
           &lt;
         </button>
         
         <h2 className="calendar-nav-title">
-          {MONTHS[month]} {year}
+          {calendarMode === "month" ? `${MONTHS[month]} ${year}` : formatWeekRange(currentDate)}
         </h2>
         
         <button 
           className="calendar-nav-btn"
-          onClick={() => navigateMonth(1)}
-          title="Next month"
+          onClick={() => calendarMode === "month" ? navigateMonth(1) : navigateWeek(1)}
+          title={calendarMode === "month" ? "Next month" : "Next week"}
         >
           &gt;
         </button>
@@ -241,6 +360,21 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
         >
           Today
         </button>
+        
+        <div className="calendar-mode-toggle">
+          <button
+            className={`calendar-mode-btn${calendarMode === "month" ? " active" : ""}`}
+            onClick={() => setCalendarMode("month")}
+          >
+            Month
+          </button>
+          <button
+            className={`calendar-mode-btn${calendarMode === "week" ? " active" : ""}`}
+            onClick={() => setCalendarMode("week")}
+          >
+            Week
+          </button>
+        </div>
       </div>
       
       <div className="calendar-grid">
@@ -255,12 +389,12 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
         {isLoading ? (
           <div className="calendar-loading">
             <div className="calendar-skeleton">
-              {Array.from({ length: 42 }, (_, i) => (
+              {Array.from({ length: calendarMode === "month" ? 42 : 7 }, (_, i) => (
                 <div key={i} className="calendar-cell skeleton-pulse" />
               ))}
             </div>
           </div>
-        ) : (
+        ) : calendarMode === "month" ? (
           <div className="calendar-body">
             {/* Multi-day bars layer */}
             {multiDayCards.map(({ card, startIndex, endIndex, row }) => {
@@ -391,6 +525,168 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
                 </div>
               );
             })}
+          </div>
+        ) : (
+          // Week view
+          <div className="calendar-week">
+            {/* All-day row */}
+            <div className="calendar-week-allday">
+              <div className="calendar-week-time-label">All day</div>
+              <div className="calendar-week-allday-cells">
+                {getWeekDays(currentDate).map((day, index) => {
+                  const dayStr = day.toISOString().split("T")[0];
+                  const isToday = new Date().toDateString() === day.toDateString();
+                  const isWeekend = index >= 5;
+                  
+                  // Get all-day cards (cards without times) for this day
+                  const allDayCards = cards.filter(card => {
+                    if (card.due_date && !getTimeFromDate(card.due_date)) {
+                      return card.due_date.startsWith(dayStr || "");
+                    }
+                    return false;
+                  });
+                  
+                  return (
+                    <div
+                      key={index}
+                      className={`calendar-week-allday-cell${isToday ? " calendar-week-today" : ""}${isWeekend ? " calendar-week-weekend" : ""}`}
+                    >
+                      {allDayCards.map(card => {
+                        const dueBadge = getDueBadge(card.due_date);
+                        const labelColor = card.labels[0]?.color;
+                        
+                        return (
+                          <div
+                            key={card.id}
+                            className="calendar-week-card"
+                            onClick={() => onCardClick(card)}
+                            title={`${card.title}\n${card.column_title}`}
+                            style={labelColor ? {
+                              borderLeftColor: labelColor,
+                              borderLeftWidth: "3px",
+                              borderLeftStyle: "solid"
+                            } : undefined}
+                          >
+                            <span className="calendar-week-card-title">{card.title}</span>
+                            {dueBadge && (
+                              <span className={`calendar-card-due due-${dueBadge.tone}`} />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Time grid */}
+            <div className="calendar-week-grid">
+              <div className="calendar-week-times">
+                {TIME_SLOTS.map(time => (
+                  <div key={time} className="calendar-week-time">
+                    {time}
+                  </div>
+                ))}
+              </div>
+              
+              <div className="calendar-week-columns">
+                {getWeekDays(currentDate).map((day, dayIndex) => {
+                  const dayStr = day.toISOString().split("T")[0];
+                  const isToday = new Date().toDateString() === day.toDateString();
+                  const isWeekend = dayIndex >= 5;
+                  
+                  return (
+                    <div
+                      key={dayIndex}
+                      className={`calendar-week-column${isToday ? " calendar-week-today" : ""}${isWeekend ? " calendar-week-weekend" : ""}`}
+                    >
+                      {TIME_SLOTS.map((time, timeIndex) => {
+                        const hour = parseInt(time.split(":")[0] || "0");
+                        const minute = parseInt(time.split(":")[1] || "0");
+                        
+                        // Find cards scheduled at this time
+                        const timeCards = cards.filter(card => {
+                          if (!card.due_date || !card.due_date.startsWith(dayStr || "")) {
+                            return false;
+                          }
+                          
+                          const cardTime = getTimeFromDate(card.due_date);
+                          if (!cardTime) return false;
+                          
+                          const timeParts = cardTime.split(":");
+                          if (timeParts.length !== 2) return false;
+                          
+                          const cardHour = parseInt(timeParts[0] || "0");
+                          const cardMinute = parseInt(timeParts[1] || "0");
+                          
+                          // Check if card starts in this 30-minute slot
+                          return cardHour === hour && 
+                            ((minute === 0 && cardMinute >= 0 && cardMinute < 30) ||
+                             (minute === 30 && cardMinute >= 30 && cardMinute < 60));
+                        });
+                        
+                        return (
+                          <div
+                            key={`${dayIndex}-${timeIndex}`}
+                            className="calendar-week-slot"
+                          >
+                            {timeCards.map(card => {
+                              const dueBadge = getDueBadge(card.due_date);
+                              const labelColor = card.labels[0]?.color;
+                              
+                              // Calculate duration if both start and due times exist
+                              let height = 50; // Default 30-min height
+                              if (card.start_date && card.due_date && 
+                                  card.start_date.split("T")[0] === card.due_date.split("T")[0]) {
+                                const startTime = getTimeFromDate(card.start_date);
+                                const endTime = getTimeFromDate(card.due_date);
+                                
+                                if (startTime && endTime) {
+                                  const startParts = startTime.split(":");
+                                  const endParts = endTime.split(":");
+                                  
+                                  if (startParts.length === 2 && endParts.length === 2) {
+                                    const startH = parseInt(startParts[0] || "0");
+                                    const startM = parseInt(startParts[1] || "0");
+                                    const endH = parseInt(endParts[0] || "0");
+                                    const endM = parseInt(endParts[1] || "0");
+                                    const durationMinutes = (endH - startH) * 60 + (endM - startM);
+                                    height = Math.max(50, (durationMinutes / 30) * 50);
+                                  }
+                                }
+                              }
+                              
+                              return (
+                                <div
+                                  key={card.id}
+                                  className="calendar-week-timed-card"
+                                  onClick={() => onCardClick(card)}
+                                  title={`${card.title}\n${card.column_title}\n${getTimeFromDate(card.due_date)}`}
+                                  style={{
+                                    height: `${height}px`,
+                                    backgroundColor: labelColor || "#0079bf",
+                                    borderLeftColor: labelColor || "#0079bf"
+                                  }}
+                                >
+                                  <span className="calendar-week-card-time">
+                                    {getTimeFromDate(card.due_date)}
+                                  </span>
+                                  <span className="calendar-week-card-title">{card.title}</span>
+                                  {dueBadge && (
+                                    <span className={`calendar-card-due due-${dueBadge.tone}`} />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         )}
       </div>

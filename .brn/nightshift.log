@@ -39,3 +39,48 @@ The implementation follows the project's established patterns and includes prope
 [21:38:58] Run 3 finished in 1430s | AC: 4/14 | Vault: 27 entries | Status: in-progress
 
 [21:39:08] ━━━ Run 4 starting ━━━
+## Summary
+
+Successfully implemented AC5 (Month view calendar grid) with:
+
+✅ CalendarView component with 7-column Mon-Sun grid  
+✅ Navigation bar with prev/next month buttons and Today button  
+✅ Day numbers displayed with gray styling for outside month  
+✅ Card chips shown in date cells (max 3 visible + "+N more")  
+✅ Today's cell highlighted  
+✅ Weekend columns with different background  
+✅ Empty state message  
+✅ Loading skeleton  
+✅ 13 tests passing  
+✅ TypeScript checks clean  
+
+The calendar month view is now fully functional. Next step would be AC6 to add multi-day bars for cards spanning multiple days.
+[21:51:04] Run 4 finished in 716s | AC: 5/14 | Vault: 29 entries | Status: in-progress
+
+[21:51:14] ━━━ Run 5 starting ━━━
+## Summary
+
+Successfully implemented AC6 (Multi-day bars) for the calendar view feature:
+
+✅ **What was built:**
+- Multi-day card detection and row allocation algorithm
+- Layered rendering with CSS Grid positioning
+- Week-spanning support for cards crossing calendar rows
+- Proper visual hierarchy with bars above single-day cards
+
+✅ **Verification:**
+- All 160 tests passing
+- TypeScript types clean
+- Build successful
+
+✅ **Knowledge captured:**
+- Multi-day card layout pattern
+- Layered rendering decision
+- Week-spanning insight
+
+**Progress:** 6/14 acceptance criteria met
+
+**Next focus:** AC7 - Week view implementation with time slots
+[22:37:38] Run 5 finished in 2784s | AC: 6/14 | Vault: 32 entries | Status: in-progress
+
+[22:37:49] ━━━ Run 6 starting ━━━
