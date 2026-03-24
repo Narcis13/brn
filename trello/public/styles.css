@@ -545,6 +545,51 @@ body {
   padding: 16px 16px 0;
 }
 
+/* === View Mode Tabs === */
+.board-view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.16);
+  padding: 4px;
+  border-radius: 8px;
+  width: fit-content;
+}
+
+.board-view-tab {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.8);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.board-view-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+.board-view-tab.active {
+  background: rgba(255, 255, 255, 0.92);
+  color: #172b4d;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.board-view-tab.active:hover {
+  background: #fff;
+}
+
+.board-view-divider {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  user-select: none;
+}
+
 .board-search-row {
   display: flex;
   align-items: center;

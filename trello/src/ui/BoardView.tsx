@@ -21,6 +21,8 @@ import {
 } from "./board-utils.ts";
 import { CardModal } from "./CardModal.tsx";
 
+export type ViewMode = "board" | "calendar";
+
 interface BoardViewProps {
   boardId: string;
 }
@@ -117,6 +119,7 @@ function clearColumnDropIndicators(): void {
 }
 
 export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
+  const [viewMode, setViewMode] = useState<ViewMode>("board");
   const [columns, setColumns] = useState<Column[]>([]);
   const [boardLabels, setBoardLabels] = useState<Label[]>([]);
   const [modal, setModal] = useState<ModalState>({
@@ -542,26 +545,44 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     <>
       <div className="board-shell">
         <div className="board-controls">
-          <div className="board-search-row">
-            <input
-              className="board-search-input"
-              type="search"
-              placeholder="Search cards by title or description"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-            />
-            {(isSearchPending || hasActiveFilters) && (
-              <p className="board-search-status">
-                {isSearchPending
-                  ? "Searching descriptions..."
-                  : `${visibleCardCount} match${visibleCardCount === 1 ? "" : "es"}`}
-              </p>
-            )}
+          <div className="board-view-tabs">
+            <button
+              className={`board-view-tab${viewMode === "board" ? " active" : ""}`}
+              onClick={() => setViewMode("board")}
+            >
+              Board
+            </button>
+            <span className="board-view-divider">|</span>
+            <button
+              className={`board-view-tab${viewMode === "calendar" ? " active" : ""}`}
+              onClick={() => setViewMode("calendar")}
+            >
+              Calendar
+            </button>
           </div>
 
-          {(boardLabels.length > 0 || hasActiveFilters) && (
-            <div className="board-filter-row">
-              {boardLabels.map((label) => {
+          {viewMode === "board" && (
+            <>
+              <div className="board-search-row">
+                <input
+                  className="board-search-input"
+                  type="search"
+                  placeholder="Search cards by title or description"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                />
+                {(isSearchPending || hasActiveFilters) && (
+                  <p className="board-search-status">
+                    {isSearchPending
+                      ? "Searching descriptions..."
+                      : `${visibleCardCount} match${visibleCardCount === 1 ? "" : "es"}`}
+                  </p>
+                )}
+              </div>
+
+              {(boardLabels.length > 0 || hasActiveFilters) && (
+                <div className="board-filter-row">
+                  {boardLabels.map((label) => {
                 const active = activeLabelId === label.id;
                 const style: CSSProperties = active
                   ? {
@@ -600,22 +621,26 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
                 </button>
               )}
             </div>
-          )}
+              )}
 
-          {searchError !== "" && (
-            <p className="board-search-error">{searchError}</p>
+              {searchError !== "" && (
+                <p className="board-search-error">{searchError}</p>
+              )}
+            </>
           )}
         </div>
 
         <div className="board-canvas">
-          {showNoResults && (
-            <div className="board-no-results">
-              <p>No cards match your search.</p>
-            </div>
-          )}
+          {viewMode === "board" ? (
+            <>
+              {showNoResults && (
+                <div className="board-no-results">
+                  <p>No cards match your search.</p>
+                </div>
+              )}
 
-          <div className="board">
-            {columns.map((col) => (
+              <div className="board">
+                {columns.map((col) => (
               <div key={col.id} className="column">
                 <div
                   className="column-header"
@@ -753,6 +778,14 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
               </button>
             </div>
           </div>
+            </>
+          ) : (
+            <div className="calendar-view">
+              <p style={{ textAlign: "center", padding: "40px", color: "rgba(255,255,255,0.8)" }}>
+                Calendar view coming soon...
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

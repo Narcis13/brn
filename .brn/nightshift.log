@@ -11,3 +11,17 @@ Next run should focus on implementing the calendar data endpoint (AC2).
 [20:51:48] Run 1 finished in 567s | AC: 2/14 | Vault: 23 entries | Status: in-progress
 
 [20:51:58] ━━━ Run 2 starting ━━━
+## Summary
+
+Successfully implemented AC2: Calendar data endpoint
+- Created comprehensive tests first (TDD approach)
+- Implemented `getCalendarCards` function with complex date overlap logic
+- Added GET /api/boards/:boardId/calendar endpoint
+- All tests passing (134 total, 8 new)
+- Updated vault with 2 new patterns and 1 decision
+- Committed changes and updated state
+
+3 of 14 acceptance criteria now complete (AC1, AC2, AC3).
+[21:14:58] Run 2 finished in 1380s | AC: 3/14 | Vault: 25 entries | Status: in-progress
+
+[21:15:08] ━━━ Run 3 starting ━━━
