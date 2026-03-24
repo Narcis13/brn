@@ -157,3 +157,24 @@ The `/next` command has been executed. It successfully completed AC10 (Drag-to-r
 [23:47:17] Run 9 finished in 550s | AC: 10/14 | Vault: 39 entries | Status: in-progress
 
 [23:47:27] ━━━ Run 10 starting ━━━
+## Summary
+
+I've successfully implemented AC11: "Drag-to-reschedule on week view: vertical drag changes time, horizontal drag changes day". 
+
+Key accomplishments:
+1. **Enhanced drag state management** to store full card data
+2. **Implemented direction detection** to distinguish vertical (time) vs horizontal (date) drags
+3. **Added all-day row support** for removing time components
+4. **Comprehensive test coverage** with 9 new tests
+5. **Visual feedback** for drop targets
+
+The implementation correctly handles:
+- Vertical dragging to change only time
+- Horizontal dragging to change only date while preserving time
+- Multi-day cards maintaining their duration
+- Dragging to/from all-day row
+
+All tests pass and TypeScript compilation succeeds. The feature is now ready for use, and AC12 (time picker in CardModal) is set as the next focus.
+[23:59:05] Run 10 finished in 698s | AC: 11/14 | Vault: 40 entries | Status: in-progress
+
+[23:59:16] ━━━ Run 11 starting ━━━
