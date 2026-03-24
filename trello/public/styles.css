@@ -1215,6 +1215,11 @@ body.modal-open {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  align-items: start;
+}
+
+.date-field {
+  display: block;
 }
 
 .date-field span {
@@ -1345,15 +1350,21 @@ body.modal-open {
 .checklist-item-label {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
   flex: 1;
   color: #172b4d;
   font-size: 14px;
+  cursor: pointer;
 }
 
-.checklist-item-label input {
-  width: 16px;
-  height: 16px;
+.checklist-item-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: #0c66e4;
+  cursor: pointer;
 }
 
 .checklist-item-label .checked {

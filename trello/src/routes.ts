@@ -468,8 +468,8 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_added");
-    
+    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color });
+
     return c.json({ ok: true }, 201);
   });
 
@@ -488,13 +488,14 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     const labelId = c.req.param("labelId");
+    const label = getLabelById(db, labelId);
     const removed = removeLabelFromCard(db, cardId, labelId);
     if (!removed) {
       return c.json({ error: "label not assigned to card" }, 404);
     }
-    
+
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_removed");
+    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" });
     
     return c.json({ ok: true });
   });

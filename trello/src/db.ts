@@ -703,9 +703,16 @@ export function updateCardWithActivity(
   } else if (changes.length > 0) {
     // Log edited activity if not a move
     if (changes.includes("dates")) {
-      createActivity(db, id, boardId, "dates_changed");
+      createActivity(db, id, boardId, "dates_changed", {
+        start_date: updatedCard.start_date,
+        due_date: updatedCard.due_date,
+        prev_start_date: existing.start_date,
+        prev_due_date: existing.due_date,
+      });
     } else {
-      createActivity(db, id, boardId, "edited");
+      createActivity(db, id, boardId, "edited", {
+        fields: changes,
+      });
     }
   }
 

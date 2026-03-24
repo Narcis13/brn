@@ -8,6 +8,7 @@ import {
 import type { CSSProperties } from "react";
 import type { Column, BoardCard, CardDetail, Label } from "./api.ts";
 import * as api from "./api.ts";
+import { renderInlineContent } from "./render-inline.tsx";
 import { getDueBadge } from "./card-utils.ts";
 import {
   buildVisibleCardIds,
@@ -74,12 +75,23 @@ function replaceCardInColumns(
   });
 }
 
-function truncateDescription(description: string): string {
+function stripInlineMarkdown(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^- /gm, "");
+}
+
+function truncateDescription(description: string, cardId: string): React.ReactNode {
   const trimmed = description.trim();
-  if (trimmed.length <= 88) {
-    return trimmed;
+  const plainLength = stripInlineMarkdown(trimmed).length;
+  if (plainLength <= 88) {
+    return renderInlineContent(trimmed, `desc-${cardId}`);
   }
-  return `${trimmed.slice(0, 88)}...`;
+  // Truncate the raw text, then render inline
+  const truncated = trimmed.slice(0, 88);
+  return <>{renderInlineContent(truncated, `desc-${cardId}`)}...</>;
 }
 
 function clearCardDropIndicators(): void {
@@ -254,10 +266,13 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     await loadBoard();
   }
 
-  function handleCardUpdated(card: BoardCard | CardDetail): void {
-    setColumns((current) => replaceCardInColumns(current, card));
-    setBoardLabels((current) => mergeLabels(current, card.labels));
-  }
+  const handleCardUpdated = useCallback(
+    (card: BoardCard | CardDetail): void => {
+      setColumns((current) => replaceCardInColumns(current, card));
+      setBoardLabels((current) => mergeLabels(current, card.labels));
+    },
+    []
+  );
 
   async function handleDeleteCard(): Promise<void> {
     if (!modal.card) return;
@@ -691,7 +706,7 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
 
                         {card.description.trim() !== "" && (
                           <p className="card-desc">
-                            {truncateDescription(card.description)}
+                            {truncateDescription(card.description, card.id)}
                           </p>
                         )}
 

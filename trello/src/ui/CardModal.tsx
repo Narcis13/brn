@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BoardCard, CardDetail, ChecklistItem, Label } from "./api.ts";
 import * as api from "./api.ts";
 import {
@@ -8,6 +8,7 @@ import {
   parseChecklist,
   stringifyChecklist,
 } from "./card-utils.ts";
+import { renderInlineContent } from "./render-inline.tsx";
 
 const PRESET_LABEL_COLORS = [
   "#e74c3c",
@@ -46,58 +47,6 @@ function createChecklistItem(text: string): ChecklistItem {
 
 function sortLabels(labels: Label[]): Label[] {
   return [...labels].sort((left, right) => left.position - right.position);
-}
-
-function renderInlineContent(text: string, keyPrefix: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null = null;
-
-  while ((match = pattern.exec(text)) !== null) {
-    const token = match[0];
-    if (match.index > lastIndex) {
-      parts.push(text.slice(lastIndex, match.index));
-    }
-
-    if (token.startsWith("**")) {
-      parts.push(
-        <strong key={`${keyPrefix}-${match.index}`}>
-          {token.slice(2, -2)}
-        </strong>
-      );
-    } else if (token.startsWith("*")) {
-      parts.push(
-        <em key={`${keyPrefix}-${match.index}`}>
-          {token.slice(1, -1)}
-        </em>
-      );
-    } else {
-      const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
-      if (linkMatch) {
-        parts.push(
-          <a
-            key={`${keyPrefix}-${match.index}`}
-            href={linkMatch[2]}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {linkMatch[1]}
-          </a>
-        );
-      } else {
-        parts.push(token);
-      }
-    }
-
-    lastIndex = match.index + token.length;
-  }
-
-  if (lastIndex < text.length) {
-    parts.push(text.slice(lastIndex));
-  }
-
-  return parts;
 }
 
 function renderFormattedDescription(description: string): React.ReactNode {
@@ -185,6 +134,8 @@ export function CardModal({
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const requestVersion = useRef(0);
+  const onCardUpdatedRef = useRef(onCardUpdated);
+  onCardUpdatedRef.current = onCardUpdated;
 
   useEffect(() => {
     document.body.classList.add("modal-open");
@@ -211,8 +162,10 @@ export function CardModal({
     }
   }, [isEditingTitle]);
 
+  const cardId = card?.id ?? null;
+
   useEffect(() => {
-    if (!card) {
+    if (!card || !cardId) {
       setLoading(false);
       setDetail(null);
       setBoardLabels([]);
@@ -240,7 +193,7 @@ export function CardModal({
     });
 
     void Promise.all([
-      api.fetchCardDetail(boardId, card.id),
+      api.fetchCardDetail(boardId, cardId),
       api.fetchBoardLabels(boardId),
     ])
       .then(([cardDetail, labelResponse]) => {
@@ -251,7 +204,7 @@ export function CardModal({
         setBoardLabels(labelResponse.labels);
         setTitle(cardDetail.title);
         setDescriptionDraft(cardDetail.description);
-        onCardUpdated(cardDetail);
+        onCardUpdatedRef.current(cardDetail);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -267,7 +220,8 @@ export function CardModal({
     return () => {
       cancelled = true;
     };
-  }, [boardId, card, onCardUpdated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, cardId]);
 
   async function refreshDetail(refreshLabels: boolean = false): Promise<void> {
     if (!card) return;
@@ -293,7 +247,7 @@ export function CardModal({
     if (refreshLabels && labelResponse) {
       setBoardLabels(labelResponse.labels);
     }
-    onCardUpdated(cardDetail);
+    onCardUpdatedRef.current(cardDetail);
   }
 
   async function persistCardPatch(
@@ -313,14 +267,14 @@ export function CardModal({
     const optimistic = buildOptimisticDetail(previous);
     setError("");
     setDetail(optimistic);
-    onCardUpdated(optimistic);
+    onCardUpdatedRef.current(optimistic);
 
     try {
       await api.updateCard(boardId, card.id, updates);
       await refreshDetail();
     } catch (err: unknown) {
       setDetail(previous);
-      onCardUpdated(previous);
+      onCardUpdatedRef.current(previous);
       onRollback?.();
       setError(getErrorMessage(err));
     }
@@ -472,7 +426,7 @@ export function CardModal({
 
     setError("");
     setDetail(optimistic);
-    onCardUpdated(optimistic);
+    onCardUpdatedRef.current(optimistic);
 
     try {
       if (alreadyAssigned) {
@@ -483,7 +437,7 @@ export function CardModal({
       await refreshDetail(true);
     } catch (err: unknown) {
       setDetail(previous);
-      onCardUpdated(previous);
+      onCardUpdatedRef.current(previous);
       setError(getErrorMessage(err));
     }
   }

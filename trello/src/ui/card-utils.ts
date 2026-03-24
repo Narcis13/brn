@@ -114,6 +114,24 @@ export function formatActivityTimestamp(value: string): string {
   }).format(date);
 }
 
+function formatDateValue(date: unknown): string {
+  if (!date || typeof date !== "string") return "none";
+  return date;
+}
+
+function describeFieldChanges(fields: unknown): string {
+  if (!Array.isArray(fields)) return "Card updated";
+  const labels: Record<string, string> = {
+    title: "title",
+    description: "description",
+    checklist: "checklist",
+    dates: "dates",
+  };
+  const named = (fields as string[]).map((f) => labels[f] ?? f);
+  if (named.length === 1) return `Updated ${named[0]}`;
+  return `Updated ${named.join(", ")}`;
+}
+
 export function describeActivity(activity: Activity): string {
   const detail = parseActivityDetail(activity.detail);
 
@@ -122,25 +140,41 @@ export function describeActivity(activity: Activity): string {
       return "Card created";
     case "moved":
       if (detail?.from && detail?.to) {
-        return `Moved from ${detail.from} to ${detail.to}`;
+        return `Moved from ${String(detail.from)} to ${String(detail.to)}`;
       }
       return "Moved to a new column";
     case "edited":
+      if (detail?.fields) {
+        return describeFieldChanges(detail.fields);
+      }
       return "Card updated";
-    case "dates_changed":
+    case "dates_changed": {
+      const parts: string[] = [];
+      if (detail) {
+        if (String(detail.start_date ?? "") !== String(detail.prev_start_date ?? "")) {
+          parts.push(`start date \u2192 ${formatDateValue(detail.start_date)}`);
+        }
+        if (String(detail.due_date ?? "") !== String(detail.prev_due_date ?? "")) {
+          parts.push(`due date \u2192 ${formatDateValue(detail.due_date)}`);
+        }
+      }
+      if (parts.length > 0) {
+        return `Changed ${parts.join(", ")}`;
+      }
       return "Dates changed";
+    }
     case "checklist_added":
-      return "Checklist item added";
+      return detail?.text ? `Added checklist item "${String(detail.text)}"` : "Checklist item added";
     case "checklist_removed":
-      return "Checklist item removed";
+      return detail?.text ? `Removed "${String(detail.text)}"` : "Checklist item removed";
     case "checklist_checked":
-      return "Checklist item completed";
+      return detail?.text ? `Completed "${String(detail.text)}"` : "Checklist item completed";
     case "checklist_unchecked":
-      return "Checklist item reopened";
+      return detail?.text ? `Reopened "${String(detail.text)}"` : "Checklist item reopened";
     case "label_added":
-      return "Label added";
+      return detail?.name ? `Added label "${String(detail.name)}"` : "Label added";
     case "label_removed":
-      return "Label removed";
+      return detail?.name ? `Removed label "${String(detail.name)}"` : "Label removed";
     default:
       return activity.action.replace(/_/g, " ");
   }
@@ -159,7 +193,7 @@ function isChecklistItem(value: unknown): value is ChecklistItem {
   );
 }
 
-function parseActivityDetail(detail: string | null): Record<string, string> | null {
+function parseActivityDetail(detail: string | null): Record<string, unknown> | null {
   if (!detail) {
     return null;
   }
@@ -169,7 +203,7 @@ function parseActivityDetail(detail: string | null): Record<string, string> | nu
     if (!parsed || typeof parsed !== "object") {
       return null;
     }
-    return parsed as Record<string, string>;
+    return parsed as Record<string, unknown>;
   } catch {
     return null;
   }
