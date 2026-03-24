@@ -38,7 +38,7 @@ describe("BoardView - Tab Toggle Logic", () => {
     });
 
     it("should hide search bar in calendar view", () => {
-      const viewMode = "calendar";
+      const viewMode: string = "calendar";
       const showSearchBar = viewMode === "board";
       expect(showSearchBar).toBe(false);
     });
@@ -46,7 +46,7 @@ describe("BoardView - Tab Toggle Logic", () => {
 
   describe("Tab Active State", () => {
     it("should highlight board tab when board view is active", () => {
-      const viewMode = "board";
+      const viewMode: string = "board";
       const boardTabActive = viewMode === "board";
       const calendarTabActive = viewMode === "calendar";
       
@@ -55,7 +55,7 @@ describe("BoardView - Tab Toggle Logic", () => {
     });
 
     it("should highlight calendar tab when calendar view is active", () => {
-      const viewMode = "calendar";
+      const viewMode: string = "calendar";
       const boardTabActive = viewMode === "board";
       const calendarTabActive = viewMode === "calendar";
       
@@ -67,7 +67,7 @@ describe("BoardView - Tab Toggle Logic", () => {
   describe("Board Context Preservation", () => {
     it("should preserve boardId when switching views", () => {
       const boardId = "test-board-123";
-      let viewMode = "board";
+      let viewMode: string = "board";
       
       // Switch to calendar
       viewMode = "calendar";

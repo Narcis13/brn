@@ -1747,6 +1747,8 @@ body.modal-open {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  margin-top: 4px;
+  padding-top: 56px; /* Space for up to 2 multi-day bars */
 }
 
 .calendar-card-chip {
@@ -1817,4 +1819,68 @@ body.modal-open {
   background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   margin: 20px;
+}
+
+/* Multi-day card bars */
+.calendar-multiday-bar {
+  position: absolute;
+  height: 20px;
+  background: #0079bf;
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  border-left: 3px solid;
+  margin: 0 4px;
+  box-shadow: 0 1px 3px rgba(9, 30, 66, 0.15);
+  grid-column: var(--col-span);
+}
+
+.calendar-multiday-bar:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(9, 30, 66, 0.2);
+  z-index: 11;
+}
+
+.calendar-multiday-title {
+  flex: 1;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-multiday-due {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.calendar-multiday-due.due-overdue {
+  background: #fff;
+  box-shadow: 0 0 0 2px #ca3521;
+}
+
+.calendar-multiday-due.due-today {
+  background: #fff;
+  box-shadow: 0 0 0 2px #f79e3e;
+}
+
+.calendar-multiday-due.due-near {
+  background: #fff;
+  box-shadow: 0 0 0 2px #f2d600;
+}
+
+/* Adjust calendar body for multi-day bars */
+.calendar-body {
+  position: relative;
 }

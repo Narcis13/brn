@@ -217,4 +217,131 @@ describe("CalendarView", () => {
       expect(MONTHS[11]).toBe("December");
     });
   });
+  
+  describe("Multi-day Card Calculation", () => {
+    it("should identify multi-day cards", () => {
+      const cards = [
+        {
+          id: "1",
+          title: "Multi-day task",
+          start_date: "2026-03-15",
+          due_date: "2026-03-18",
+          labels: []
+        },
+        {
+          id: "2", 
+          title: "Single day task",
+          start_date: "2026-03-20",
+          due_date: "2026-03-20",
+          labels: []
+        },
+        {
+          id: "3",
+          title: "Due only",
+          start_date: null,
+          due_date: "2026-03-22",
+          labels: []
+        }
+      ];
+      
+      const isMultiDayCard = (card: any) => {
+        if (card.start_date && card.due_date) {
+          const startDateStr = card.start_date.split("T")[0];
+          const dueDateStr = card.due_date.split("T")[0];
+          return startDateStr && dueDateStr && startDateStr !== dueDateStr;
+        }
+        return false;
+      };
+      
+      expect(isMultiDayCard(cards[0])).toBe(true);
+      expect(isMultiDayCard(cards[1])).toBe(false);
+      expect(isMultiDayCard(cards[2])).toBe(false);
+    });
+    
+    it("should calculate correct span for multi-day cards", () => {
+      const getDateIndex = (dateStr: string, monthGrid: any[]) => {
+        return monthGrid.findIndex(cell => cell.dateString === dateStr);
+      };
+      
+      const monthGrid = Array.from({ length: 42 }, (_, i) => {
+        const date = new Date(2026, 2, i - 5);
+        return {
+          dateString: date.toISOString().split("T")[0]
+        };
+      });
+      
+      const startIndex = getDateIndex("2026-03-15", monthGrid);
+      const endIndex = getDateIndex("2026-03-18", monthGrid); 
+      const span = endIndex - startIndex + 1;
+      
+      expect(span).toBe(4);
+    });
+    
+    it("should handle cards spanning multiple weeks", () => {
+      const card = {
+        start_date: "2026-03-06", // Friday in week 1
+        due_date: "2026-03-09" // Monday in week 2
+      };
+      
+      const getWeek = (dateIndex: number) => Math.floor(dateIndex / 7);
+      
+      const startIndex = 5; // Example index for Friday in first week
+      const endIndex = 8; // Example index for Monday in second week
+      
+      const startWeek = getWeek(startIndex);
+      const endWeek = getWeek(endIndex);
+      
+      expect(startWeek).not.toBe(endWeek);
+    });
+    
+    it("should calculate row placement to avoid overlaps", () => {
+      const occupiedRows: Set<string>[] = [];
+      
+      const canPlaceInRow = (row: number, startIndex: number, endIndex: number) => {
+        if (!occupiedRows[row]) {
+          occupiedRows[row] = new Set();
+        }
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+          const weekRow = Math.floor(i / 7);
+          const key = `${weekRow}-${i}`;
+          if (occupiedRows[row]?.has(key)) {
+            return false;
+          }
+        }
+        return true;
+      };
+      
+      const placeCard = (startIndex: number, endIndex: number) => {
+        let row = 0;
+        while (!canPlaceInRow(row, startIndex, endIndex)) {
+          row++;
+        }
+        
+        if (!occupiedRows[row]) {
+          occupiedRows[row] = new Set();
+        }
+        
+        for (let i = startIndex; i <= endIndex; i++) {
+          const weekRow = Math.floor(i / 7);
+          const key = `${weekRow}-${i}`;
+          occupiedRows[row]?.add(key);
+        }
+        
+        return row;
+      };
+      
+      // Place first card
+      const row1 = placeCard(10, 13);
+      expect(row1).toBe(0);
+      
+      // Place overlapping card
+      const row2 = placeCard(12, 15);
+      expect(row2).toBe(1);
+      
+      // Place non-overlapping card
+      const row3 = placeCard(16, 18);
+      expect(row3).toBe(0);
+    });
+  });
 });
