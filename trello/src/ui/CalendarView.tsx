@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { BoardCard, Label, Column } from "./api.ts";
 import * as api from "./api.ts";
 import { getDueBadge } from "./card-utils.ts";
@@ -264,6 +264,10 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     prefilledDate: null
   });
   
+  // Drag state
+  const dragCard = useRef<{ cardId: string; originalDate: string | null } | null>(null);
+  const [dragOverDate, setDragOverDate] = useState<string | null>(null);
+  
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   
@@ -380,6 +384,80 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     });
   }
   
+  // Drag handlers
+  function handleCardDragStart(e: React.DragEvent, card: CalendarCard): void {
+    dragCard.current = { cardId: card.id, originalDate: card.due_date };
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", card.id);
+    (e.target as HTMLElement).classList.add("dragging");
+  }
+  
+  function handleCardDragEnd(e: React.DragEvent): void {
+    (e.target as HTMLElement).classList.remove("dragging");
+    dragCard.current = null;
+    setDragOverDate(null);
+    
+    // Clear any drag indicators
+    document.querySelectorAll(".calendar-cell-drop-active, .calendar-week-slot-drop-active")
+      .forEach(el => el.classList.remove("calendar-cell-drop-active", "calendar-week-slot-drop-active"));
+  }
+  
+  function handleCellDragOver(e: React.DragEvent, dateString: string): void {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverDate(dateString);
+    
+    // Add visual feedback
+    (e.currentTarget as HTMLElement).classList.add("calendar-cell-drop-active");
+  }
+  
+  function handleCellDragLeave(e: React.DragEvent): void {
+    (e.currentTarget as HTMLElement).classList.remove("calendar-cell-drop-active");
+  }
+  
+  async function handleCellDrop(e: React.DragEvent, dateString: string): Promise<void> {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).classList.remove("calendar-cell-drop-active");
+    
+    if (!dragCard.current) return;
+    
+    const { cardId, originalDate } = dragCard.current;
+    
+    // Don't do anything if dropping on the same date
+    if (originalDate && originalDate.startsWith(dateString)) {
+      return;
+    }
+    
+    // Update the card's due date
+    await api.updateCard(boardId, cardId, { dueDate: dateString });
+    await loadCalendarData();
+  }
+  
+  function handleSlotDragOver(e: React.DragEvent, dateString: string): void {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    (e.currentTarget as HTMLElement).classList.add("calendar-week-slot-drop-active");
+  }
+  
+  function handleSlotDragLeave(e: React.DragEvent): void {
+    (e.currentTarget as HTMLElement).classList.remove("calendar-week-slot-drop-active");
+  }
+  
+  async function handleSlotDrop(e: React.DragEvent, dateString: string, time: string): Promise<void> {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).classList.remove("calendar-week-slot-drop-active");
+    
+    if (!dragCard.current) return;
+    
+    const { cardId } = dragCard.current;
+    const [hour, minute] = time.split(":");
+    const formattedDateTime = `${dateString}T${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")}`;
+    
+    // Update the card's due date with time
+    await api.updateCard(boardId, cardId, { dueDate: formattedDateTime });
+    await loadCalendarData();
+  }
+  
   return (
     <div className="calendar-container">
       <div className="calendar-nav">
@@ -467,6 +545,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                     key={card.id}
                     className="calendar-multiday-bar"
                     onClick={() => onCardClick(card)}
+                    draggable
+                    onDragStart={(e) => handleCardDragStart(e, card)}
+                    onDragEnd={handleCardDragEnd}
                     title={`${card.title}\n${card.column_title}\n${card.start_date?.split("T")[0]} → ${card.due_date?.split("T")[0]}`}
                     style={{
                       gridRow: weekRow + 1,
@@ -498,6 +579,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                       key={`${card.id}-week-${week}`}
                       className="calendar-multiday-bar"
                       onClick={() => onCardClick(card)}
+                      draggable
+                      onDragStart={(e) => handleCardDragStart(e, card)}
+                      onDragEnd={handleCardDragEnd}
                       title={`${card.title}\n${card.column_title}\n${card.start_date?.split("T")[0]} → ${card.due_date?.split("T")[0]}`}
                       style={{
                         gridRow: week + 1,
@@ -534,6 +618,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                     isWeekend ? " calendar-cell-weekend" : ""
                   }`}
                   onClick={(e) => handleCellClick(e, cell.dateString)}
+                  onDragOver={(e) => handleCellDragOver(e, cell.dateString)}
+                  onDragLeave={handleCellDragLeave}
+                  onDrop={(e) => handleCellDrop(e, cell.dateString)}
                 >
                   <div className="calendar-cell-header">
                     <span className="calendar-cell-day">{cell.date.getDate()}</span>
@@ -549,6 +636,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                           key={card.id}
                           className="calendar-card-chip"
                           onClick={() => onCardClick(card)}
+                          draggable
+                          onDragStart={(e) => handleCardDragStart(e, card)}
+                          onDragEnd={handleCardDragEnd}
                           title={`${card.title}\n${card.column_title}`}
                           style={labelColor ? {
                             borderLeftColor: labelColor,
@@ -610,6 +700,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                             key={card.id}
                             className="calendar-week-card"
                             onClick={() => onCardClick(card)}
+                            draggable
+                            onDragStart={(e) => handleCardDragStart(e, card)}
+                            onDragEnd={handleCardDragEnd}
                             title={`${card.title}\n${card.column_title}`}
                             style={labelColor ? {
                               borderLeftColor: labelColor,
@@ -681,6 +774,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                             key={`${dayIndex}-${timeIndex}`}
                             className="calendar-week-slot"
                             onClick={(e) => handleSlotClick(e, dayStr || "", time)}
+                            onDragOver={(e) => handleSlotDragOver(e, dayStr || "")}
+                            onDragLeave={handleSlotDragLeave}
+                            onDrop={(e) => handleSlotDrop(e, dayStr || "", time)}
                           >
                             {timeCards.map(card => {
                               const dueBadge = getDueBadge(card.due_date);
@@ -713,6 +809,9 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                                   key={card.id}
                                   className="calendar-week-timed-card"
                                   onClick={() => onCardClick(card)}
+                                  draggable
+                                  onDragStart={(e) => handleCardDragStart(e, card)}
+                                  onDragEnd={handleCardDragEnd}
                                   title={`${card.title}\n${card.column_title}\n${getTimeFromDate(card.due_date)}`}
                                   style={{
                                     height: `${height}px`,

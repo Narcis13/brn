@@ -104,3 +104,25 @@ All 166 tests passing. Feature progressing smoothly with 7 of 14 acceptance crit
 [22:47:56] Run 6 finished in 608s | AC: 7/14 | Vault: 34 entries | Status: in-progress
 
 [22:48:06] ━━━ Run 7 starting ━━━
+## Summary
+
+✅ Successfully implemented AC8: Quick-create popover for calendar view
+
+**What was done:**
+- Created `QuickCreatePopover` component with auto-focus, positioning, and dismiss behaviors
+- Integrated popover with both month and week calendar views
+- Extended backend to accept `due_date` during card creation
+- Added comprehensive styling with entrance animation
+- Wrote tests covering date formatting and popover behavior
+
+**Key achievements:**
+- Clean component architecture
+- Viewport-aware positioning
+- Seamless calendar integration
+- All tests passing (175 total)
+- TypeScript compilation successful
+
+**Next focus:** AC9 - Card chip enhancements and drag feedback
+[23:21:49] Run 7 finished in 2023s | AC: 8/14 | Vault: 37 entries | Status: in-progress
+
+[23:21:59] ━━━ Run 8 starting ━━━

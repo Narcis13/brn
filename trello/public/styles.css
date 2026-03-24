@@ -2154,3 +2154,22 @@ body.modal-open {
 .popover-date-text {
   font-weight: 500;
 }
+
+/* Calendar Drag and Drop */
+.calendar-card-chip.dragging,
+.calendar-multiday-bar.dragging,
+.calendar-week-card.dragging,
+.calendar-week-timed-card.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.calendar-cell-drop-active {
+  background: rgba(12, 102, 228, 0.12) !important;
+  box-shadow: inset 0 0 0 2px #0c66e4;
+}
+
+.calendar-week-slot-drop-active {
+  background: rgba(12, 102, 228, 0.12) !important;
+  box-shadow: inset 0 0 0 2px #0c66e4;
+}
