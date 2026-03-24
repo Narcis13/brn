@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import type { BoardCard, Label } from "./api.ts";
+import type { BoardCard, Label, Column } from "./api.ts";
 import * as api from "./api.ts";
 import { getDueBadge } from "./card-utils.ts";
+import { QuickCreatePopover } from "./QuickCreatePopover.tsx";
 
 interface CalendarViewProps {
   boardId: string;
+  columns: Column[];
   onCardClick: (card: BoardCard) => void;
+  onCardCreated: () => void;
 }
 
 type CalendarMode = "month" | "week";
@@ -246,11 +249,20 @@ function calculateMultiDayCards(cards: CalendarCard[], monthGrid: DateCell[]): M
   return multiDayCards;
 }
 
-export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React.ReactElement {
+export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: CalendarViewProps): React.ReactElement {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [cards, setCards] = useState<CalendarCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
+  const [quickCreateState, setQuickCreateState] = useState<{
+    show: boolean;
+    position: { x: number; y: number };
+    prefilledDate: string | null;
+  }>({
+    show: false,
+    position: { x: 0, y: 0 },
+    prefilledDate: null
+  });
   
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -330,6 +342,43 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
   });
   
   const hasCardsWithDates = cards.length > 0;
+  
+  async function handleQuickCreate(title: string, columnId: string, dueDate: string | null): Promise<void> {
+    await api.createCard(boardId, title, columnId, "", dueDate);
+    await loadCalendarData();
+    onCardCreated();
+  }
+  
+  function handleCellClick(e: React.MouseEvent, dateString: string): void {
+    // Don't open popover if clicking on a card
+    if ((e.target as HTMLElement).closest(".calendar-card-chip, .calendar-multiday-bar")) {
+      return;
+    }
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setQuickCreateState({
+      show: true,
+      position: { x: rect.left + 20, y: rect.top + 40 },
+      prefilledDate: dateString
+    });
+  }
+  
+  function handleSlotClick(e: React.MouseEvent, dateString: string, time: string): void {
+    // Don't open popover if clicking on a card
+    if ((e.target as HTMLElement).closest(".calendar-week-timed-card, .calendar-week-card")) {
+      return;
+    }
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const [hour, minute] = time.split(":");
+    const formattedTime = `${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")}`;
+    
+    setQuickCreateState({
+      show: true,
+      position: { x: rect.left + 20, y: rect.top + 10 },
+      prefilledDate: `${dateString}T${formattedTime}`
+    });
+  }
   
   return (
     <div className="calendar-container">
@@ -484,6 +533,7 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
                   }${cell.isToday ? " calendar-cell-today" : ""}${
                     isWeekend ? " calendar-cell-weekend" : ""
                   }`}
+                  onClick={(e) => handleCellClick(e, cell.dateString)}
                 >
                   <div className="calendar-cell-header">
                     <span className="calendar-cell-day">{cell.date.getDate()}</span>
@@ -630,6 +680,7 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
                           <div
                             key={`${dayIndex}-${timeIndex}`}
                             className="calendar-week-slot"
+                            onClick={(e) => handleSlotClick(e, dayStr || "", time)}
                           >
                             {timeCards.map(card => {
                               const dueBadge = getDueBadge(card.due_date);
@@ -696,6 +747,15 @@ export function CalendarView({ boardId, onCardClick }: CalendarViewProps): React
           <p>No cards scheduled. Set due dates on cards or click a date to create one.</p>
         </div>
       )}
+      
+      <QuickCreatePopover
+        show={quickCreateState.show}
+        position={quickCreateState.position}
+        columns={columns}
+        prefilledDate={quickCreateState.prefilledDate}
+        onClose={() => setQuickCreateState(prev => ({ ...prev, show: false }))}
+        onCreate={handleQuickCreate}
+      />
     </div>
   );
 }

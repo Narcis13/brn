@@ -84,3 +84,23 @@ Successfully implemented AC6 (Multi-day bars) for the calendar view feature:
 [22:37:38] Run 5 finished in 2784s | AC: 6/14 | Vault: 32 entries | Status: in-progress
 
 [22:37:49] ━━━ Run 6 starting ━━━
+## Summary
+
+Successfully implemented the calendar week view (AC7):
+
+✅ **Completed**:
+- 7-column layout for Mon-Sun with proper week calculations
+- Navigation with week range display and prev/next/today buttons
+- All-day row for date-only cards
+- Time grid from 07:00-22:00 with 30-minute slots
+- Timed cards positioned at correct slots with duration-based heights
+- Mode toggle between Month and Week views
+- Comprehensive unit tests for week calculations
+- TypeScript types properly handled
+
+**Next Focus**: AC8 - Quick-create popover for creating cards by clicking empty calendar cells/slots
+
+All 166 tests passing. Feature progressing smoothly with 7 of 14 acceptance criteria now complete.
+[22:47:56] Run 6 finished in 608s | AC: 7/14 | Vault: 34 entries | Status: in-progress
+
+[22:48:06] ━━━ Run 7 starting ━━━

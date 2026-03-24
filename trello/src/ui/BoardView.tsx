@@ -781,7 +781,12 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
           </div>
             </>
           ) : (
-            <CalendarView boardId={boardId} onCardClick={openEditCard} />
+            <CalendarView 
+              boardId={boardId} 
+              columns={columns}
+              onCardClick={openEditCard} 
+              onCardCreated={() => void loadBoard()}
+            />
           )}
         </div>
       </div>

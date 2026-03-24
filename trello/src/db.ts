@@ -358,7 +358,8 @@ export function createCard(
   db: Database,
   title: string,
   columnId: string,
-  description: string = ""
+  description: string = "",
+  dueDate: string | null = null
 ): CardRow | null {
   const col = db.query("SELECT id, board_id FROM columns WHERE id = ?").get(columnId) as { id: string; board_id: string } | null;
   if (!col) return null;
@@ -369,8 +370,8 @@ export function createCard(
   const id = nanoid();
   const position = maxPos.m + 1;
   db.query(
-    "INSERT INTO cards (id, title, description, position, column_id) VALUES (?, ?, ?, ?, ?)"
-  ).run(id, title, description, position, columnId);
+    "INSERT INTO cards (id, title, description, position, column_id, due_date) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(id, title, description, position, columnId, dueDate);
 
   // Create activity for card creation
   createActivity(db, id, col.board_id, "created");

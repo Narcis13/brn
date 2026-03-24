@@ -213,11 +213,12 @@ export function createCard(
   boardId: string,
   title: string,
   columnId: string,
-  description: string = ""
+  description: string = "",
+  due_date?: string | null
 ): Promise<CardRecord> {
   return request(`/boards/${boardId}/cards`, {
     method: "POST",
-    body: JSON.stringify({ title, columnId, description }),
+    body: JSON.stringify({ title, columnId, description, due_date }),
   });
 }
 
