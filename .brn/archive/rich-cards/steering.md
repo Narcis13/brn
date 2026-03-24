@@ -1,5 +1,3 @@
-# Steering Directives
-
 ## Active
 
 ## Acknowledged
