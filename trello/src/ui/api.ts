@@ -281,6 +281,15 @@ export function searchBoard(
   });
 }
 
+export function fetchCalendarCards(
+  boardId: string,
+  start: string,
+  end: string
+): Promise<{ cards: BoardCard[] }> {
+  const params = new URLSearchParams({ start, end });
+  return request(`/boards/${boardId}/calendar?${params.toString()}`);
+}
+
 export function createLabel(
   boardId: string,
   name: string,

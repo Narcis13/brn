@@ -25,3 +25,17 @@ Successfully implemented AC2: Calendar data endpoint
 [21:14:58] Run 2 finished in 1380s | AC: 3/14 | Vault: 25 entries | Status: in-progress
 
 [21:15:08] ━━━ Run 3 starting ━━━
+## Summary
+
+Successfully implemented AC4 (Board|Calendar tab toggle):
+
+✅ Added view mode state and toggle UI above search bar
+✅ Applied proper styling with active states and hover effects  
+✅ Hid search bar and filters when in calendar view
+✅ All 143 tests pass
+✅ Created vault entries for patterns and decisions
+
+The implementation follows the project's established patterns and includes proper CSS styling to avoid the "unstyled UI" anti-pattern. Next priority is AC5 (Month view grid).
+[21:38:58] Run 3 finished in 1430s | AC: 4/14 | Vault: 27 entries | Status: in-progress
+
+[21:39:08] ━━━ Run 4 starting ━━━

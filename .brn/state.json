@@ -8,7 +8,7 @@
     {"id": "AC2", "text": "GET /api/boards/:boardId/calendar?start=&end= returns cards overlapping date range (due in range, start in range, or spanning range); cards with no dates excluded; response includes id, title, dates, column_id, column_title, labels, checklist counts", "met": true},
     {"id": "AC3", "text": "PATCH /api/boards/:boardId/cards/:cardId enhanced validation accepts YYYY-MM-DD or YYYY-MM-DDTHH:MM; rejects malformed datetime values", "met": true},
     {"id": "AC4", "text": "Board|Calendar tab toggle above search bar; active tab highlighted; switching preserves board context without page reload; search bar hidden in calendar view", "met": true},
-    {"id": "AC5", "text": "Month view: 7-column Mon-Sun grid, nav bar with < Month Year > and Today button, day numbers (gray for outside month), card chips (max 3 + '+N more'), today cell highlighted", "met": false},
+    {"id": "AC5", "text": "Month view: 7-column Mon-Sun grid, nav bar with < Month Year > and Today button, day numbers (gray for outside month), card chips (max 3 + '+N more'), today cell highlighted", "met": true},
     {"id": "AC6", "text": "Multi-day bars for cards with start_date and due_date spanning multiple days, positioned above single-day cards, showing card title", "met": false},
     {"id": "AC7", "text": "Week view: 7 columns Mon-Sun, nav bar with date range and Today button, all-day row for date-only cards, time grid 07:00-22:00 with 30min slots, timed cards as blocks at correct position", "met": false},
     {"id": "AC8", "text": "Quick-create popover on empty cell/slot click: title input (auto-focused), column dropdown, pre-filled date/time, Enter submits, Escape closes, optimistic UI", "met": false},
@@ -19,9 +19,9 @@
     {"id": "AC13", "text": "Empty state message when no cards have dates; loading skeleton on calendar grid; +N more overflow; today marker distinct; weekend columns shaded differently", "met": false},
     {"id": "AC14", "text": "Navigation: prev/next month/week buttons, Today button jumps to current period, both views support full navigation", "met": false}
   ],
-  "run_count": 3,
-  "current_focus": "Month view grid implementation",
-  "last_run": "2026-03-24T11:25:00",
+  "run_count": 4,
+  "current_focus": "Multi-day bars implementation (AC6)",
+  "last_run": "2026-03-24T11:30:00",
   "retry_count": 0,
   "blocked": false
 }

@@ -20,6 +20,7 @@ import {
   reorderColumns,
 } from "./board-utils.ts";
 import { CardModal } from "./CardModal.tsx";
+import { CalendarView } from "./CalendarView.tsx";
 
 export type ViewMode = "board" | "calendar";
 
@@ -780,11 +781,7 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
           </div>
             </>
           ) : (
-            <div className="calendar-view">
-              <p style={{ textAlign: "center", padding: "40px", color: "rgba(255,255,255,0.8)" }}>
-                Calendar view coming soon...
-              </p>
-            </div>
+            <CalendarView boardId={boardId} onCardClick={openEditCard} />
           )}
         </div>
       </div>
