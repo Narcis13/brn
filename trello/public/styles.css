@@ -2173,3 +2173,8 @@ body.modal-open {
   background: rgba(12, 102, 228, 0.12) !important;
   box-shadow: inset 0 0 0 2px #0c66e4;
 }
+
+.calendar-week-allday-drop-active {
+  background: rgba(12, 102, 228, 0.12) !important;
+  box-shadow: inset 0 0 0 2px #0c66e4;
+}

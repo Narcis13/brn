@@ -265,7 +265,7 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
   });
   
   // Drag state
-  const dragCard = useRef<{ cardId: string; originalDate: string | null } | null>(null);
+  const dragCard = useRef<{ card: CalendarCard; originalDate: string | null } | null>(null);
   const [dragOverDate, setDragOverDate] = useState<string | null>(null);
   
   const year = currentDate.getFullYear();
@@ -386,7 +386,7 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
   
   // Drag handlers
   function handleCardDragStart(e: React.DragEvent, card: CalendarCard): void {
-    dragCard.current = { cardId: card.id, originalDate: card.due_date };
+    dragCard.current = { card, originalDate: card.due_date };
     e.dataTransfer.effectAllowed = "move";
     e.dataTransfer.setData("text/plain", card.id);
     (e.target as HTMLElement).classList.add("dragging");
@@ -421,16 +421,12 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     
     if (!dragCard.current) return;
     
-    const { cardId, originalDate } = dragCard.current;
+    const { card, originalDate } = dragCard.current;
     
     // Don't do anything if dropping on the same date
     if (originalDate && originalDate.startsWith(dateString)) {
       return;
     }
-    
-    // Find the card to check if it has both start and due dates
-    const card = cards.find(c => c.id === cardId);
-    if (!card) return;
     
     // Calculate the date difference
     const originalDateStr = originalDate?.split("T")[0];
@@ -462,7 +458,7 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     }
     
     // Update the card with new dates
-    await api.updateCard(boardId, cardId, updates);
+    await api.updateCard(boardId, card.id, updates);
     await loadCalendarData();
   }
   
@@ -482,12 +478,96 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     
     if (!dragCard.current) return;
     
-    const { cardId } = dragCard.current;
-    const [hour, minute] = time.split(":");
-    const formattedDateTime = `${dateString}T${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")}`;
+    const { card, originalDate } = dragCard.current;
     
-    // Update the card's due date with time
-    await api.updateCard(boardId, cardId, { due_date: formattedDateTime });
+    // Detect if this is a vertical drag (same day, different time) or horizontal (different day)
+    const originalDateOnly = originalDate?.split("T")[0];
+    const originalTime = getTimeFromDate(originalDate);
+    const [hour, minute] = time.split(":");
+    const formattedTime = `${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")}`;
+    
+    const updates: { due_date?: string; start_date?: string } = {};
+    
+    if (originalDateOnly === dateString && originalTime && originalTime !== formattedTime) {
+      // Vertical drag - update only the time
+      updates.due_date = `${dateString}T${formattedTime}`;
+    } else if (originalDateOnly !== dateString) {
+      // Horizontal drag - update the date, preserve the time
+      if (originalTime) {
+        updates.due_date = `${dateString}T${originalTime}`;
+      } else {
+        // If original had no time, add the time from the slot
+        updates.due_date = `${dateString}T${formattedTime}`;
+      }
+      
+      // If card has both dates, shift start_date by same delta
+      if (card.start_date && card.due_date) {
+        const daysDiff = Math.round((new Date(dateString).getTime() - new Date(originalDateOnly!).getTime()) / (1000 * 60 * 60 * 24));
+        const startTime = getTimeFromDate(card.start_date);
+        const newStartDate = new Date(card.start_date.split("T")[0]!);
+        newStartDate.setDate(newStartDate.getDate() + daysDiff);
+        const newStartDateStr = newStartDate.toISOString().split("T")[0];
+        updates.start_date = startTime ? `${newStartDateStr}T${startTime}` : newStartDateStr;
+      }
+    } else {
+      // Same date and time - no change needed
+      return;
+    }
+    
+    // Update the card with new dates
+    await api.updateCard(boardId, card.id, updates);
+    await loadCalendarData();
+  }
+  
+  // All-day cell handlers
+  function handleAllDayClick(e: React.MouseEvent, dateString: string): void {
+    // Don't open popover if clicking on a card
+    if ((e.target as HTMLElement).closest(".calendar-week-card")) {
+      return;
+    }
+    
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setQuickCreateState({
+      show: true,
+      position: { x: rect.left + 20, y: rect.top + 40 },
+      prefilledDate: dateString
+    });
+  }
+  
+  function handleAllDayDragOver(e: React.DragEvent, dateString: string): void {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    (e.currentTarget as HTMLElement).classList.add("calendar-week-allday-drop-active");
+  }
+  
+  function handleAllDayDragLeave(e: React.DragEvent): void {
+    (e.currentTarget as HTMLElement).classList.remove("calendar-week-allday-drop-active");
+  }
+  
+  async function handleAllDayDrop(e: React.DragEvent, dateString: string): Promise<void> {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).classList.remove("calendar-week-allday-drop-active");
+    
+    if (!dragCard.current) return;
+    
+    const { card, originalDate } = dragCard.current;
+    const originalDateOnly = originalDate?.split("T")[0];
+    
+    // When dropping on all-day, remove the time component
+    const updates: { due_date?: string; start_date?: string } = {};
+    updates.due_date = dateString;
+    
+    // If card has both dates, shift start_date by same delta
+    if (card.start_date && card.due_date && originalDateOnly !== dateString) {
+      const daysDiff = Math.round((new Date(dateString).getTime() - new Date(originalDateOnly!).getTime()) / (1000 * 60 * 60 * 24));
+      const newStartDate = new Date(card.start_date.split("T")[0]!);
+      newStartDate.setDate(newStartDate.getDate() + daysDiff);
+      const newStartDateStr = newStartDate.toISOString().split("T")[0];
+      updates.start_date = newStartDateStr;
+    }
+    
+    // Update the card with new dates
+    await api.updateCard(boardId, card.id, updates);
     await loadCalendarData();
   }
   
@@ -723,6 +803,10 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
                     <div
                       key={index}
                       className={`calendar-week-allday-cell${isToday ? " calendar-week-today" : ""}${isWeekend ? " calendar-week-weekend" : ""}`}
+                      onClick={(e) => handleAllDayClick(e, dayStr || "")}
+                      onDragOver={(e) => handleAllDayDragOver(e, dayStr || "")}
+                      onDragLeave={handleAllDayDragLeave}
+                      onDrop={(e) => handleAllDayDrop(e, dayStr || "")}
                     >
                       {allDayCards.map(card => {
                         const dueBadge = getDueBadge(card.due_date);
