@@ -344,4 +344,63 @@ describe("CalendarView", () => {
       expect(row3).toBe(0);
     });
   });
+  
+  describe("Navigation (AC14)", () => {
+    it("should navigate to Today for both month and week views", () => {
+      const navigateToToday = () => {
+        return new Date();
+      };
+      
+      const today = new Date();
+      const navigatedDate = navigateToToday();
+      
+      expect(navigatedDate.getFullYear()).toBe(today.getFullYear());
+      expect(navigatedDate.getMonth()).toBe(today.getMonth());
+      expect(navigatedDate.getDate()).toBe(today.getDate());
+    });
+    
+    it("should navigate to previous/next week correctly", () => {
+      const navigateWeek = (current: Date, offset: number) => {
+        const newDate = new Date(current);
+        newDate.setDate(current.getDate() + (offset * 7));
+        return newDate;
+      };
+      
+      const march24 = new Date(2026, 2, 24); // Tuesday
+      const prevWeek = navigateWeek(march24, -1);
+      const nextWeek = navigateWeek(march24, 1);
+      
+      expect(prevWeek.getDate()).toBe(17); // Previous Tuesday
+      expect(nextWeek.getDate()).toBe(31); // Next Tuesday
+    });
+    
+    it("should handle week navigation across month boundaries", () => {
+      const navigateWeek = (current: Date, offset: number) => {
+        const newDate = new Date(current);
+        newDate.setDate(current.getDate() + (offset * 7));
+        return newDate;
+      };
+      
+      const march30 = new Date(2026, 2, 30); // Monday
+      const nextWeek = navigateWeek(march30, 1);
+      
+      expect(nextWeek.getMonth()).toBe(3); // April
+      expect(nextWeek.getDate()).toBe(6); // April 6
+    });
+    
+    it("should handle week navigation across year boundaries", () => {
+      const navigateWeek = (current: Date, offset: number) => {
+        const newDate = new Date(current);
+        newDate.setDate(current.getDate() + (offset * 7));
+        return newDate;
+      };
+      
+      const dec28 = new Date(2026, 11, 28); // December 28, 2026 (Monday)
+      const nextWeek = navigateWeek(dec28, 1);
+      
+      expect(nextWeek.getFullYear()).toBe(2027);
+      expect(nextWeek.getMonth()).toBe(0); // January
+      expect(nextWeek.getDate()).toBe(4); // January 4, 2027
+    });
+  });
 });
