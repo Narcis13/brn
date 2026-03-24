@@ -311,6 +311,65 @@ describe("GET /api/boards/:boardId/columns", () => {
     expect(data.columns[0]!.cards).toEqual([]);
   });
 
+  it("includes label and checklist metadata on board cards", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+
+    const columnsRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token));
+    const columnsData = (await columnsRes.json()) as { columns: ColumnWithCards[] };
+    const firstColumn = columnsData.columns[0];
+    expect(firstColumn).toBeDefined();
+
+    const createCardRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards`, token, {
+        title: "Rich card",
+        description: "Has detail",
+        columnId: firstColumn!.id,
+      })
+    );
+    expect(createCardRes.status).toBe(201);
+    const card = (await createCardRes.json()) as CardRow;
+
+    const createLabelRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/labels`, token, {
+        name: "Urgent",
+        color: "#e74c3c",
+      })
+    );
+    expect(createLabelRes.status).toBe(201);
+    const label = (await createLabelRes.json()) as { id: string; name: string };
+
+    const assignLabelRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${card.id}/labels`, token, {
+        labelId: label.id,
+      })
+    );
+    expect(assignLabelRes.status).toBe(201);
+
+    const updateCardRes = await app.fetch(
+      authReq("PATCH", `/api/boards/${board.id}/cards/${card.id}`, token, {
+        due_date: "2026-04-15",
+        checklist: JSON.stringify([
+          { id: "item-1", text: "First item", checked: true },
+          { id: "item-2", text: "Second item", checked: false },
+        ]),
+      })
+    );
+    expect(updateCardRes.status).toBe(200);
+
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { columns: ColumnWithCards[] };
+    const boardCard = data.columns[0]!.cards[0];
+
+    expect(boardCard).toBeDefined();
+    expect(boardCard!.labels).toHaveLength(1);
+    expect(boardCard!.labels[0]!.name).toBe("Urgent");
+    expect(boardCard!.due_date).toBe("2026-04-15");
+    expect(boardCard!.checklist_total).toBe(2);
+    expect(boardCard!.checklist_done).toBe(1);
+  });
+
   it("returns 404 for other user's board", async () => {
     const alice = await registerUser("alice", "secret123");
     const bob = await registerUser("bob", "secret456");

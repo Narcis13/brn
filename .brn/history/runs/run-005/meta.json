@@ -1,0 +1,75 @@
+{
+  "run": 5,
+  "timestamp": "2026-03-23T19:12:33Z",
+  "duration_ms": 2333000,
+  "status": "completed",
+  "focus": "frontend card detail modal and board card face enhancements",
+  "acceptance_criteria_progress": {
+    "AC11": {
+      "before": false,
+      "after": true,
+      "notes": "Implemented a full-width card detail modal with inline title editing, formatted description preview/editor, labels, dates, checklist progress, activity, and close controls."
+    },
+    "AC12": {
+      "before": false,
+      "after": true,
+      "notes": "Board cards now expose label dots, due-date badges by status, and checklist mini progress."
+    },
+    "AC15": {
+      "before": false,
+      "after": true,
+      "notes": "Added a label picker with assignment toggles, assigned checkmarks, and inline preset-color label creation."
+    },
+    "AC16": {
+      "before": false,
+      "after": true,
+      "notes": "Existing card detail changes now save immediately on blur or change with optimistic local UI updates."
+    },
+    "AC17": {
+      "before": false,
+      "after": false,
+      "notes": "Modal empty states are covered, but search no-results and loading/saving skeleton states remain."
+    }
+  },
+  "files": {
+    "modified": [
+      "/trello/public/styles.css",
+      "/trello/src/db.ts",
+      "/trello/src/routes.test.ts",
+      "/trello/src/ui/BoardView.tsx",
+      "/trello/src/ui/CardModal.tsx",
+      "/trello/src/ui/api.ts",
+      "/.brn/state.json",
+      "/.brn/history/index.json"
+    ],
+    "created": [
+      "/trello/src/ui/card-utils.ts",
+      "/trello/src/ui/card-utils.test.ts",
+      "/.brn/history/runs/run-005/prompt.md",
+      "/.brn/history/runs/run-005/output.md",
+      "/.brn/history/runs/run-005/narrative.md",
+      "/.brn/history/runs/run-005/verification.md",
+      "/.brn/history/runs/run-005/meta.json",
+      "/.brn/vault/patterns/modal-optimistic-reconcile.md",
+      "/.brn/vault/decisions/edit-autosave-create-explicit-save.md",
+      "/.brn/vault/codebase/column-cards-rich-metadata.md"
+    ]
+  },
+  "verification": {
+    "tests": {
+      "command": "bun test",
+      "passed": 99,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bunx tsc --noEmit",
+      "passed": true
+    },
+    "build": {
+      "command": "cd trello && bun run build.ts",
+      "passed": true
+    }
+  },
+  "summary": "Completed the rich-cards frontend modal and board-card slice with optimistic edits, richer card summaries, typed client helpers, and updated UI styling.",
+  "next_focus": "board-level search and filter UI plus column drag-reordering"
+}

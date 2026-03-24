@@ -1,37 +1,21 @@
 {
-  "id": "run-001",
-  "timestamp": "2026-03-23T14:36:42Z",
-  "duration_seconds": 202,
-  "status": "success",
-  "focus": "Complete backend — auth, boards, scoped endpoints",
-  "summary": "Built the entire backend: users/boards tables, JWT auth (register/login/me), auth middleware, board CRUD with column seeding, scoped column/card endpoints with board ownership verification. 31 tests, all passing, types clean.",
-  "model": "opus",
-  "effort": "high",
-  "mode": "attended",
-  "files_created": [],
-  "files_modified": [
-    "trello/src/db.ts",
-    "trello/src/routes.ts",
-    "trello/src/routes.test.ts"
-  ],
-  "files_deleted": [],
-  "tests": {
-    "passed": 31,
-    "failed": 0,
-    "skipped": 0,
-    "total": 31
+  "run": 1,
+  "timestamp": "2026-03-23T12:00:00Z",
+  "duration_ms": 180000,
+  "status": "completed",
+  "acceptance_criteria_progress": {
+    "AC1": { "before": false, "after": true, "notes": "Labels and card_labels tables created with constraints" },
+    "AC2": { "before": false, "after": true, "notes": "Cards table enhanced with new columns" },
+    "AC3": { "before": false, "after": true, "notes": "Activity table created with cascade deletes" }
   },
-  "types_clean": true,
-  "build_clean": true,
-  "commit": "",
-  "acceptance_criteria_met": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7", "AC8", "AC9"],
-  "acceptance_criteria_progress": "9/13",
-  "vault_updates": [
-    "patterns/hono-jwt-auth.md",
-    "anti-patterns/hono-jwt-verify-alg.md",
-    "decisions/auth-inline-verification.md"
-  ],
-  "retry": false,
-  "challenges": "hono/jwt verify() requires explicit algorithm parameter — initially caused all auth tests to fail with 401",
-  "next_focus": "Frontend: Login/Register UI, Board list dashboard, scoped Board view (AC10-AC13)"
+  "files": {
+    "modified": ["/trello/src/db.ts"],
+    "created": ["/trello/src/db-migration.test.ts"]
+  },
+  "tests": {
+    "added": 2,
+    "passed": 35,
+    "failed": 0
+  },
+  "summary": "Successfully created database migration for rich cards feature. Added labels, card_labels, and activity tables. Enhanced cards table with due_date, start_date, checklist, and updated_at columns. All migrations are non-destructive and tests pass."
 }

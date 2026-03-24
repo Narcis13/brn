@@ -1,24 +1,47 @@
-[
-  {
-    "id": "run-001",
-    "timestamp": "2026-03-23T14:36:42Z",
-    "status": "success",
-    "focus": "Complete backend — auth, boards, scoped endpoints",
-    "summary": "Built entire backend: users/boards tables, JWT auth (register/login/me), auth middleware, board CRUD with column seeding, scoped column/card endpoints with board ownership verification. 31 tests pass, types clean.",
-    "ac_met": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6", "AC7", "AC8", "AC9"],
-    "ac_progress": "9/13",
-    "vault_entries_added": 3,
-    "files_changed": 3
-  },
-  {
-    "id": "run-002",
-    "timestamp": "2026-03-23T15:03:19Z",
-    "status": "success",
-    "focus": "Frontend — auth UI, board list, scoped board view (AC10-AC13)",
-    "summary": "Built complete frontend: login/register page with validation, board list dashboard with create/delete, kanban board view scoped to boardId, token management with localStorage and 401 redirect. All 13/13 AC met.",
-    "ac_met": ["AC10", "AC11", "AC12", "AC13"],
-    "ac_progress": "13/13",
-    "vault_entries_added": 2,
-    "files_changed": 7
-  }
-]
+{
+  "feature": "rich-cards",
+  "runs": [
+    {
+      "run": 1,
+      "timestamp": "2026-03-23T12:00:00Z",
+      "focus": "database migration",
+      "summary": "Created database migration for labels, activity, and enhanced cards. All tests pass.",
+      "acceptance_criteria_met": ["AC1", "AC2", "AC3"],
+      "files_changed": 2
+    },
+    {
+      "run": 2,
+      "timestamp": "2026-03-23T19:30:00Z",
+      "focus": "enhanced card endpoints",
+      "summary": "Implemented enhanced card endpoints with dates, checklist, activity tracking, and full detail retrieval. Added comprehensive test coverage.",
+      "acceptance_criteria_met": ["AC6", "AC7", "AC8"],
+      "files_changed": 3
+    },
+    {
+      "run": 4,
+      "timestamp": "2026-03-23T18:26:32Z",
+      "focus": "search and column reorder endpoints",
+      "summary": "Completed AC9 and AC10 with board search, due-date filters, wildcard escaping, column reorder validation, and focused endpoint coverage.",
+      "acceptance_criteria_met": ["AC9", "AC10"],
+      "files_changed": 3
+    },
+    {
+      "run": 5,
+      "timestamp": "2026-03-23T19:12:33Z",
+      "focus": "frontend card detail modal and board card face enhancements",
+      "summary": "Completed the frontend rich-card slice with an optimistic card detail modal, richer board card summaries, and updated board styling.",
+      "acceptance_criteria_met": ["AC11", "AC12", "AC15", "AC16"],
+      "files_changed": 8
+    },
+    {
+      "run": 6,
+      "timestamp": "2026-03-23T19:29:09Z",
+      "focus": "board search/filter UX and column drag-reordering",
+      "summary": "Finished the board workspace controls with instant local filtering, debounced server search reconciliation, label-pill toggles, a no-results state, and optimistic column drag-reordering.",
+      "acceptance_criteria_met": ["AC13", "AC14", "AC17"],
+      "files_changed": 10
+    }
+  ],
+  "total_runs": 5,
+  "status": "done"
+}

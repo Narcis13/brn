@@ -1,41 +1,23 @@
 {
-  "id": "run-002",
-  "timestamp": "2026-03-23T15:03:19Z",
-  "duration_seconds": 296,
-  "status": "success",
-  "focus": "Frontend — auth UI, board list, scoped board view (AC10-AC13)",
-  "summary": "Built complete frontend: login/register page with validation, board list dashboard with create/delete, kanban board view scoped to boardId, token management with localStorage and 401 redirect. All 13/13 acceptance criteria now met.",
-  "model": "opus",
-  "effort": "high",
-  "mode": "attended",
+  "run_number": 2,
+  "timestamp": "2026-03-23T19:30:00Z",
+  "duration_minutes": 20,
+  "acceptance_criteria_met": ["AC6", "AC7", "AC8"],
   "files_created": [
-    "trello/src/ui/LoginPage.tsx",
-    "trello/src/ui/BoardList.tsx",
-    "trello/src/ui/BoardView.tsx"
+    "trello/src/routes-card-detail.test.ts"
   ],
   "files_modified": [
-    "trello/src/ui/api.ts",
-    "trello/src/ui/App.tsx",
-    "trello/public/styles.css",
-    "trello/public/index.html"
+    "trello/src/db.ts",
+    "trello/src/routes.ts"
   ],
-  "files_deleted": [],
-  "tests": {
-    "passed": 31,
-    "failed": 0,
-    "skipped": 0,
-    "total": 31
-  },
-  "types_clean": true,
-  "build_clean": true,
-  "commit": "82a0a4d",
-  "acceptance_criteria_met": ["AC10", "AC11", "AC12", "AC13"],
-  "acceptance_criteria_progress": "13/13",
-  "vault_updates": [
-    "patterns/react-auth-state-machine.md",
-    "decisions/inline-board-creation.md"
-  ],
-  "retry": false,
-  "challenges": "Clean extraction of old App.tsx into BoardView.tsx with boardId-scoped API calls",
-  "next_focus": "Feature complete — create PR"
+  "tests_added": 15,
+  "tests_passing": 83,
+  "key_changes": [
+    "Added activity helper functions",
+    "Enhanced updateCard for dates and checklist",
+    "Created updateCardWithActivity wrapper",
+    "Implemented enhanced PATCH endpoint",
+    "Added GET card detail endpoint",
+    "Added GET activity pagination endpoint"
+  ]
 }

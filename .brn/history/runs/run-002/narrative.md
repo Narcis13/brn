@@ -1,49 +1,107 @@
-# Run 002: Frontend — Auth UI, Board List, Scoped Board View
+# Run 002: Enhanced Card Endpoints and Activity Tracking
 
-## Context
-After run-001 built the complete backend (auth, boards, scoped endpoints), the frontend was still the old single-board kanban with flat API routes and no auth awareness. All 4 remaining acceptance criteria (AC10-AC13) needed a cohesive frontend rewrite.
+## Overview
+This run focused on implementing the enhanced card endpoints (AC6-AC8) that add support for dates, checklists, activity tracking, and full card detail retrieval. Building on the label functionality from the previous run, I added comprehensive activity logging and card enhancement features.
 
-## Approach
-Tackled all 4 frontend ACs as one step since they're tightly coupled — auth determines navigation, navigation determines which components render, and all API calls need the token. The approach was a clean decomposition into 4 React components with a central App that manages an auth-aware state machine.
+## What Happened
 
-## What Was Built
+### 1. Task Planning
+- Used TodoWrite to track implementation of activity helpers, enhanced card updates, and new endpoints
+- Organized work into: database functions, API endpoints, and comprehensive testing
 
-### Files Created
-- `trello/src/ui/LoginPage.tsx` — Login/register form with toggle, validation errors, loading state. Calls api.register/login and stores token on success.
-- `trello/src/ui/BoardList.tsx` — Responsive grid of board cards with create (inline input), delete (confirmation dialog), empty state, and loading state.
-- `trello/src/ui/BoardView.tsx` — Extracted from old App.tsx. Same kanban functionality but all API calls now take boardId parameter for board-scoped routes.
+### 2. Activity Helper Functions
+Added to `db.ts`:
+- `createActivity()`: Creates activity log entries with JSON detail support
+- `getCardActivity()`: Retrieves paginated activity (limit 50, offset support)
+- Modified `createCard()` to automatically log "created" activity
 
-### Files Modified
-- `trello/src/ui/api.ts` — Complete rewrite: added token management (localStorage), Authorization header injection, 401 handler with callback, auth endpoints (register/login/getMe), board CRUD, and updated all column/card functions to take boardId.
-- `trello/src/ui/App.tsx` — Complete rewrite: state machine (checking → login | board-list → board), token verification on mount, header with username/logout/back-button, renders LoginPage/BoardList/BoardView based on state.
-- `trello/public/styles.css` — Added auth page styles (centered card, form inputs, error display, toggle link), board list styles (responsive grid, board cards with hover/delete, new-board form, empty state), updated header (left/right layout, back button, username display), added btn-sm utility.
-- `trello/public/index.html` — Removed static `<header>` element (now React-rendered), changed `<main id="root">` to `<div id="root">` since React controls the full page layout.
+### 3. Enhanced Card Update System
+- Modified `updateCard()` to accept new fields:
+  - `dueDate` and `startDate` (nullable strings)
+  - `checklist` (JSON string)
+- Added validation: start_date must be <= due_date
+- Created `updateCardWithActivity()` wrapper that:
+  - Tracks all changes (title, description, dates, checklist, position)
+  - Creates appropriate activity entries:
+    - "moved" when column changes (includes from/to column names)
+    - "dates_changed" when dates are modified
+    - "edited" for other changes
+  - Ensures activity is only created when actual changes occur
+
+### 4. Card Detail Function
+Created `getCardDetail()` that returns:
+- Full card data from database
+- Array of assigned labels (via joins)
+- Activity log (last 50 entries)
+- Computed `checklist_total` and `checklist_done` fields
+
+### 5. Enhanced API Endpoints
+
+#### PATCH /api/boards/:boardId/cards/:cardId (AC6)
+- Now accepts: `due_date`, `start_date`, `checklist`
+- Validates date range (start <= due)
+- Validates checklist JSON structure and item fields
+- Uses `updateCardWithActivity()` for automatic activity logging
+- Returns 400 for validation errors
+
+#### GET /api/boards/:boardId/cards/:cardId (AC7)
+- New endpoint returning full card detail
+- Includes labels array, activity log, checklist stats
+- Verifies card belongs to specified board
+- Returns 404 for non-existent/unauthorized cards
+
+#### GET /api/boards/:boardId/cards/:cardId/activity (AC8)
+- New endpoint for paginated activity retrieval
+- Supports `offset` query parameter
+- Returns activities newest first
+- Limit of 50 per request
+
+### 6. Enhanced Label Operations
+- Modified label assignment to create "label_added" activity
+- Modified label removal to create "label_removed" activity
+- Both operations now leave audit trail
+
+### 7. Comprehensive Testing
+Created `routes-card-detail.test.ts` with 15 tests covering:
+- Date validation and updates
+- Checklist validation (JSON format, item structure)
+- Activity creation for all change types
+- Card detail retrieval with computed fields
+- Activity pagination
+- Error cases and authorization
+
+### 8. Results
+- All 83 tests passing ✓
+- TypeScript compilation successful ✓
+- Zero type errors or warnings
 
 ## Key Decisions
-- **State machine over router**: Used a simple `View` discriminated union type (`checking | login | board-list | board`) instead of a routing library. The app has only 3 views — a router would be over-engineering.
-- **401 callback pattern**: `api.ts` exports `setOnUnauthorized(cb)` so the App can register a redirect-to-login callback. Cleaner than event emitters or global state.
-- **Inline board creation**: New board uses an inline input that appears in the grid rather than a modal. Lighter UX for a simple single-field form.
-- **BoardView takes only boardId**: Kept the prop interface minimal. BoardView fetches its own data via `api.fetchColumns(boardId)`.
 
-## Challenges & Solutions
-- The old App.tsx used unscoped API calls (fetchColumns with no boardId). Rather than trying to patch the existing component, a clean extraction to BoardView.tsx was faster and less error-prone.
-- Had to ensure the CSS worked for both the auth page (full-viewport centered card on blue gradient) and the board-list page (content within the blue background after header). Solved by making auth-page use min-height: 100vh while board-list sits below the header naturally.
+1. **Activity Detail as JSON**: Used flexible JSON field for action-specific data (e.g., column names for moves)
+2. **50-item Activity Limit**: Balanced between usefulness and performance
+3. **Separate Date Activity**: "dates_changed" gets its own activity type for clarity
+4. **Nullable Dates**: Allow clearing dates by passing null
+5. **Strict Checklist Validation**: Each item must have id, text, and checked fields
 
-## Verification Results
-- Tests: 31 passed, 0 failed — all existing backend tests pass unchanged
-- Types: clean (0 errors)
-- Build: 2 files output successfully
+## Technical Implementation Details
+
+- **Position Management**: Preserved existing card position update logic when moving between columns
+- **Activity Timestamps**: Rely on SQLite's DEFAULT for consistent timestamps
+- **Type Safety**: Created `CardDetail` interface extending `CardRow`
+- **Error Handling**: Consistent 400/404 responses with clear error messages
+
+## Files Modified
+- `/trello/src/db.ts`: Added activity helpers and enhanced update functions
+- `/trello/src/routes.ts`: Enhanced PATCH endpoint, added 2 new GET endpoints
+- `/trello/src/routes-card-detail.test.ts`: Created with comprehensive test coverage
 
 ## Acceptance Criteria Progress
-- AC10 (Login/Register UI): MET — centered card, toggle, validation errors, auth feedback
-- AC11 (Board list): MET — responsive grid, create/delete, empty state, header with username + logout
-- AC12 (Board view): MET — kanban scoped to board, back button, board title in header
-- AC13 (Token management): MET — localStorage, Authorization header, 401 redirect, survives refresh
-- Overall: 13/13 met
+- ✅ AC6: Enhanced PATCH with dates, checklist, validation, and activity
+- ✅ AC7: GET card detail with labels, activity, and computed fields
+- ✅ AC8: GET paginated activity endpoint
 
-## Vault Entries Added
-- `patterns/react-auth-state-machine.md`: Discriminated union for auth-aware view routing
-- `decisions/inline-board-creation.md`: Inline input over modal for single-field creation
-
-## What's Next
-All acceptance criteria are met. Final verification and PR creation.
+## Next Steps
+The next run should implement:
+1. Search endpoint (AC9) - Text search, label filter, due date filter
+2. Column reorder endpoint (AC10)
+3. Begin frontend implementation (AC11-AC17)
