@@ -53,5 +53,7 @@ if (body.due_date !== undefined && body.due_date !== null && !isValidDateFormat(
 - Component validation catches edge cases like leap years and invalid days
 - TypeScript strict null checks require careful handling of split() results
 - Allowing null values enables clearing dates through the same API
+- Reuse validation across multiple endpoints (PATCH cards, GET calendar)
+- Date-only values work seamlessly in datetime contexts (treated as 00:00)
 
 **Confidence**: verified

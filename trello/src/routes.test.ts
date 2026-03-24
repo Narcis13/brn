@@ -651,3 +651,246 @@ describe("DELETE /api/boards/:boardId/cards/:id", () => {
     expect(res.status).toBe(404);
   });
 });
+
+// ============================================================
+// Calendar view endpoint
+// ============================================================
+
+describe("GET /api/boards/:boardId/calendar", () => {
+  async function createCardWithDates(token: string, boardId: string, columnId: string, title: string, dates: { due_date?: string | null; start_date?: string | null }) {
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${boardId}/cards`, token, {
+        title,
+        columnId,
+      })
+    );
+    const card = (await res.json()) as CardRow;
+    
+    // Update with dates
+    await app.fetch(
+      authReq("PATCH", `/api/boards/${boardId}/cards/${card.id}`, token, dates)
+    );
+    
+    return card;
+  }
+
+  it("returns cards with dates in the specified range", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const cols = ((
+      await (
+        await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token))
+      ).json()
+    ) as { columns: ColumnWithCards[] }).columns;
+    const columnId = cols[0]!.id;
+
+    // Create cards with various dates
+    await createCardWithDates(token, board.id, columnId, "In range 1", { due_date: "2026-04-15" });
+    await createCardWithDates(token, board.id, columnId, "In range 2", { due_date: "2026-04-20T14:30" });
+    await createCardWithDates(token, board.id, columnId, "Before range", { due_date: "2026-04-01" });
+    await createCardWithDates(token, board.id, columnId, "After range", { due_date: "2026-05-01" });
+    await createCardWithDates(token, board.id, columnId, "No dates", {});
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=2026-04-25`, token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { cards: any[] };
+    
+    expect(data.cards).toHaveLength(2);
+    expect(data.cards.map(c => c.title).sort()).toEqual(["In range 1", "In range 2"]);
+  });
+
+  it("includes cards that span the date range", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const cols = ((
+      await (
+        await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token))
+      ).json()
+    ) as { columns: ColumnWithCards[] }).columns;
+    const columnId = cols[0]!.id;
+
+    // Card that starts before range and ends in range
+    await createCardWithDates(token, board.id, columnId, "Spans into range", {
+      start_date: "2026-04-05",
+      due_date: "2026-04-15"
+    });
+    
+    // Card that starts in range and ends after
+    await createCardWithDates(token, board.id, columnId, "Spans out of range", {
+      start_date: "2026-04-20",
+      due_date: "2026-05-05"
+    });
+    
+    // Card that completely spans the range
+    await createCardWithDates(token, board.id, columnId, "Spans entire range", {
+      start_date: "2026-04-01",
+      due_date: "2026-04-30"
+    });
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=2026-04-25`, token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { cards: any[] };
+    
+    expect(data.cards).toHaveLength(3);
+    const titles = data.cards.map(c => c.title).sort();
+    expect(titles).toEqual(["Spans entire range", "Spans into range", "Spans out of range"]);
+  });
+
+  it("returns card details including labels and checklist counts", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const cols = ((
+      await (
+        await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token))
+      ).json()
+    ) as { columns: ColumnWithCards[] }).columns;
+    const columnId = cols[0]!.id;
+
+    // Create a label
+    const labelRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/labels`, token, {
+        name: "Important",
+        color: "#ff0000"
+      })
+    );
+    const label = await labelRes.json() as any;
+
+    // Create card with dates
+    const card = await createCardWithDates(token, board.id, columnId, "Rich card", {
+      due_date: "2026-04-15T10:30"
+    });
+
+    // Add label to card
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${card.id}/labels`, token, {
+        labelId: label.id
+      })
+    );
+
+    // Add checklist
+    await app.fetch(
+      authReq("PATCH", `/api/boards/${board.id}/cards/${card.id}`, token, {
+        checklist: JSON.stringify([
+          { id: "1", text: "Task 1", checked: true },
+          { id: "2", text: "Task 2", checked: false }
+        ])
+      })
+    );
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-01&end=2026-04-30`, token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { cards: any[] };
+    
+    expect(data.cards).toHaveLength(1);
+    const calendarCard = data.cards[0]!;
+    expect(calendarCard.title).toBe("Rich card");
+    expect(calendarCard.due_date).toBe("2026-04-15T10:30");
+    expect(calendarCard.labels).toHaveLength(1);
+    expect(calendarCard.labels[0].name).toBe("Important");
+    expect(calendarCard.checklist_total).toBe(2);
+    expect(calendarCard.checklist_done).toBe(1);
+    expect(calendarCard.column_id).toBe(columnId);
+    expect(calendarCard.column_title).toBe("To Do");
+  });
+
+  it("returns empty array when no cards have dates in range", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const cols = ((
+      await (
+        await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token))
+      ).json()
+    ) as { columns: ColumnWithCards[] }).columns;
+    const columnId = cols[0]!.id;
+
+    // Create cards without dates or outside range
+    await createCardWithDates(token, board.id, columnId, "No dates", {});
+    await createCardWithDates(token, board.id, columnId, "Outside range", { due_date: "2026-01-01" });
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=2026-04-25`, token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { cards: any[] };
+    expect(data.cards).toEqual([]);
+  });
+
+  it("validates date parameters", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+
+    // Missing start parameter
+    const res1 = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?end=2026-04-25`, token)
+    );
+    expect(res1.status).toBe(400);
+    const err1 = await res1.json() as any;
+    expect(err1.error).toContain("start and end parameters are required");
+
+    // Missing end parameter
+    const res2 = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10`, token)
+    );
+    expect(res2.status).toBe(400);
+
+    // Invalid date format
+    const res3 = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=invalid-date`, token)
+    );
+    expect(res3.status).toBe(400);
+    const err3 = await res3.json() as any;
+    expect(err3.error).toContain("Invalid date format");
+  });
+
+  it("returns 404 for non-existent board", async () => {
+    const { token } = await registerUser();
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/non-existent/calendar?start=2026-04-10&end=2026-04-25`, token)
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for other user's board", async () => {
+    const alice = await registerUser("alice", "password123");
+    const bob = await registerUser("bob", "password123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=2026-04-25`, bob.token)
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("handles cards with only start_date", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const cols = ((
+      await (
+        await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token))
+      ).json()
+    ) as { columns: ColumnWithCards[] }).columns;
+    const columnId = cols[0]!.id;
+
+    await createCardWithDates(token, board.id, columnId, "Start only", {
+      start_date: "2026-04-15",
+      due_date: null
+    });
+
+    const res = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/calendar?start=2026-04-10&end=2026-04-20`, token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { cards: any[] };
+    
+    expect(data.cards).toHaveLength(1);
+    expect(data.cards[0]!.title).toBe("Start only");
+    expect(data.cards[0]!.start_date).toBe("2026-04-15");
+    expect(data.cards[0]!.due_date).toBe(null);
+  });
+});

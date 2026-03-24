@@ -764,6 +764,13 @@ export interface CardSearchResult extends CardRow {
   labels: LabelRow[];
 }
 
+export interface CalendarCardResult extends CardRow {
+  column_title: string;
+  labels: LabelRow[];
+  checklist_total: number;
+  checklist_done: number;
+}
+
 export function searchCards(
   db: Database,
   boardId: string,
@@ -840,6 +847,75 @@ export function searchCards(
     ...card,
     labels: labelsByCard.get(card.id) ?? []
   }));
+}
+
+// --- Calendar view helpers ---
+
+export function getCalendarCards(
+  db: Database,
+  boardId: string,
+  startDate: string,
+  endDate: string
+): CalendarCardResult[] {
+  // Get cards that overlap with the date range
+  // A card overlaps if:
+  // - due_date is within range, OR
+  // - start_date is within range, OR
+  // - card spans the range (start before, due after)
+  const sql = `
+    SELECT DISTINCT
+      c.id, c.title, c.description, c.position, c.column_id, c.created_at,
+      c.due_date, c.start_date, c.checklist, c.updated_at,
+      col.title as column_title
+    FROM cards c
+    JOIN columns col ON c.column_id = col.id
+    WHERE col.board_id = ?
+      AND (
+        -- Due date in range
+        (c.due_date IS NOT NULL AND c.due_date >= ? AND c.due_date <= ?)
+        OR
+        -- Start date in range
+        (c.start_date IS NOT NULL AND c.start_date >= ? AND c.start_date <= ?)
+        OR
+        -- Spans the range
+        (c.start_date IS NOT NULL AND c.due_date IS NOT NULL 
+         AND c.start_date <= ? AND c.due_date >= ?)
+      )
+    ORDER BY COALESCE(c.due_date, c.start_date), c.position
+  `;
+  
+  const cards = db.query(sql).all(
+    boardId,
+    startDate, endDate,
+    startDate, endDate,
+    endDate, startDate
+  ) as (CardRow & { column_title: string })[];
+  
+  // Fetch labels for all cards
+  const cardIds = cards.map(c => c.id);
+  if (cardIds.length === 0) return [];
+  const labelsByCard = getLabelsByCardId(db, cardIds);
+  
+  // Calculate checklist counts and combine with labels
+  return cards.map(card => {
+    let checklist_total = 0;
+    let checklist_done = 0;
+    
+    if (card.checklist) {
+      try {
+        const items = JSON.parse(card.checklist) as Array<{ checked: boolean }>;
+        checklist_total = items.length;
+        checklist_done = items.filter(item => item.checked).length;
+      } catch {}
+    }
+    
+    return {
+      ...card,
+      labels: labelsByCard.get(card.id) ?? [],
+      checklist_total,
+      checklist_done
+    };
+  });
 }
 
 // --- Column reorder helpers ---

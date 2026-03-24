@@ -31,6 +31,7 @@ import {
   getCardActivity,
   getCardDetail,
   searchCards,
+  getCalendarCards,
   reorderColumns,
   type BoardRow,
   type SearchDueFilter,
@@ -576,6 +577,35 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     const cards = searchCards(db, board.id, { q, labelId, due });
+    return c.json({ cards });
+  });
+
+  // --- Calendar route ---
+
+  app.get("/api/boards/:boardId/calendar", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const url = new URL(c.req.url);
+    const start = url.searchParams.get("start");
+    const end = url.searchParams.get("end");
+    
+    // Validate parameters
+    if (!start || !end) {
+      return c.json({ error: "start and end parameters are required" }, 400);
+    }
+    
+    // Validate date formats (accept both YYYY-MM-DD and YYYY-MM-DDTHH:MM)
+    const isValidStart = isValidDateFormat(start);
+    const isValidEnd = isValidDateFormat(end);
+    
+    if (!isValidStart || !isValidEnd) {
+      return c.json({ error: "Invalid date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
+    
+    // Get calendar cards
+    const cards = getCalendarCards(db, board.id, start, end);
+    
     return c.json({ cards });
   });
 
