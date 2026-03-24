@@ -347,8 +347,8 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
   
   const hasCardsWithDates = cards.length > 0;
   
-  async function handleQuickCreate(title: string, columnId: string, dueDate: string | null): Promise<void> {
-    await api.createCard(boardId, title, columnId, "", dueDate);
+  async function handleQuickCreate(title: string, columnId: string, due_date: string | null): Promise<void> {
+    await api.createCard(boardId, title, columnId, "", due_date);
     await loadCalendarData();
     onCardCreated();
   }
@@ -428,8 +428,41 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
       return;
     }
     
-    // Update the card's due date
-    await api.updateCard(boardId, cardId, { dueDate: dateString });
+    // Find the card to check if it has both start and due dates
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return;
+    
+    // Calculate the date difference
+    const originalDateStr = originalDate?.split("T")[0];
+    if (!originalDateStr) return;
+    
+    const originalDateObj = new Date(originalDateStr);
+    const targetDateObj = new Date(dateString);
+    const daysDiff = Math.round((targetDateObj.getTime() - originalDateObj.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Prepare updates
+    const updates: { due_date?: string | null; start_date?: string | null } = {};
+    
+    // Update due date, preserving time if present
+    if (card.due_date) {
+      const dueTime = getTimeFromDate(card.due_date);
+      const newDueDate = new Date(card.due_date.split("T")[0] || "");
+      newDueDate.setDate(newDueDate.getDate() + daysDiff);
+      const newDueDateStr = newDueDate.toISOString().split("T")[0];
+      updates.due_date = dueTime ? `${newDueDateStr}T${dueTime}` : newDueDateStr;
+    }
+    
+    // If card has both dates, shift start_date by same delta
+    if (card.start_date && card.due_date) {
+      const startTime = getTimeFromDate(card.start_date);
+      const newStartDate = new Date(card.start_date.split("T")[0] || "");
+      newStartDate.setDate(newStartDate.getDate() + daysDiff);
+      const newStartDateStr = newStartDate.toISOString().split("T")[0];
+      updates.start_date = startTime ? `${newStartDateStr}T${startTime}` : newStartDateStr;
+    }
+    
+    // Update the card with new dates
+    await api.updateCard(boardId, cardId, updates);
     await loadCalendarData();
   }
   
@@ -454,7 +487,7 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
     const formattedDateTime = `${dateString}T${hour?.padStart(2, "0")}:${minute?.padStart(2, "0")}`;
     
     // Update the card's due date with time
-    await api.updateCard(boardId, cardId, { dueDate: formattedDateTime });
+    await api.updateCard(boardId, cardId, { due_date: formattedDateTime });
     await loadCalendarData();
   }
   

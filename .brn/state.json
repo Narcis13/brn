@@ -12,16 +12,16 @@
     {"id": "AC6", "text": "Multi-day bars for cards with start_date and due_date spanning multiple days, positioned above single-day cards, showing card title", "met": true},
     {"id": "AC7", "text": "Week view: 7 columns Mon-Sun, nav bar with date range and Today button, all-day row for date-only cards, time grid 07:00-22:00 with 30min slots, timed cards as blocks at correct position", "met": true},
     {"id": "AC8", "text": "Quick-create popover on empty cell/slot click: title input (auto-focused), column dropdown, pre-filled date/time, Enter submits, Escape closes, optimistic UI", "met": true},
-    {"id": "AC9", "text": "Card chips show truncated title, first label color as border/dot, due-date badge color; tooltip on hover; draggable with HTML5 DnD (semi-transparent clone, target highlight)", "met": false},
+    {"id": "AC9", "text": "Card chips show truncated title, first label color as border/dot, due-date badge color; tooltip on hover; draggable with HTML5 DnD (semi-transparent clone, target highlight)", "met": true},
     {"id": "AC10", "text": "Drag-to-reschedule on month view: updates due_date (preserving time); multi-day cards shift both dates by same delta", "met": false},
     {"id": "AC11", "text": "Drag-to-reschedule on week view: vertical drag changes time, horizontal drag changes day", "met": false},
     {"id": "AC12", "text": "CardModal date inputs gain optional time picker: 'Add time' toggle reveals time input, display shows date+time format, 'Remove time' clears time, saves on blur/change", "met": false},
     {"id": "AC13", "text": "Empty state message when no cards have dates; loading skeleton on calendar grid; +N more overflow; today marker distinct; weekend columns shaded differently", "met": false},
     {"id": "AC14", "text": "Navigation: prev/next month/week buttons, Today button jumps to current period, both views support full navigation", "met": false}
   ],
-  "run_count": 7,
-  "current_focus": "Card chip enhancements and drag feedback (AC9)",
-  "last_run": "2026-03-24T13:00:00",
+  "run_count": 8,
+  "current_focus": "Drag-to-reschedule on month view (AC10)",
+  "last_run": "2026-03-24T13:25:00",
   "retry_count": 0,
   "blocked": false
 }

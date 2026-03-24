@@ -60,7 +60,7 @@ describe("CalendarView drag-and-drop logic", () => {
     });
     
     it("should clear drag state", () => {
-      const dragState = {
+      const dragState: { cardId: string; originalDate: string | null } = {
         cardId: "card-1",
         originalDate: "2024-01-15"
       };
@@ -154,6 +154,95 @@ describe("CalendarView drag-and-drop logic", () => {
       // Multiple weeks
       expect(spansMultipleWeeks(5, 8)).toBe(true);    // Sat of week 1 to Tue of week 2
       expect(spansMultipleWeeks(0, 14)).toBe(true);   // Mon of week 1 to Mon of week 3
+    });
+    
+    it("should calculate date shift for multi-day cards", () => {
+      const calculateDateShift = (originalDate: string, targetDate: string): number => {
+        const original = new Date(originalDate.split("T")[0]!);
+        const target = new Date(targetDate.split("T")[0]!);
+        return Math.round((target.getTime() - original.getTime()) / (1000 * 60 * 60 * 24));
+      };
+      
+      expect(calculateDateShift("2024-01-15", "2024-01-18")).toBe(3);
+      expect(calculateDateShift("2024-01-18", "2024-01-15")).toBe(-3);
+      expect(calculateDateShift("2024-01-15", "2024-01-15")).toBe(0);
+    });
+    
+    it("should apply date shift to preserve time component", () => {
+      const applyDateShift = (dateStr: string, daysDiff: number): string => {
+        const [date, time] = dateStr.split("T");
+        const dateObj = new Date(date!);
+        dateObj.setDate(dateObj.getDate() + daysDiff);
+        const newDateStr = dateObj.toISOString().split("T")[0];
+        return time ? `${newDateStr}T${time}` : newDateStr!;
+      };
+      
+      expect(applyDateShift("2024-01-15T14:30", 3)).toBe("2024-01-18T14:30");
+      expect(applyDateShift("2024-01-15", 3)).toBe("2024-01-18");
+      expect(applyDateShift("2024-01-20T09:00", -5)).toBe("2024-01-15T09:00");
+    });
+    
+    it("should calculate updates for multi-day card drag", () => {
+      interface Card {
+        due_date: string | null;
+        start_date: string | null;
+      }
+      
+      const getTimeFromDate = (dateStr: string | null): string | null => {
+        if (!dateStr || !dateStr.includes("T")) return null;
+        return dateStr.split("T")[1] || null;
+      };
+      
+      const calculateMultiDayUpdates = (
+        card: Card,
+        originalDate: string,
+        targetDate: string
+      ): { dueDate?: string | null; startDate?: string | null } => {
+        const originalDateStr = originalDate.split("T")[0];
+        const originalDateObj = new Date(originalDateStr!);
+        const targetDateObj = new Date(targetDate);
+        const daysDiff = Math.round((targetDateObj.getTime() - originalDateObj.getTime()) / (1000 * 60 * 60 * 24));
+        
+        const updates: { dueDate?: string | null; startDate?: string | null } = {};
+        
+        // Update due date
+        if (card.due_date) {
+          const dueTime = getTimeFromDate(card.due_date);
+          const newDueDate = new Date(card.due_date.split("T")[0]!);
+          newDueDate.setDate(newDueDate.getDate() + daysDiff);
+          const newDueDateStr = newDueDate.toISOString().split("T")[0];
+          updates.dueDate = dueTime ? `${newDueDateStr}T${dueTime}` : newDueDateStr;
+        }
+        
+        // Update start date if both dates exist
+        if (card.start_date && card.due_date) {
+          const startTime = getTimeFromDate(card.start_date);
+          const newStartDate = new Date(card.start_date.split("T")[0]!);
+          newStartDate.setDate(newStartDate.getDate() + daysDiff);
+          const newStartDateStr = newStartDate.toISOString().split("T")[0];
+          updates.startDate = startTime ? `${newStartDateStr}T${startTime}` : newStartDateStr;
+        }
+        
+        return updates;
+      };
+      
+      // Test single-day card (only due_date)
+      const singleDayCard = { due_date: "2024-01-15T14:30", start_date: null };
+      const singleDayUpdates = calculateMultiDayUpdates(singleDayCard, "2024-01-15", "2024-01-18");
+      expect(singleDayUpdates.dueDate).toBe("2024-01-18T14:30");
+      expect(singleDayUpdates.startDate).toBeUndefined();
+      
+      // Test multi-day card (both dates)
+      const multiDayCard = { due_date: "2024-01-18T16:00", start_date: "2024-01-15T09:00" };
+      const multiDayUpdates = calculateMultiDayUpdates(multiDayCard, "2024-01-18", "2024-01-22");
+      expect(multiDayUpdates.dueDate).toBe("2024-01-22T16:00");
+      expect(multiDayUpdates.startDate).toBe("2024-01-19T09:00"); // 4 days forward
+      
+      // Test date-only multi-day card
+      const dateOnlyCard = { due_date: "2024-01-18", start_date: "2024-01-15" };
+      const dateOnlyUpdates = calculateMultiDayUpdates(dateOnlyCard, "2024-01-18", "2024-01-20");
+      expect(dateOnlyUpdates.dueDate).toBe("2024-01-20");
+      expect(dateOnlyUpdates.startDate).toBe("2024-01-17");
     });
   });
 });

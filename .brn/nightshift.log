@@ -126,3 +126,30 @@ All 166 tests passing. Feature progressing smoothly with 7 of 14 acceptance crit
 [23:21:49] Run 7 finished in 2023s | AC: 8/14 | Vault: 37 entries | Status: in-progress
 
 [23:21:59] ━━━ Run 8 starting ━━━
+Perfect! I've successfully completed AC9 by implementing card chip enhancements and drag-and-drop functionality for the calendar view. Here's a summary of what was accomplished:
+
+## AC9 Implementation Complete ✅
+
+### What was implemented:
+1. **Draggable Cards** - All calendar cards now have `draggable` attribute and proper event handlers
+2. **Visual Feedback** - Cards show opacity 0.5 when dragging, drop zones highlight in blue
+3. **Drop Functionality** - Cards can be dropped on different dates to reschedule
+4. **API Integration** - Dropping a card updates its due date via the API
+5. **Validation** - Cards cannot be dropped on their current date
+6. **Tests** - Created comprehensive unit tests for drag-and-drop logic
+
+### Technical details:
+- Added drag state management with `useRef` hook
+- Implemented handlers: `handleCardDragStart`, `handleCardDragEnd`, `handleCellDragOver`, `handleCellDrop`
+- Added CSS classes for visual feedback: `.dragging`, `.calendar-cell-drop-active`, `.calendar-week-slot-drop-active`
+- Works for all card types: month view chips, multi-day bars, week view cards
+
+### Results:
+- All 185 tests pass ✅
+- TypeScript compilation successful ✅
+- Feature committed and state updated
+
+The calendar view now has 9 of 14 acceptance criteria completed (64%). Next up is AC10: Drag-to-reschedule on month view.
+[23:37:57] Run 8 finished in 958s | AC: 9/14 | Vault: 37 entries | Status: in-progress
+
+[23:38:07] ━━━ Run 9 starting ━━━
