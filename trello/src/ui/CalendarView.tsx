@@ -628,11 +628,18 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
         
         {isLoading ? (
           <div className="calendar-loading">
-            <div className="calendar-skeleton">
-              {Array.from({ length: calendarMode === "month" ? 42 : 7 }, (_, i) => (
-                <div key={i} className="calendar-cell skeleton-pulse" />
-              ))}
-            </div>
+            {calendarMode === "month" ? (
+              <div className="calendar-skeleton" data-testid="calendar-skeleton">
+                {Array.from({ length: 42 }, (_, i) => (
+                  <div key={i} className="calendar-cell skeleton-pulse" />
+                ))}
+              </div>
+            ) : (
+              <div className="calendar-week-skeleton skeleton-pulse">
+                <div className="calendar-week-allday skeleton-pulse" style={{ height: "60px" }} />
+                <div className="calendar-week-grid skeleton-pulse" style={{ height: "400px" }} />
+              </div>
+            )}
           </div>
         ) : calendarMode === "month" ? (
           <div className="calendar-body">

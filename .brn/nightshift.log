@@ -178,3 +178,7 @@ All tests pass and TypeScript compilation succeeds. The feature is now ready for
 [23:59:05] Run 10 finished in 698s | AC: 11/14 | Vault: 40 entries | Status: in-progress
 
 [23:59:16] ━━━ Run 11 starting ━━━
+✅ AC12 completed! CardModal now has optional time picker functionality. Users can add specific times to dates, remove times to revert to date-only, and see formatted date/time displays.
+[00:10:21] Run 11 finished in 665s | AC: 12/14 | Vault: 41 entries | Status: in-progress
+
+[00:10:31] ━━━ Run 12 starting ━━━
