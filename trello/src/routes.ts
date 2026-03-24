@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { sign, verify } from "hono/jwt";
+import { isValidDateFormat } from "./date-utils";
 import {
   createUser,
   getUserByUsername,
@@ -299,6 +300,12 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     // Validate dates if provided
+    if (body.start_date !== undefined && body.start_date !== null && !isValidDateFormat(body.start_date)) {
+      return c.json({ error: "start_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
+    if (body.due_date !== undefined && body.due_date !== null && !isValidDateFormat(body.due_date)) {
+      return c.json({ error: "due_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
     if (body.start_date && body.due_date && body.start_date > body.due_date) {
       return c.json({ error: "start_date must be before or equal to due_date" }, 400);
     }
