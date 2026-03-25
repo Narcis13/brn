@@ -9,7 +9,7 @@ import type { CSSProperties } from "react";
 import type { Column, BoardCard, CardDetail, Label, BoardMember, User, BoardActivityItem } from "./api.ts";
 import * as api from "./api.ts";
 import { renderInlineContent } from "./render-inline.tsx";
-import { getDueBadge } from "./card-utils.ts";
+import { getDueBadge, describeActivity } from "./card-utils.ts";
 import {
   buildVisibleCardIds,
   cardIsVisible,
@@ -1061,7 +1061,7 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
               {activityItems.length === 0 && !activityLoading && (
                 <p className="activity-sidebar-empty">No activity yet</p>
               )}
-              {activityItems.map((item) => (
+              {activityItems.filter((item) => !(item.type === "activity" && item.action === "commented")).map((item) => (
                 <div key={`${item.type}-${item.id}`} className="activity-sidebar-item">
                   <span
                     className="sidebar-item-avatar"
@@ -1073,8 +1073,16 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
                     <p className="sidebar-item-text">
                       <strong>{item.username ?? "System"}</strong>
                       {" "}
-                      {item.type === "comment" ? "commented" : item.action ?? "updated"}
-                      {item.detail ? `: ${item.detail}` : ""}
+                      {item.type === "comment"
+                        ? "commented"
+                        : describeActivity({
+                            id: item.id,
+                            card_id: item.card_id ?? "",
+                            board_id: "",
+                            action: item.action ?? "updated",
+                            detail: item.detail ?? null,
+                            timestamp: item.timestamp,
+                          })}
                     </p>
                     {item.card_title && (
                       <button

@@ -1459,7 +1459,7 @@ export function CardModal({
                 <p className="empty-inline-state">No activity recorded</p>
               ) : (
                 <div className="timeline">
-                  {detail.timeline.map((item) => {
+                  {detail.timeline.filter((item) => !(item.type === "activity" && item.action === "commented")).map((item) => {
                     if (item.type === "comment") {
                       const canEdit = item.user_id === currentUser.id;
                       const canDelete = item.user_id === currentUser.id || isOwner;
