@@ -250,8 +250,8 @@ describe("Social Interactions — Comment Authorization", () => {
   });
 
   it("should not allow non-author to edit a comment", () => {
-    const commentUserId = "user-1";
-    const currentUserId = "user-2";
+    const commentUserId: string = "user-1";
+    const currentUserId: string = "user-2";
     const canEdit = commentUserId === currentUserId;
     expect(canEdit).toBe(false);
   });
@@ -265,16 +265,16 @@ describe("Social Interactions — Comment Authorization", () => {
   });
 
   it("should allow board owner to delete any comment", () => {
-    const commentUserId = "user-1";
-    const currentUserId = "user-2";
+    const commentUserId: string = "user-1";
+    const currentUserId: string = "user-2";
     const isOwner = true;
     const canDelete = commentUserId === currentUserId || isOwner;
     expect(canDelete).toBe(true);
   });
 
   it("should not allow non-owner non-author to delete a comment", () => {
-    const commentUserId = "user-1";
-    const currentUserId = "user-2";
+    const commentUserId: string = "user-1";
+    const currentUserId: string = "user-2";
     const isOwner = false;
     const canDelete = commentUserId === currentUserId || isOwner;
     expect(canDelete).toBe(false);

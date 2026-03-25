@@ -1,39 +1,51 @@
 import type { Database } from "bun:sqlite";
-import { 
-  getUserBoards, 
-  createBoard, 
-  getBoardById, 
-  deleteBoard,
-  getBoardMembers,
+import {
   addBoardMember,
-  removeBoardMember,
-  isBoardOwner,
-  isBoardMember,
-  getUserByUsername,
-  getCardActivity,
+  createBoard,
+  deleteBoard,
   getAllColumns,
-  type BoardRow,
-  type ActivityRow
+  getBoardById,
+  getBoardMembers,
+  getCardActivity,
+  getUserByUsername,
+  isBoardMember,
+  isBoardOwner,
+  removeBoardMember,
+  type ActivityRow,
 } from "./src/db";
 import type { TaktConfig } from "./cli-auth";
+import {
+  confirmOrExit,
+  exitWithError,
+  formatDate,
+  formatDateTime,
+  formatId,
+  idText,
+  printSuccess,
+  printTable,
+  type FormatOptions,
+} from "./cli-utils";
 
-interface FormatOptions {
-  json?: boolean;
-  quiet?: boolean;
-  fullIds?: boolean;
-}
+type BoardMembershipRow = {
+  id: string;
+  title: string;
+  created_at: string;
+  role: "owner" | "member";
+};
 
-function formatId(id: string, options: FormatOptions): string {
-  return options.fullIds ? id : id.slice(0, 8);
-}
+export async function listBoards(
+  db: Database,
+  session: TaktConfig,
+  options: FormatOptions
+): Promise<void> {
+  const boards = db.query(
+    `SELECT b.id, b.title, b.created_at, bm.role
+     FROM boards b
+     JOIN board_members bm ON bm.board_id = b.id
+     WHERE bm.user_id = ?
+     ORDER BY b.created_at DESC`
+  ).all(session.userId) as BoardMembershipRow[];
 
-function formatDate(date: string): string {
-  return new Date(date).toISOString().split('T')[0]!;
-}
-
-export async function listBoards(db: Database, session: TaktConfig, options: FormatOptions): Promise<void> {
-  const boards = getUserBoards(db, session.userId);
-  
   if (options.json) {
     console.log(JSON.stringify(boards, null, 2));
     return;
@@ -41,35 +53,35 @@ export async function listBoards(db: Database, session: TaktConfig, options: For
 
   if (boards.length === 0) {
     if (!options.quiet) {
-      console.log("No boards found. Create one with: takt board create \"Board Title\"");
+      console.log('No boards found. Create one with: takt board create "Board Title"');
     }
     return;
   }
 
   if (options.quiet) {
-    boards.forEach(board => console.log(formatId(board.id, options)));
+    boards.forEach((board) => console.log(formatId(board.id, options)));
     return;
   }
 
-  console.log("Your boards:");
-  console.log("");
-  
-  const maxTitleLength = Math.max(...boards.map(b => b.title.length), 5);
-  const idLength = options.fullIds ? 21 : 8;
-  
-  console.log(`${"ID".padEnd(idLength)}  ${"Title".padEnd(maxTitleLength)}  Created`);
-  console.log("-".repeat(idLength + maxTitleLength + 14));
-  
-  boards.forEach(board => {
-    console.log(
-      `${formatId(board.id, options).padEnd(idLength)}  ${board.title.padEnd(maxTitleLength)}  ${formatDate(board.created_at)}`
-    );
-  });
+  printTable(
+    ["ID", "Title", "Role", "Created"],
+    boards.map((board) => [
+      formatId(board.id, options),
+      board.title,
+      board.role,
+      formatDate(board.created_at),
+    ])
+  );
 }
 
-export async function createBoardCommand(db: Database, session: TaktConfig, title: string, options: FormatOptions): Promise<void> {
+export async function createBoardCommand(
+  db: Database,
+  session: TaktConfig,
+  title: string,
+  options: FormatOptions
+): Promise<void> {
   const board = createBoard(db, title, session.userId);
-  
+
   if (options.json) {
     console.log(JSON.stringify(board, null, 2));
     return;
@@ -80,93 +92,106 @@ export async function createBoardCommand(db: Database, session: TaktConfig, titl
     return;
   }
 
-  console.log(`Board created: ${formatId(board.id, options)}`);
+  printSuccess(`Board created: ${idText(formatId(board.id, options))}`);
 }
 
-export async function showBoard(db: Database, session: TaktConfig, boardId: string, options: FormatOptions): Promise<void> {
+export async function showBoard(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  options: FormatOptions
+): Promise<void> {
   const board = getBoardById(db, boardId);
   if (!board) {
-    console.error("Board not found");
-    process.exit(1);
+    exitWithError("Board not found");
   }
 
   if (!isBoardMember(db, boardId, session.userId)) {
-    console.error("Access denied - you are not a member of this board");
-    process.exit(1);
+    exitWithError("Access denied - you are not a member of this board");
   }
 
   const members = getBoardMembers(db, boardId);
   const columns = getAllColumns(db, boardId);
-  const totalCards = columns.reduce((sum, col) => sum + col.cards.length, 0);
+  const totalCards = columns.reduce((sum, column) => sum + column.cards.length, 0);
 
   if (options.json) {
-    console.log(JSON.stringify({
-      ...board,
-      members,
-      columns: columns.map(col => ({ ...col, cardCount: col.cards.length })),
-      totalCards
-    }, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          ...board,
+          member_count: members.length,
+          total_cards: totalCards,
+          columns: columns.map((column) => ({
+            id: column.id,
+            title: column.title,
+            position: column.position,
+            card_count: column.cards.length,
+          })),
+          members,
+        },
+        null,
+        2
+      )
+    );
     return;
   }
 
   console.log(`Board: ${board.title}`);
-  console.log(`ID: ${formatId(board.id, options)}`);
+  console.log(`ID: ${idText(formatId(board.id, options))}`);
   console.log(`Created: ${formatDate(board.created_at)}`);
   console.log(`Members: ${members.length}`);
   console.log(`Columns: ${columns.length}`);
   console.log(`Total cards: ${totalCards}`);
-  
-  if (!options.quiet) {
-    console.log("");
-    console.log("Columns:");
-    columns.forEach(col => {
-      console.log(`  ${col.title} (${col.cards.length} cards)`);
-    });
-    
-    console.log("");
-    console.log("Members:");
-    members.forEach(member => {
-      const roleTag = member.role === 'owner' ? ' (owner)' : '';
-      console.log(`  ${member.username}${roleTag}`);
-    });
+
+  if (options.quiet) {
+    return;
   }
+
+  console.log("");
+  console.log("Columns:");
+  columns.forEach((column) => {
+    console.log(`  ${column.title} (${column.cards.length} cards)`);
+  });
 }
 
-export async function deleteBoardCommand(db: Database, session: TaktConfig, boardId: string, options: FormatOptions & { yes?: boolean }): Promise<void> {
+export async function deleteBoardCommand(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  options: FormatOptions
+): Promise<void> {
   const board = getBoardById(db, boardId);
   if (!board) {
-    console.error("Board not found");
-    process.exit(1);
+    exitWithError("Board not found");
   }
 
   if (!isBoardOwner(db, boardId, session.userId)) {
-    console.error("Access denied - only board owner can delete");
-    process.exit(1);
+    exitWithError("Only the board owner can delete this board");
   }
 
-  if (!options.yes) {
-    console.log(`Are you sure you want to delete board "${board.title}"?`);
-    console.log("This will permanently delete all columns, cards, and data.");
-    console.log("");
-    console.log("To confirm, run with --yes flag");
-    process.exit(0);
-  }
+  await confirmOrExit(options, `Delete board "${board.title}" and all of its data?`, [
+    `Are you sure you want to delete board "${board.title}"?`,
+    "This will permanently delete all columns, cards, and data.",
+  ]);
 
-  const success = deleteBoard(db, boardId);
-  if (!success) {
-    console.error("Failed to delete board");
-    process.exit(1);
+  const deleted = deleteBoard(db, boardId);
+  if (!deleted) {
+    exitWithError("Failed to delete board");
   }
 
   if (!options.quiet) {
-    console.log("Board deleted successfully");
+    printSuccess("Board deleted successfully");
   }
 }
 
-export async function listBoardMembers(db: Database, session: TaktConfig, boardId: string, options: FormatOptions): Promise<void> {
+export async function listBoardMembers(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  options: FormatOptions
+): Promise<void> {
   if (!isBoardMember(db, boardId, session.userId)) {
-    console.error("Access denied - you are not a member of this board");
-    process.exit(1);
+    exitWithError("Access denied - you are not a member of this board");
   }
 
   const members = getBoardMembers(db, boardId);
@@ -182,143 +207,155 @@ export async function listBoardMembers(db: Database, session: TaktConfig, boardI
   }
 
   if (options.quiet) {
-    members.forEach(member => console.log(member.username));
+    members.forEach((member) => console.log(member.username));
     return;
   }
 
-  console.log("Board members:");
-  console.log("");
-  
-  const maxUsernameLength = Math.max(...members.map(m => m.username.length), 8);
-  
-  console.log(`${"Username".padEnd(maxUsernameLength)}  ${"Role".padEnd(6)}  Joined`);
-  console.log("-".repeat(maxUsernameLength + 20));
-  
-  members.forEach(member => {
-    console.log(
-      `${member.username.padEnd(maxUsernameLength)}  ${member.role.padEnd(6)}  ${formatDate(member.invited_at)}`
-    );
-  });
+  printTable(
+    ["Username", "Role", "Invited"],
+    members.map((member) => [member.username, member.role, formatDate(member.invited_at)])
+  );
 }
 
-export async function inviteToBoardCommand(db: Database, session: TaktConfig, boardId: string, username: string, options: FormatOptions): Promise<void> {
+export async function inviteToBoardCommand(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  username: string,
+  options: FormatOptions
+): Promise<void> {
   if (!isBoardOwner(db, boardId, session.userId)) {
-    console.error("Access denied - only board owner can invite");
-    process.exit(1);
+    exitWithError("Access denied - only board owner can invite");
   }
 
   const user = getUserByUsername(db, username);
   if (!user) {
-    console.error("User not found");
-    process.exit(1);
+    exitWithError("User not found");
   }
 
   if (isBoardMember(db, boardId, user.id)) {
-    console.error("User is already a board member");
-    process.exit(1);
+    exitWithError("User is already a board member");
   }
 
   const member = addBoardMember(db, boardId, user.id, "member");
-  
+
   if (options.json) {
     console.log(JSON.stringify(member, null, 2));
     return;
   }
 
   if (!options.quiet) {
-    console.log(`User '${username}' added to board`);
+    printSuccess(`Invited ${member.username} to the board`);
   }
 }
 
-export async function kickFromBoardCommand(db: Database, session: TaktConfig, boardId: string, username: string, options: FormatOptions): Promise<void> {
+export async function kickFromBoardCommand(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  username: string,
+  options: FormatOptions
+): Promise<void> {
   if (!isBoardOwner(db, boardId, session.userId)) {
-    console.error("Access denied - only board owner can remove members");
-    process.exit(1);
+    exitWithError("Access denied - only board owner can remove members");
   }
 
   const user = getUserByUsername(db, username);
   if (!user) {
-    console.error("User not found");
-    process.exit(1);
+    exitWithError("User not found");
   }
 
   if (user.id === session.userId) {
-    console.error("Cannot remove yourself from the board");
-    process.exit(1);
+    exitWithError("Cannot kick yourself");
   }
 
   if (isBoardOwner(db, boardId, user.id)) {
-    console.error("Cannot remove board owner");
-    process.exit(1);
+    exitWithError("Cannot remove board owner");
   }
 
-  const success = removeBoardMember(db, boardId, user.id);
-  if (!success) {
-    console.error("User is not a board member");
-    process.exit(1);
+  const removed = removeBoardMember(db, boardId, user.id);
+  if (!removed) {
+    exitWithError("User is not a board member");
   }
 
   if (!options.quiet) {
-    console.log(`User '${username}' removed from board`);
+    printSuccess(`Removed ${username} from the board`);
   }
 }
 
-export async function showBoardActivity(db: Database, session: TaktConfig, boardId: string, limit: number, options: FormatOptions): Promise<void> {
-  if (!isBoardMember(db, boardId, session.userId)) {
-    console.error("Access denied - you are not a member of this board");
-    process.exit(1);
+function formatActivityDetail(activity: ActivityRow): string {
+  if (!activity.detail) {
+    return "";
   }
 
-  // Since we don't have a direct getBoardActivity function, we'll need to get all cards and their activities
-  const columns = getAllColumns(db, boardId);
-  const allActivities: (ActivityRow & { cardTitle: string })[] = [];
+  try {
+    const parsed = JSON.parse(activity.detail) as Record<string, string | string[] | null>;
 
-  for (const column of columns) {
-    for (const card of column.cards) {
-      const activities = getCardActivity(db, card.id, limit);
-      activities.forEach(activity => {
-        allActivities.push({
-          ...activity,
-          cardTitle: card.title
+    if (activity.action === "moved" && typeof parsed["from"] === "string" && typeof parsed["to"] === "string") {
+      return ` (${parsed["from"]} -> ${parsed["to"]})`;
+    }
+
+    if (Array.isArray(parsed["fields"]) && parsed["fields"].length > 0) {
+      return ` (${parsed["fields"].join(", ")})`;
+    }
+
+    if (typeof parsed["name"] === "string") {
+      return ` (${parsed["name"]})`;
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+}
+
+export async function showBoardActivity(
+  db: Database,
+  session: TaktConfig,
+  boardId: string,
+  limit: number,
+  options: FormatOptions
+): Promise<void> {
+  if (!isBoardMember(db, boardId, session.userId)) {
+    exitWithError("Access denied - you are not a member of this board");
+  }
+
+  const columns = getAllColumns(db, boardId);
+  const activityItems: Array<ActivityRow & { card_title: string }> = [];
+
+  columns.forEach((column) => {
+    column.cards.forEach((card) => {
+      const activity = getCardActivity(db, card.id, limit);
+      activity.forEach((item) => {
+        activityItems.push({
+          ...item,
+          card_title: card.title,
         });
       });
-    }
-  }
+    });
+  });
 
-  // Sort by timestamp descending and limit
-  allActivities.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  const limitedActivities = allActivities.slice(0, limit);
+  activityItems.sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+  const limited = activityItems.slice(0, limit);
 
   if (options.json) {
-    console.log(JSON.stringify(limitedActivities, null, 2));
+    console.log(JSON.stringify(limited, null, 2));
     return;
   }
 
-  if (limitedActivities.length === 0) {
+  if (limited.length === 0) {
     console.log("No activity found");
     return;
   }
 
-  console.log(`Recent activity (last ${limit} items):`);
-  console.log("");
+  if (options.quiet) {
+    limited.forEach((item) => console.log(item.id));
+    return;
+  }
 
-  limitedActivities.forEach(activity => {
-    const timestamp = new Date(activity.timestamp).toLocaleString();
-    const detail = activity.detail ? JSON.parse(activity.detail) : null;
-    
-    let message = `[${timestamp}] Card "${activity.cardTitle}": ${activity.action}`;
-    
-    if (detail) {
-      if (activity.action === 'update' && detail.field) {
-        message += ` - ${detail.field} changed`;
-        if (detail.field === 'position' || detail.field === 'column_id') {
-          // Don't show old/new values for position/column changes
-        } else if (detail.old !== undefined && detail.new !== undefined) {
-          message += ` from "${detail.old}" to "${detail.new}"`;
-        }
-      }
-    }
-    
-    console.log(message);
+  limited.forEach((item) => {
+    console.log(
+      `${formatDateTime(item.timestamp)}  ${item.card_title}  ${item.action}${formatActivityDetail(item)}`
+    );
   });
 }

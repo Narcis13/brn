@@ -11,7 +11,8 @@
     "orchestrate": "bun run .superclaude/orchestrator/loop.ts --mode=auto",
     "step": "bun run .superclaude/orchestrator/loop.ts --mode=step",
     "status": "bun run .superclaude/orchestrator/loop.ts --mode=interactive",
-    "dev": "cd src && bun run build.ts && bun run src/index.ts",
+    "serve": "bun run src/cli.ts serve",
+    "dev": "bun run serve",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit"
   },

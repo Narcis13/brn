@@ -1,267 +1,201 @@
-import { Database } from "bun:sqlite";
-import { nanoid } from "nanoid";
-import type { Session } from "./cli-auth";
-
-interface Column {
-  id: string;
-  boardId: string;
-  title: string;
-  position: number;
-  createdAt: string;
-}
-
-interface Card {
-  id: string;
-  columnId: string;
-  boardId: string;
-  title: string;
-}
-
-interface BoardMember {
-  userId: string;
-  boardId: string;
-  role: 'owner' | 'member';
-}
+import type { Database } from "bun:sqlite";
+import {
+  createColumn as createColumnRecord,
+  deleteColumn as deleteColumnRecord,
+  getAllColumns,
+  getBoardById,
+  getColumnById,
+  isBoardMember,
+  reorderColumns as reorderColumnsInDb,
+  updateColumn as updateColumnRecord,
+} from "./src/db";
+import type { TaktConfig } from "./cli-auth";
+import {
+  confirmOrExit,
+  exitWithError,
+  formatId,
+  printSuccess,
+  printTable,
+  type FormatOptions,
+} from "./cli-utils";
 
 export async function listColumns(
   db: Database,
-  session: Session,
+  session: TaktConfig,
   boardId: string,
-  options: { json?: boolean; quiet?: boolean; fullIds?: boolean }
+  options: FormatOptions
 ): Promise<void> {
-  const member = db.query(`
-    SELECT * FROM board_members 
-    WHERE userId = ? AND boardId = ?
-  `).get(session.userId, boardId) as BoardMember | null;
-  
-  if (!member) {
-    console.error('You do not have access to this board');
-    process.exit(1);
+  const board = getBoardById(db, boardId);
+  if (!board) {
+    exitWithError("Board not found");
   }
-  
-  const columns = db.query(`
-    SELECT * FROM columns 
-    WHERE boardId = ?
-    ORDER BY position ASC
-  `).all(boardId) as Column[];
-  
+
+  if (!isBoardMember(db, boardId, session.userId)) {
+    exitWithError("You do not have access to this board");
+  }
+
+  const columns = getAllColumns(db, boardId);
+
   if (options.json) {
-    console.log(JSON.stringify(columns, null, 2));
+    console.log(
+      JSON.stringify(
+        columns.map((column) => ({
+          id: column.id,
+          title: column.title,
+          position: column.position,
+          card_count: column.cards.length,
+        })),
+        null,
+        2
+      )
+    );
     return;
   }
-  
+
   if (columns.length === 0) {
     if (!options.quiet) {
-      console.log('No columns found in this board');
+      console.log("No columns found in this board");
     }
     return;
   }
-  
-  const cardCounts = new Map<string, number>();
-  const cardCountResult = db.query(`
-    SELECT columnId, COUNT(*) as cardCount
-    FROM cards
-    WHERE boardId = ?
-    GROUP BY columnId
-  `).all(boardId) as { columnId: string; cardCount: number }[];
-  
-  for (const row of cardCountResult) {
-    cardCounts.set(row.columnId, row.cardCount);
+
+  if (options.quiet) {
+    columns.forEach((column) => console.log(formatId(column.id, options)));
+    return;
   }
-  
-  const idLength = options.fullIds ? 36 : 8;
-  console.log(`ID${' '.repeat(idLength - 2)}  Title                           Position  Cards`);
-  console.log('-'.repeat(60));
-  
-  for (const column of columns) {
-    const displayId = options.fullIds ? column.id : column.id.slice(0, 8);
-    const cardCount = cardCounts.get(column.id) || 0;
-    console.log(
-      `${displayId.padEnd(idLength)}  ${column.title.padEnd(30)}  ${column.position.toString().padEnd(8)}  ${cardCount}`
-    );
-  }
+
+  printTable(
+    ["ID", "Title", "Position", "Card count"],
+    columns.map((column) => [
+      formatId(column.id, options),
+      column.title,
+      String(column.position),
+      String(column.cards.length),
+    ])
+  );
 }
 
 export async function createColumn(
   db: Database,
-  session: Session,
+  session: TaktConfig,
   boardId: string,
   title: string,
-  options: { json?: boolean; quiet?: boolean }
+  options: FormatOptions
 ): Promise<void> {
-  const member = db.query(`
-    SELECT * FROM board_members 
-    WHERE userId = ? AND boardId = ?
-  `).get(session.userId, boardId) as BoardMember | null;
-  
-  if (!member) {
-    console.error('You do not have access to this board');
-    process.exit(1);
+  const board = getBoardById(db, boardId);
+  if (!board) {
+    exitWithError("Board not found");
   }
-  
-  const maxPosition = db.query(`
-    SELECT MAX(position) as maxPos FROM columns WHERE boardId = ?
-  `).get(boardId) as { maxPos: number | null } | null;
-  
-  const newPosition = (maxPosition?.maxPos ?? -1) + 1;
-  const columnId = nanoid();
-  
-  db.query(`
-    INSERT INTO columns (id, boardId, title, position, createdAt)
-    VALUES (?, ?, ?, ?, datetime('now'))
-  `).run(columnId, boardId, title, newPosition);
-  
+
+  if (!isBoardMember(db, boardId, session.userId)) {
+    exitWithError("You do not have access to this board");
+  }
+
+  const column = createColumnRecord(db, boardId, title);
+
   if (options.json) {
-    const column = db.query(`
-      SELECT * FROM columns WHERE id = ?
-    `).get(columnId) as Column | null;
     console.log(JSON.stringify(column, null, 2));
-  } else if (!options.quiet) {
-    console.log(columnId);
+    return;
   }
+
+  if (options.quiet) {
+    console.log(formatId(column.id, options));
+    return;
+  }
+
+  printSuccess(`Column created: ${formatId(column.id, options)}`);
 }
 
 export async function updateColumn(
   db: Database,
-  session: Session,
+  session: TaktConfig,
   columnId: string,
   title: string,
-  options: { json?: boolean; quiet?: boolean }
+  options: FormatOptions
 ): Promise<void> {
-  const column = db.query(`
-    SELECT * FROM columns WHERE id = ?
-  `).get(columnId) as (Column & { boardId: string }) | null;
-  
+  const column = getColumnById(db, columnId);
   if (!column) {
-    console.error('Column not found');
-    process.exit(1);
+    exitWithError("Column not found");
   }
-  
-  const member = db.query(`
-    SELECT * FROM board_members 
-    WHERE userId = ? AND boardId = ?
-  `).get(session.userId, column.boardId) as BoardMember | null;
-  
-  if (!member) {
-    console.error('You do not have access to this board');
-    process.exit(1);
+
+  if (!isBoardMember(db, column.board_id, session.userId)) {
+    exitWithError("You do not have access to this board");
   }
-  
-  db.query(`
-    UPDATE columns SET title = ? WHERE id = ?
-  `).run(title, columnId);
-  
+
+  const updated = updateColumnRecord(db, columnId, title);
+  if (!updated) {
+    exitWithError("Column not found");
+  }
+
+  if (options.json) {
+    console.log(JSON.stringify(updated, null, 2));
+    return;
+  }
+
   if (!options.quiet) {
-    console.log('Column updated successfully');
+    printSuccess("Column updated successfully");
   }
 }
 
 export async function deleteColumn(
   db: Database,
-  session: Session,
+  session: TaktConfig,
   columnId: string,
-  options: { json?: boolean; quiet?: boolean; yes?: boolean }
+  options: FormatOptions
 ): Promise<void> {
-  const column = db.query(`
-    SELECT * FROM columns WHERE id = ?
-  `).get(columnId) as (Column & { boardId: string }) | null;
-  
+  const column = getColumnById(db, columnId);
   if (!column) {
-    console.error('Column not found');
-    process.exit(1);
+    exitWithError("Column not found");
   }
-  
-  const member = db.query(`
-    SELECT * FROM board_members 
-    WHERE userId = ? AND boardId = ? AND role = 'owner'
-  `).get(session.userId, column.boardId) as BoardMember | null;
-  
-  if (!member) {
-    console.error('Only the board owner can delete columns');
-    process.exit(1);
+
+  if (!isBoardMember(db, column.board_id, session.userId)) {
+    exitWithError("You do not have access to this board");
   }
-  
-  const cardCount = (db.query(`
-    SELECT COUNT(*) as count FROM cards WHERE columnId = ?
-  `).get(columnId) as { count: number } | null)?.count || 0;
-  
-  if (!options.yes && cardCount > 0) {
-    const prompt = `This will delete ${cardCount} card${cardCount !== 1 ? 's' : ''}. Are you sure? (y/N): `;
-    process.stdout.write(prompt);
-    
-    const response = await new Promise<string>((resolve) => {
-      process.stdin.once('data', (data) => {
-        resolve(data.toString().trim().toLowerCase());
-      });
-    });
-    
-    if (response !== 'y') {
-      console.log('Cancelled');
-      process.exit(0);
-    }
+
+  await confirmOrExit(options, `Delete column "${column.title}" and its cards?`);
+
+  const deleted = deleteColumnRecord(db, columnId);
+  if (!deleted) {
+    exitWithError("Failed to delete column");
   }
-  
-  db.transaction(() => {
-    db.query(`DELETE FROM cards WHERE columnId = ?`).run(columnId);
-    db.query(`DELETE FROM columns WHERE id = ?`).run(columnId);
-    
-    const remainingColumns = db.query(`
-      SELECT * FROM columns WHERE boardId = ? ORDER BY position
-    `).all(column.boardId) as Column[];
-    
-    for (let i = 0; i < remainingColumns.length; i++) {
-      db.query(`UPDATE columns SET position = ? WHERE id = ?`).run(i, remainingColumns[i]!.id);
-    }
-  })();
-  
+
   if (!options.quiet) {
-    console.log('Column deleted successfully');
+    printSuccess("Column deleted successfully");
   }
 }
 
 export async function reorderColumns(
   db: Database,
-  session: Session,
+  session: TaktConfig,
   boardId: string,
   columnIds: string[],
-  options: { quiet?: boolean }
+  options: FormatOptions
 ): Promise<void> {
-  const member = db.query(`
-    SELECT * FROM board_members 
-    WHERE userId = ? AND boardId = ? AND role = 'owner'
-  `).get(session.userId, boardId) as BoardMember | null;
-  
-  if (!member) {
-    console.error('Only the board owner can reorder columns');
-    process.exit(1);
+  const board = getBoardById(db, boardId);
+  if (!board) {
+    exitWithError("Board not found");
   }
-  
-  const existingColumns = db.query(`
-    SELECT * FROM columns WHERE boardId = ?
-  `).all(boardId) as Column[];
-  
-  const existingIds = new Set(existingColumns.map(col => col.id));
-  const providedIds = new Set(columnIds);
-  
-  for (const id of columnIds) {
-    if (!existingIds.has(id)) {
-      console.error(`Column ${id} not found in board`);
-      process.exit(1);
-    }
+
+  if (!isBoardMember(db, boardId, session.userId)) {
+    exitWithError("You do not have access to this board");
   }
-  
-  if (columnIds.length !== existingColumns.length) {
-    console.error('You must provide all column IDs for the board');
-    process.exit(1);
+
+  const success = reorderColumnsInDb(db, boardId, columnIds);
+  if (!success) {
+    exitWithError("You must provide all column IDs for the board");
   }
-  
-  db.transaction(() => {
-    for (let i = 0; i < columnIds.length; i++) {
-      db.query(`UPDATE columns SET position = ? WHERE id = ?`).run(i, columnIds[i] as string);
-    }
-  })();
-  
+
+  if (options.json) {
+    const reordered = getAllColumns(db, boardId).map((column) => ({
+      id: column.id,
+      title: column.title,
+      position: column.position,
+    }));
+    console.log(JSON.stringify(reordered, null, 2));
+    return;
+  }
+
   if (!options.quiet) {
-    console.log('Columns reordered successfully');
+    printSuccess("Columns reordered successfully");
   }
 }

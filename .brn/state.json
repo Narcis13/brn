@@ -2,7 +2,7 @@
   "feature": "takt-cli",
   "spec": "feature-takt-cli.md",
   "branch": "feat/takt-cli",
-  "status": "in_progress",
+  "status": "done",
   "acceptance_criteria": [
     {"id": "AC1", "text": "Package renamed to 'takt' in package.json; trello/ directory moved to src/; all internal imports, build scripts, and references updated; bun test passes with no broken imports", "met": true},
     {"id": "AC2", "text": "src/cli.ts exists with #!/usr/bin/env bun shebang; package.json has bin.takt pointing to it; takt --help prints usage summary; takt --version prints version; unknown commands print error + help; bun link makes takt globally available", "met": true},
@@ -11,16 +11,16 @@
     {"id": "AC5", "text": "takt serve [--port N] builds UI bundle then starts Bun.serve on given port (default 3001); output says 'Takt running at http://localhost:<port>'; console output says 'Takt' not 'Mini Trello'", "met": true},
     {"id": "AC6", "text": "Board commands work: list (shows user's boards as table), create (prints new ID), show (prints overview with columns/cards/members), delete (owner only, --yes skips confirm), members, invite, kick, activity [--limit]", "met": true},
     {"id": "AC7", "text": "Column commands work: list (position order), create (appends, prints ID), update --title, delete (with --yes), reorder (comma-separated IDs)", "met": true},
-    {"id": "AC8", "text": "Card commands work: list [--column], create (with all flags), show (full detail with timeline), update (all flags including checklist helpers --add-check/--toggle-check/--remove-check), delete (--yes), move", "met": false},
-    {"id": "AC9", "text": "Label commands work: list, create --name --color, update, delete, assign cardId labelId, unassign cardId labelId", "met": false},
-    {"id": "AC10", "text": "Comment commands work: add (auto-watches card, prints ID), edit (own only), delete (own only)", "met": false},
-    {"id": "AC11", "text": "takt search <boardId> <query> searches cards by title/description/labels and prints matching cards with column info", "met": false},
-    {"id": "AC12", "text": "Output formatting: aligned text tables, IDs truncated to 8 chars (--full-ids for full), dates as YYYY-MM-DD, ANSI colors (green/red/yellow/cyan), --json flag for raw JSON, --quiet flag for minimal output", "met": false},
-    {"id": "AC13", "text": "DB path resolution: local ./data/kanban.db when in project dir; ~/.takt/config.json dbPath when global; takt serve uses import.meta.dir; clear error if no DB found", "met": false}
+    {"id": "AC8", "text": "Card commands work: list [--column], create (with all flags), show (full detail with timeline), update (all flags including checklist helpers --add-check/--toggle-check/--remove-check), delete (--yes), move", "met": true},
+    {"id": "AC9", "text": "Label commands work: list, create --name --color, update, delete, assign cardId labelId, unassign cardId labelId", "met": true},
+    {"id": "AC10", "text": "Comment commands work: add (auto-watches card, prints ID), edit (own only), delete (own only)", "met": true},
+    {"id": "AC11", "text": "takt search <boardId> <query> searches cards by title/description/labels and prints matching cards with column info", "met": true},
+    {"id": "AC12", "text": "Output formatting: aligned text tables, IDs truncated to 8 chars (--full-ids for full), dates as YYYY-MM-DD, ANSI colors (green/red/yellow/cyan), --json flag for raw JSON, --quiet flag for minimal output", "met": true},
+    {"id": "AC13", "text": "DB path resolution: local ./data/kanban.db when in project dir; ~/.takt/config.json dbPath when global; takt serve uses import.meta.dir; clear error if no DB found", "met": true}
   ],
-  "run_count": 6,
-  "current_focus": "AC8: Card commands",
-  "last_run": "2026-03-25T20:00:00Z",
+  "run_count": 7,
+  "current_focus": null,
+  "last_run": "2026-03-25T20:30:00Z",
   "retry_count": 0,
   "blocked": false
 }

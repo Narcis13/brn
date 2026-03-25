@@ -1,0 +1,4 @@
+bun test
+
+Result: PASS
+Summary: 360 pass, 0 fail

@@ -1,490 +1,675 @@
 #!/usr/bin/env bun
 
 import { resolve } from "node:path";
-import { getDb, getUserByUsername, createUser } from "./src/db";
-import { register, login, saveSession, loadSession, clearSession } from "./cli-auth";
-import { 
-  listBoards, 
-  createBoardCommand, 
-  showBoard, 
+import { getDb, getUserByUsername } from "./src/db";
+import { clearSession, loadSession, login, register, saveSession } from "./cli-auth";
+import {
+  createBoardCommand,
   deleteBoardCommand,
-  listBoardMembers,
   inviteToBoardCommand,
   kickFromBoardCommand,
-  showBoardActivity 
+  listBoardMembers,
+  listBoards,
+  showBoard,
+  showBoardActivity,
 } from "./cli-board";
 import {
-  listColumns,
   createColumn,
-  updateColumn,
   deleteColumn,
-  reorderColumns
+  listColumns,
+  reorderColumns,
+  updateColumn,
 } from "./cli-column";
+import {
+  createCardCommand,
+  deleteCardCommand,
+  listCards,
+  moveCard,
+  showCard,
+  updateCardCommand,
+} from "./cli-card";
+import {
+  addCommentCommand,
+  deleteCommentCommand,
+  editCommentCommand,
+} from "./cli-comment";
+import {
+  assignLabelCommand,
+  createLabelCommand,
+  deleteLabelCommand,
+  listLabels,
+  unassignLabelCommand,
+  updateLabelCommand,
+} from "./cli-label";
+import { searchCardsCommand } from "./cli-search";
+import {
+  exitWithError,
+  getCommandContext,
+  getPositionals,
+  getProjectRoot,
+  parseGlobalOptions,
+  parseInteger,
+  printError,
+  readOptionValue,
+  resolveDbPath,
+} from "./cli-utils";
 
 const args = process.argv.slice(2);
 const [command, subcommand, ...rest] = args;
 
 const COMMANDS = {
-  auth: ['register', 'login', 'whoami', 'logout'],
-  board: ['list', 'create', 'show', 'delete', 'members', 'invite', 'kick', 'activity'],
-  column: ['list', 'create', 'update', 'delete', 'reorder'],
-  card: ['list', 'create', 'show', 'update', 'delete', 'move'],
-  label: ['list', 'create', 'update', 'delete', 'assign', 'unassign'],
-  comment: ['add', 'edit', 'delete'],
+  auth: ["register", "login", "whoami", "logout"],
+  board: ["list", "create", "show", "delete", "members", "invite", "kick", "activity"],
+  column: ["list", "create", "update", "delete", "reorder"],
+  card: ["list", "create", "show", "update", "delete", "move"],
+  label: ["list", "create", "update", "delete", "assign", "unassign"],
+  comment: ["add", "edit", "delete"],
   search: [],
   serve: [],
-};
+} as const;
 
 function printHelp(): void {
-  console.log(`Takt - A command-line interface for task management
+  console.log(`Takt
 
 Usage: takt <command> [subcommand] [options]
 
 Commands:
-  auth                   Authentication commands
-    register <username> <password>  Create a new user account
-    login <username> <password>     Login and save session
-    whoami                         Show current logged-in user
-    logout                         Remove saved session
+  auth
+    register <username> <password>
+    login <username> <password>
+    whoami
+    logout
 
-  board                  Board management commands
-    list                           List all boards you're a member of
-    create <title>                 Create a new board
-    show <id>                      Show board overview
-    delete <id>                    Delete a board (owner only)
-    members <id>                   List board members
-    invite <id> <username>         Invite user to board (owner only)
-    kick <id> <username>           Remove member from board (owner only)
-    activity <id> [--limit N]      Show recent activity
+  board
+    list
+    create <title>
+    show <id>
+    delete <id> [--yes]
+    members <id>
+    invite <id> <username>
+    kick <id> <username>
+    activity <id> [--limit <n>]
 
-  column                 Column management commands
-    list <boardId>                 List columns in a board
-    create <boardId> <title>       Create a new column
-    update <id> --title <title>    Update column title
-    delete <id>                    Delete column and its cards
-    reorder <boardId> <id1,id2>    Reorder columns
+  column
+    list <boardId>
+    create <boardId> <title>
+    update <id> --title <title>
+    delete <id> [--yes]
+    reorder <boardId> <id1,id2,...>
 
-  card                   Card management commands
-    list <boardId> [--column]      List cards in a board
-    create <boardId> --column <id> --title <title> [options]
-    show <id>                      Show card details
-    update <id> [options]          Update card properties
-    delete <id>                    Delete a card
-    move <id> --column <id>        Move card to another column
+  card
+    list <boardId> [--column <id>]
+    create <boardId> --column <id> --title <title> [--description <text>] [--due <date>] [--start <date>]
+    show <id>
+    update <id> [--title <text>] [--description <text>] [--due <date>] [--start <date>] [--column <id>] [--position <n>] [--checklist <json>] [--add-check <text>] [--toggle-check <index>] [--remove-check <index>]
+    delete <id> [--yes]
+    move <id> --column <id> [--position <n>]
 
-  label                  Label management commands
-    list <boardId>                 List board labels
+  label
+    list <boardId>
     create <boardId> --name <name> --color <color>
-    update <id> [options]          Update label properties
-    delete <id>                    Delete a label
-    assign <cardId> <labelId>      Assign label to card
-    unassign <cardId> <labelId>    Remove label from card
+    update <id> [--name <name>] [--color <color>]
+    delete <id>
+    assign <cardId> <labelId>
+    unassign <cardId> <labelId>
 
-  comment                Comment commands
-    add <cardId> <content>         Add a comment to a card
-    edit <id> <content>            Edit your comment
-    delete <id>                    Delete your comment
+  comment
+    add <cardId> <content>
+    edit <id> <content>
+    delete <id>
 
-  search <boardId> <query>  Search cards in a board
-
-  serve [--port N]         Start the web server (default port: 3001)
+  search <boardId> <query>
+  serve [--port <number>]
 
 Global Options:
-  --help, -h             Show this help message
-  --version, -v          Show version number
-  --json                 Output raw JSON
-  --quiet                Suppress non-essential output
-  --full-ids             Show full IDs instead of truncated
-  --yes, -y              Skip confirmation prompts
-
-Examples:
-  takt auth login alice mypassword
-  takt board create "My Project"
-  takt card create <boardId> --column <columnId> --title "New task"
-  takt serve --port 8080`);
+  --help, -h
+  --version, -v
+  --json
+  --quiet
+  --full-ids
+  --yes, -y`);
 }
 
 async function printVersion(): Promise<void> {
-  const packageJson = await Bun.file('package.json').json();
-  console.log(packageJson.version || '0.0.1');
+  const packageJson = await Bun.file(resolve(getProjectRoot(), "package.json")).json();
+  console.log(packageJson.version ?? "0.0.0");
 }
 
 async function main(): Promise<void> {
-  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
+  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     printHelp();
-    process.exit(0);
+    return;
   }
 
-  if (args[0] === '--version' || args[0] === '-v') {
+  if (args[0] === "--version" || args[0] === "-v") {
     await printVersion();
-    process.exit(0);
+    return;
   }
 
-  if (!command || !COMMANDS.hasOwnProperty(command)) {
-    console.error(`Error: Unknown command '${command}'`);
-    console.error('');
+  if (!command || !Object.prototype.hasOwnProperty.call(COMMANDS, command)) {
+    printError(`Unknown command: ${command ?? ""}`);
+    console.log("");
     printHelp();
     process.exit(1);
   }
 
-  const isAuthCommand = command === 'auth';
-  const requiresAuth = !isAuthCommand && command !== 'serve' && !args[0]?.startsWith('--');
-  
-  if (requiresAuth) {
-    const session = await loadSession();
-    if (!session) {
-      console.error('Not logged in. Run "takt auth login" first.');
-      process.exit(1);
-    }
-  }
-  
   switch (command) {
-    case 'auth':
+    case "auth":
       await handleAuth(subcommand, rest);
-      break;
-    case 'board':
+      return;
+    case "board":
       await handleBoard(subcommand, rest);
-      break;
-    case 'column':
+      return;
+    case "column":
       await handleColumn(subcommand, rest);
-      break;
-    case 'serve':
+      return;
+    case "card":
+      await handleCard(subcommand, rest);
+      return;
+    case "label":
+      await handleLabel(subcommand, rest);
+      return;
+    case "comment":
+      await handleComment(subcommand, rest);
+      return;
+    case "search":
+      await handleSearch(rest);
+      return;
+    case "serve":
       await handleServe(rest);
-      break;
+      return;
     default:
-      console.log(`Command '${command}' is not yet implemented.`);
-      process.exit(0);
+      printHelp();
+      process.exit(1);
   }
 }
 
-async function handleAuth(subcommand: string | undefined, args: string[]): Promise<void> {
-  const dbPath = resolve(import.meta.dir, '../data/kanban.db');
-  
+async function handleAuth(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const options = parseGlobalOptions(commandArgs);
+  const positionals = getPositionals(commandArgs);
+
   switch (subcommand) {
-    case 'register': {
-      const [username, password] = args;
+    case "register": {
+      const [username, password] = positionals;
       if (!username || !password) {
-        console.error('Usage: takt auth register <username> <password>');
-        process.exit(1);
+        exitWithError("Usage: takt auth register <username> <password>");
       }
-      
-      const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
-      const MIN_PASSWORD_LENGTH = 6;
-      
-      if (!USERNAME_REGEX.test(username)) {
-        console.error('Username must be 3-30 characters, alphanumeric and underscore only');
-        process.exit(1);
+
+      const dbPath = resolveDbPath(await loadSession());
+      if (!dbPath) {
+        exitWithError("No database found. Run this command from the Takt project directory.");
       }
-      
-      if (password.length < MIN_PASSWORD_LENGTH) {
-        console.error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
-        process.exit(1);
-      }
-      
+
       const db = getDb(dbPath);
-      const existing = getUserByUsername(db, username);
-      if (existing) {
-        console.error('Username already taken');
-        process.exit(1);
+      if (getUserByUsername(db, username)) {
+        exitWithError("Username already taken");
       }
-      
+
       const user = await register(db, username, password);
-      console.log(`User '${user.username}' created successfully`);
-      break;
-    }
-    
-    case 'login': {
-      const [username, password] = args;
-      if (!username || !password) {
-        console.error('Usage: takt auth login <username> <password>');
-        process.exit(1);
+      if (options.json) {
+        console.log(JSON.stringify(user, null, 2));
+        return;
       }
-      
+
+      console.log(`User '${user.username}' created successfully`);
+      return;
+    }
+
+    case "login": {
+      const [username, password] = positionals;
+      if (!username || !password) {
+        exitWithError("Usage: takt auth login <username> <password>");
+      }
+
+      const dbPath = resolveDbPath(await loadSession());
+      if (!dbPath) {
+        exitWithError("No database found. Run this command from the Takt project directory.");
+      }
+
       const db = getDb(dbPath);
       const user = await login(db, username, password);
       if (!user) {
-        console.error('Invalid username or password');
-        process.exit(1);
+        exitWithError("Invalid username or password");
       }
-      
+
       await saveSession(user.id, user.username, dbPath);
-      console.log(`Logged in as '${user.username}'`);
-      break;
-    }
-    
-    case 'whoami': {
-      const session = await loadSession();
-      if (!session) {
-        console.log('Not logged in');
-      } else {
-        console.log(session.username);
+      if (options.json) {
+        console.log(JSON.stringify({ userId: user.id, username: user.username, dbPath }, null, 2));
+        return;
       }
-      break;
+
+      console.log(`Logged in as '${user.username}'`);
+      return;
     }
-    
-    case 'logout': {
+
+    case "whoami": {
+      const session = await loadSession();
+      if (options.json) {
+        console.log(JSON.stringify(session, null, 2));
+        return;
+      }
+
+      console.log(session ? session.username : "Not logged in");
+      return;
+    }
+
+    case "logout": {
       await clearSession();
-      console.log('Logged out');
-      break;
+      if (options.json) {
+        console.log(JSON.stringify({ ok: true }, null, 2));
+        return;
+      }
+
+      console.log("Logged out");
+      return;
     }
-    
+
     default:
-      console.error(`Unknown auth subcommand: '${subcommand}'`);
-      console.error('');
-      console.error('Available auth commands:');
-      console.error('  register <username> <password>  Create a new user account');
-      console.error('  login <username> <password>     Login and save session');
-      console.error('  whoami                         Show current logged-in user');
-      console.error('  logout                         Remove saved session');
-      process.exit(1);
+      exitWithError("Unknown auth subcommand");
   }
 }
 
-async function handleServe(args: string[]): Promise<void> {
-  let port = 3001;
-  
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--port' && args[i + 1]) {
-      const parsed = Number(args[i + 1]);
-      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
-        console.error('Invalid port number. Must be between 1 and 65535.');
-        process.exit(1);
+async function handleBoard(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+  const positionals = getPositionals(commandArgs, ["--limit"]);
+
+  switch (subcommand) {
+    case "list":
+      await listBoards(db, session, options);
+      return;
+    case "create": {
+      const [title] = positionals;
+      if (!title) {
+        exitWithError("Usage: takt board create <title>");
       }
-      port = parsed;
-      break;
+      await createBoardCommand(db, session, title, options);
+      return;
+    }
+    case "show": {
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt board show <id>");
+      }
+      await showBoard(db, session, boardId, options);
+      return;
+    }
+    case "delete": {
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt board delete <id> [--yes]");
+      }
+      await deleteBoardCommand(db, session, boardId, options);
+      return;
+    }
+    case "members": {
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt board members <id>");
+      }
+      await listBoardMembers(db, session, boardId, options);
+      return;
+    }
+    case "invite": {
+      const [boardId, username] = positionals;
+      if (!boardId || !username) {
+        exitWithError("Usage: takt board invite <id> <username>");
+      }
+      await inviteToBoardCommand(db, session, boardId, username, options);
+      return;
+    }
+    case "kick": {
+      const [boardId, username] = positionals;
+      if (!boardId || !username) {
+        exitWithError("Usage: takt board kick <id> <username>");
+      }
+      await kickFromBoardCommand(db, session, boardId, username, options);
+      return;
+    }
+    case "activity": {
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt board activity <id> [--limit <n>]");
+      }
+
+      const limitValue = readOptionValue(commandArgs, "--limit");
+      const limit = limitValue ? parseInteger(limitValue, "limit") : 20;
+      await showBoardActivity(db, session, boardId, limit, options);
+      return;
+    }
+    default:
+      exitWithError("Unknown board subcommand");
+  }
+}
+
+async function handleColumn(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+  const positionals = getPositionals(commandArgs, ["--title"]);
+
+  switch (subcommand) {
+    case "list": {
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt column list <boardId>");
+      }
+      await listColumns(db, session, boardId, options);
+      return;
+    }
+    case "create": {
+      const [boardId, title] = positionals;
+      if (!boardId || !title) {
+        exitWithError("Usage: takt column create <boardId> <title>");
+      }
+      await createColumn(db, session, boardId, title, options);
+      return;
+    }
+    case "update": {
+      const [columnId] = positionals;
+      const title = readOptionValue(commandArgs, "--title");
+      if (!columnId || !title) {
+        exitWithError("Usage: takt column update <id> --title <title>");
+      }
+      await updateColumn(db, session, columnId, title, options);
+      return;
+    }
+    case "delete": {
+      const [columnId] = positionals;
+      if (!columnId) {
+        exitWithError("Usage: takt column delete <id> [--yes]");
+      }
+      await deleteColumn(db, session, columnId, options);
+      return;
+    }
+    case "reorder": {
+      const [boardId, order] = positionals;
+      if (!boardId || !order) {
+        exitWithError("Usage: takt column reorder <boardId> <id1,id2,...>");
+      }
+      await reorderColumns(
+        db,
+        session,
+        boardId,
+        order.split(",").map((value) => value.trim()).filter(Boolean),
+        options
+      );
+      return;
+    }
+    default:
+      exitWithError("Unknown column subcommand");
+  }
+}
+
+async function handleCard(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "list": {
+      const positionals = getPositionals(commandArgs, ["--column"]);
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt card list <boardId> [--column <id>]");
+      }
+      await listCards(db, session, boardId, readOptionValue(commandArgs, "--column"), options);
+      return;
+    }
+    case "create": {
+      const positionals = getPositionals(commandArgs, [
+        "--column",
+        "--title",
+        "--description",
+        "--due",
+        "--start",
+      ]);
+      const [boardId] = positionals;
+      const columnId = readOptionValue(commandArgs, "--column");
+      const title = readOptionValue(commandArgs, "--title");
+      if (!boardId || !columnId || !title) {
+        exitWithError("Usage: takt card create <boardId> --column <id> --title <title> [--description <text>] [--due <date>] [--start <date>]");
+      }
+
+      await createCardCommand(
+        db,
+        session,
+        boardId,
+        columnId,
+        title,
+        readOptionValue(commandArgs, "--description"),
+        readOptionValue(commandArgs, "--due"),
+        readOptionValue(commandArgs, "--start"),
+        options
+      );
+      return;
+    }
+    case "show": {
+      const [cardId] = getPositionals(commandArgs);
+      if (!cardId) {
+        exitWithError("Usage: takt card show <id>");
+      }
+      await showCard(db, session, cardId, options);
+      return;
+    }
+    case "update": {
+      const positionals = getPositionals(commandArgs, [
+        "--title",
+        "--description",
+        "--due",
+        "--start",
+        "--column",
+        "--position",
+        "--checklist",
+        "--add-check",
+        "--toggle-check",
+        "--remove-check",
+      ]);
+      const [cardId] = positionals;
+      if (!cardId) {
+        exitWithError("Usage: takt card update <id> [options]");
+      }
+
+      const positionValue = readOptionValue(commandArgs, "--position");
+      const toggleValue = readOptionValue(commandArgs, "--toggle-check");
+      const removeValue = readOptionValue(commandArgs, "--remove-check");
+
+      await updateCardCommand(
+        db,
+        session,
+        cardId,
+        {
+          title: readOptionValue(commandArgs, "--title"),
+          description: readOptionValue(commandArgs, "--description"),
+          dueDate: readOptionValue(commandArgs, "--due"),
+          startDate: readOptionValue(commandArgs, "--start"),
+          columnId: readOptionValue(commandArgs, "--column"),
+          position: positionValue ? parseInteger(positionValue, "position") : undefined,
+          checklist: readOptionValue(commandArgs, "--checklist"),
+          addCheck: readOptionValue(commandArgs, "--add-check"),
+          toggleCheck: toggleValue ? parseInteger(toggleValue, "toggle-check") : undefined,
+          removeCheck: removeValue ? parseInteger(removeValue, "remove-check") : undefined,
+        },
+        options
+      );
+      return;
+    }
+    case "delete": {
+      const [cardId] = getPositionals(commandArgs);
+      if (!cardId) {
+        exitWithError("Usage: takt card delete <id> [--yes]");
+      }
+      await deleteCardCommand(db, session, cardId, options);
+      return;
+    }
+    case "move": {
+      const positionals = getPositionals(commandArgs, ["--column", "--position"]);
+      const [cardId] = positionals;
+      const columnId = readOptionValue(commandArgs, "--column");
+      const positionValue = readOptionValue(commandArgs, "--position");
+      if (!cardId || !columnId) {
+        exitWithError("Usage: takt card move <id> --column <id> [--position <n>]");
+      }
+      await moveCard(
+        db,
+        session,
+        cardId,
+        columnId,
+        positionValue ? parseInteger(positionValue, "position") : undefined,
+        options
+      );
+      return;
+    }
+    default:
+      exitWithError("Unknown card subcommand");
+  }
+}
+
+async function handleLabel(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "list": {
+      const [boardId] = getPositionals(commandArgs);
+      if (!boardId) {
+        exitWithError("Usage: takt label list <boardId>");
+      }
+      await listLabels(db, session, boardId, options);
+      return;
+    }
+    case "create": {
+      const positionals = getPositionals(commandArgs, ["--name", "--color"]);
+      const [boardId] = positionals;
+      const name = readOptionValue(commandArgs, "--name");
+      const color = readOptionValue(commandArgs, "--color");
+      if (!boardId || !name || !color) {
+        exitWithError("Usage: takt label create <boardId> --name <name> --color <color>");
+      }
+      await createLabelCommand(db, session, boardId, name, color, options);
+      return;
+    }
+    case "update": {
+      const positionals = getPositionals(commandArgs, ["--name", "--color"]);
+      const [labelId] = positionals;
+      if (!labelId) {
+        exitWithError("Usage: takt label update <id> [--name <name>] [--color <color>]");
+      }
+      await updateLabelCommand(
+        db,
+        session,
+        labelId,
+        {
+          name: readOptionValue(commandArgs, "--name"),
+          color: readOptionValue(commandArgs, "--color"),
+        },
+        options
+      );
+      return;
+    }
+    case "delete": {
+      const [labelId] = getPositionals(commandArgs);
+      if (!labelId) {
+        exitWithError("Usage: takt label delete <id>");
+      }
+      await deleteLabelCommand(db, session, labelId, options);
+      return;
+    }
+    case "assign": {
+      const [cardId, labelId] = getPositionals(commandArgs);
+      if (!cardId || !labelId) {
+        exitWithError("Usage: takt label assign <cardId> <labelId>");
+      }
+      await assignLabelCommand(db, session, cardId, labelId, options);
+      return;
+    }
+    case "unassign": {
+      const [cardId, labelId] = getPositionals(commandArgs);
+      if (!cardId || !labelId) {
+        exitWithError("Usage: takt label unassign <cardId> <labelId>");
+      }
+      await unassignLabelCommand(db, session, cardId, labelId, options);
+      return;
+    }
+    default:
+      exitWithError("Unknown label subcommand");
+  }
+}
+
+async function handleComment(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "add": {
+      const [cardId, ...contentParts] = getPositionals(commandArgs);
+      if (!cardId || contentParts.length === 0) {
+        exitWithError("Usage: takt comment add <cardId> <content>");
+      }
+      await addCommentCommand(db, session, cardId, contentParts.join(" "), options);
+      return;
+    }
+    case "edit": {
+      const [commentId, ...contentParts] = getPositionals(commandArgs);
+      if (!commentId || contentParts.length === 0) {
+        exitWithError("Usage: takt comment edit <id> <content>");
+      }
+      await editCommentCommand(db, session, commentId, contentParts.join(" "), options);
+      return;
+    }
+    case "delete": {
+      const [commentId] = getPositionals(commandArgs);
+      if (!commentId) {
+        exitWithError("Usage: takt comment delete <id>");
+      }
+      await deleteCommentCommand(db, session, commentId, options);
+      return;
+    }
+    default:
+      exitWithError("Unknown comment subcommand");
+  }
+}
+
+async function handleSearch(commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+  const [boardId, ...queryParts] = getPositionals(commandArgs);
+
+  if (!boardId || queryParts.length === 0) {
+    exitWithError("Usage: takt search <boardId> <query>");
+  }
+
+  await searchCardsCommand(db, session, boardId, queryParts.join(" "), options);
+}
+
+async function handleServe(commandArgs: string[]): Promise<void> {
+  const portValue = readOptionValue(commandArgs, "--port");
+  let port = 3001;
+
+  if (portValue) {
+    port = parseInteger(portValue, "port");
+    if (port < 1 || port > 65535) {
+      exitWithError("Invalid port number. Must be between 1 and 65535.");
     }
   }
-  
-  // Build the UI bundle first
-  console.log('Building UI bundle...');
+
   const buildResult = await Bun.$`cd ${import.meta.dir} && bun run build.ts`.quiet();
   if (buildResult.exitCode !== 0) {
-    console.error('Build failed');
-    process.exit(1);
+    exitWithError("Build failed");
   }
-  
-  // Start the server
-  const { spawn } = await import('bun');
-  const proc = spawn(['bun', 'run', `${import.meta.dir}/src/index.ts`], {
-    env: { ...process.env, PORT: port.toString() },
-    stdout: 'inherit',
-    stderr: 'inherit',
+
+  const proc = Bun.spawn(["bun", "run", `${import.meta.dir}/src/index.ts`], {
+    env: { ...process.env, PORT: String(port) },
+    stdout: "inherit",
+    stderr: "inherit",
   });
-  
-  // Wait for the process to exit
+
   await proc.exited;
 }
 
-async function handleBoard(subcommand: string | undefined, args: string[]): Promise<void> {
-  const session = await loadSession();
-  if (!session) {
-    console.error('Not logged in. Run "takt auth login" first.');
-    process.exit(1);
+main().catch((error: unknown) => {
+  if (error instanceof Error) {
+    printError(error.message);
+  } else {
+    printError(String(error));
   }
-  
-  const db = getDb(session.dbPath);
-  
-  // Parse global options
-  const options: any = {
-    json: args.includes('--json'),
-    quiet: args.includes('--quiet'),
-    fullIds: args.includes('--full-ids'),
-    yes: args.includes('--yes') || args.includes('-y'),
-  };
-  
-  // Remove option flags from args
-  const filteredArgs = args.filter(arg => !arg.startsWith('--') && arg !== '-y');
-  
-  switch (subcommand) {
-    case 'list':
-      await listBoards(db, session, options);
-      break;
-      
-    case 'create': {
-      const [title] = filteredArgs;
-      if (!title) {
-        console.error('Usage: takt board create <title>');
-        process.exit(1);
-      }
-      await createBoardCommand(db, session, title, options);
-      break;
-    }
-    
-    case 'show': {
-      const [boardId] = filteredArgs;
-      if (!boardId) {
-        console.error('Usage: takt board show <id>');
-        process.exit(1);
-      }
-      await showBoard(db, session, boardId, options);
-      break;
-    }
-    
-    case 'delete': {
-      const [boardId] = filteredArgs;
-      if (!boardId) {
-        console.error('Usage: takt board delete <id> [--yes]');
-        process.exit(1);
-      }
-      await deleteBoardCommand(db, session, boardId, options);
-      break;
-    }
-    
-    case 'members': {
-      const [boardId] = filteredArgs;
-      if (!boardId) {
-        console.error('Usage: takt board members <id>');
-        process.exit(1);
-      }
-      await listBoardMembers(db, session, boardId, options);
-      break;
-    }
-    
-    case 'invite': {
-      const [boardId, username] = filteredArgs;
-      if (!boardId || !username) {
-        console.error('Usage: takt board invite <id> <username>');
-        process.exit(1);
-      }
-      await inviteToBoardCommand(db, session, boardId, username, options);
-      break;
-    }
-    
-    case 'kick': {
-      const [boardId, username] = filteredArgs;
-      if (!boardId || !username) {
-        console.error('Usage: takt board kick <id> <username>');
-        process.exit(1);
-      }
-      await kickFromBoardCommand(db, session, boardId, username, options);
-      break;
-    }
-    
-    case 'activity': {
-      const [boardId] = filteredArgs;
-      if (!boardId) {
-        console.error('Usage: takt board activity <id> [--limit N]');
-        process.exit(1);
-      }
-      
-      // Parse limit option
-      let limit = 20;
-      const limitIndex = args.indexOf('--limit');
-      if (limitIndex !== -1 && args[limitIndex + 1]) {
-        const parsedLimit = Number(args[limitIndex + 1]);
-        if (!isNaN(parsedLimit) && parsedLimit > 0) {
-          limit = parsedLimit;
-        }
-      }
-      
-      await showBoardActivity(db, session, boardId, limit, options);
-      break;
-    }
-    
-    default:
-      console.error(`Unknown board subcommand: '${subcommand}'`);
-      console.error('');
-      console.error('Available board commands:');
-      console.error('  list                      List all boards you\'re a member of');
-      console.error('  create <title>            Create a new board');
-      console.error('  show <id>                 Show board overview');
-      console.error('  delete <id> [--yes]       Delete a board (owner only)');
-      console.error('  members <id>              List board members');
-      console.error('  invite <id> <username>    Invite user to board (owner only)');
-      console.error('  kick <id> <username>      Remove member from board (owner only)');
-      console.error('  activity <id> [--limit N] Show recent activity');
-      process.exit(1);
-  }
-}
-
-async function handleColumn(subcommand: string | undefined, args: string[]): Promise<void> {
-  const session = await loadSession();
-  if (!session) {
-    console.error('Not logged in. Run "takt auth login" first.');
-    process.exit(1);
-  }
-  
-  const db = getDb(session.dbPath);
-  
-  // Parse global options
-  const options: any = {
-    json: args.includes('--json'),
-    quiet: args.includes('--quiet'),
-    fullIds: args.includes('--full-ids'),
-    yes: args.includes('--yes') || args.includes('-y'),
-  };
-  
-  // Remove option flags from args
-  const filteredArgs = args.filter(arg => !arg.startsWith('--') && arg !== '-y');
-  
-  switch (subcommand) {
-    case 'list': {
-      const [boardId] = filteredArgs;
-      if (!boardId) {
-        console.error('Usage: takt column list <boardId>');
-        process.exit(1);
-      }
-      await listColumns(db, session, boardId, options);
-      break;
-    }
-    
-    case 'create': {
-      const [boardId, title] = filteredArgs;
-      if (!boardId || !title) {
-        console.error('Usage: takt column create <boardId> <title>');
-        process.exit(1);
-      }
-      await createColumn(db, session, boardId, title, options);
-      break;
-    }
-    
-    case 'update': {
-      const [columnId] = filteredArgs;
-      const titleIndex = args.indexOf('--title');
-      if (!columnId || titleIndex === -1 || !args[titleIndex + 1]) {
-        console.error('Usage: takt column update <id> --title <title>');
-        process.exit(1);
-      }
-      const title = args[titleIndex + 1] as string;
-      await updateColumn(db, session, columnId, title, options);
-      break;
-    }
-    
-    case 'delete': {
-      const [columnId] = filteredArgs;
-      if (!columnId) {
-        console.error('Usage: takt column delete <id> [--yes]');
-        process.exit(1);
-      }
-      await deleteColumn(db, session, columnId, options);
-      break;
-    }
-    
-    case 'reorder': {
-      const [boardId, ...rest] = filteredArgs;
-      if (!boardId || rest.length === 0) {
-        console.error('Usage: takt column reorder <boardId> <id1,id2,...>');
-        process.exit(1);
-      }
-      const columnIds = rest.join(' ').split(',').map(id => id.trim());
-      await reorderColumns(db, session, boardId, columnIds, options);
-      break;
-    }
-    
-    default:
-      console.error(`Unknown column subcommand: '${subcommand}'`);
-      console.error('');
-      console.error('Available column commands:');
-      console.error('  list <boardId>                 List columns in a board');
-      console.error('  create <boardId> <title>       Create a new column');
-      console.error('  update <id> --title <title>    Update column title');
-      console.error('  delete <id> [--yes]            Delete column and its cards');
-      console.error('  reorder <boardId> <id1,id2>    Reorder columns');
-      process.exit(1);
-  }
-}
-
-main().catch(err => {
-  console.error('Error:', err.message);
   process.exit(1);
 });
