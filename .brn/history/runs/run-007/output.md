@@ -1,0 +1,1 @@
+Finished the Takt CLI feature by completing the remaining resource commands, consolidating shared CLI behavior into reusable utilities, correcting the column command path to the real DB schema, extending search to match label names, and adding CLI-focused tests. Final verification passed across tests, typecheck, build, and CLI smoke checks.

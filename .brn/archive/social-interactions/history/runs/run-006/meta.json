@@ -1,0 +1,37 @@
+{
+  "id": "run-006",
+  "timestamp": "2026-03-25T16:31:00Z",
+  "duration_seconds": 328,
+  "status": "success",
+  "focus": "AC12: Reaction picker UI + AC14: Board activity sidebar",
+  "summary": "Implemented reaction picker (smiley hover trigger, 8-emoji bar, toggle via API, interactive clickable chips) and board activity sidebar (overlay panel, paginated feed, card links, click-outside dismiss). Added @mention autocomplete to comment input. 12 new tests, all 320 pass. Feature complete — all 14 ACs met.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": [
+    "trello/src/ui/CardModal.tsx",
+    "trello/src/ui/BoardView.tsx",
+    "trello/public/styles.css",
+    "trello/src/ui/social-interactions.test.ts"
+  ],
+  "files_deleted": [],
+  "tests": {
+    "passed": 320,
+    "failed": 0,
+    "skipped": 0,
+    "total": 320
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC12", "AC14"],
+  "acceptance_criteria_progress": "14/14",
+  "vault_updates": [
+    "patterns/reaction-picker-component-pattern.md",
+    "patterns/activity-sidebar-overlay-pattern.md"
+  ],
+  "retry": false,
+  "challenges": "none",
+  "next_focus": "Create PR — feature complete"
+}

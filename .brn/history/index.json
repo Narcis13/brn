@@ -1,68 +1,55 @@
-[
-  {
-    "id": "run-001",
-    "timestamp": "2026-03-25T12:00:00Z",
-    "status": "success",
-    "focus": "Foundation: database schema, board members, authorization refactor",
-    "summary": "Created all 4 new social interaction tables, added user_id to activity, implemented board_members API endpoints, and refactored authorization from single-owner to membership-based. 18 new tests, all 241 pass.",
-    "ac_met": ["AC1", "AC5", "AC6"],
-    "ac_progress": "3/14",
-    "vault_entries_added": 2,
-    "files_changed": 4
-  },
-  {
-    "id": "run-002",
-    "timestamp": "2026-03-25T12:35:00Z",
-    "status": "success",
-    "focus": "Comments API — CRUD with authorization, activity logging, auto-watch",
-    "summary": "Implemented POST/PATCH/DELETE comment endpoints with three-tier authorization, activity logging on comment creation, and auto-watch via INSERT OR IGNORE. 15 new tests added, all 256 pass.",
-    "ac_met": ["AC2"],
-    "ac_progress": "4/14",
-    "vault_entries_added": 3,
-    "files_changed": 3
-  },
-  {
-    "id": "run-003",
-    "timestamp": "2026-03-25T13:21:10Z",
-    "status": "success",
-    "focus": "Reactions API + Watchers API toggle endpoints",
-    "summary": "Implemented POST toggle endpoints for reactions (8-emoji allowlist, comment/activity targets, board-scoped validation) and card watchers (watch/unwatch toggle). 14 new tests added, all 270 pass.",
-    "ac_met": ["AC3", "AC4"],
-    "ac_progress": "6/14",
-    "vault_entries_added": 2,
-    "files_changed": 3
-  },
-  {
-    "id": "run-004",
-    "timestamp": "2026-03-25T14:00:45Z",
-    "status": "success",
-    "focus": "Enhanced card detail with unified timeline + board activity feed",
-    "summary": "Rewrote getCardDetail to return unified timeline (comments+activity with reactions), is_watching, watcher_count, board_members. Added board-wide activity feed endpoint with before-cursor pagination. 13 new tests, all 283 pass.",
-    "ac_met": ["AC7", "AC8"],
-    "ac_progress": "8/14",
-    "vault_entries_added": 3,
-    "files_changed": 4
-  },
-  {
-    "id": "run-005",
-    "timestamp": "2026-03-25T15:22:10Z",
-    "status": "success",
-    "focus": "Board members UI, watch button, unified timeline display",
-    "summary": "Added frontend API client for all social interactions, built board header member avatars with invite popover (AC9), watch button in card modal (AC13), unified comment/activity timeline with @mention rendering and comment CRUD (AC10, AC11). 25 new tests, all 308 pass.",
-    "ac_met": ["AC9", "AC10", "AC11", "AC13"],
-    "ac_progress": "12/14",
-    "vault_entries_added": 3,
-    "files_changed": 6
-  },
-  {
-    "id": "run-006",
-    "timestamp": "2026-03-25T16:31:00Z",
-    "status": "success",
-    "focus": "Reaction picker UI + Board activity sidebar (feature complete)",
-    "summary": "Implemented reaction picker (smiley hover trigger, 8-emoji bar, toggle via API, interactive chips) and board activity sidebar (overlay panel, paginated feed, card links, click-outside dismiss). Added @mention autocomplete to comment input. 12 new tests, all 320 pass. ALL 14/14 ACs MET.",
-    "ac_met": ["AC12", "AC14"],
-    "ac_progress": "14/14",
-    "vault_entries_added": 2,
-    "files_changed": 4
-  }
-]
+{
+  "runs": [
+    {
+      "run_number": 1,
+      "timestamp": "2026-03-25T10:00:00Z",
+      "summary": "Renamed package to 'takt' and moved trello/ to src/. All tests pass.",
+      "acceptance_criteria_completed": ["AC1"],
+      "success": true
+    },
+    {
+      "run_number": 2,
+      "timestamp": "2026-03-25T18:15:00Z",
+      "summary": "Created CLI entry point with help, version, and error handling. Global takt command works.",
+      "acceptance_criteria_completed": ["AC2"],
+      "success": true
+    },
+    {
+      "run_number": 3,
+      "timestamp": "2026-03-25T18:30:00Z",
+      "summary": "Implemented authentication commands (register/login/whoami/logout) and session management.",
+      "acceptance_criteria_completed": ["AC3", "AC4"],
+      "success": true
+    },
+    {
+      "run_number": 4,
+      "timestamp": "2026-03-25T19:00:00Z",
+      "summary": "Implemented serve command with port flag support. Updated outputs to say 'Takt'.",
+      "acceptance_criteria_completed": ["AC5"],
+      "success": true
+    },
+    {
+      "run_number": 5,
+      "timestamp": "2026-03-25T19:15:00Z",
+      "summary": "Implemented all board commands with proper access control and formatting options.",
+      "acceptance_criteria_completed": ["AC6"],
+      "success": true
+    },
+    {
+      "run_number": 6,
+      "timestamp": "2026-03-25T20:00:00Z",
+      "summary": "Implemented all column commands (list, create, update, delete, reorder) with tests.",
+      "acceptance_criteria_completed": ["AC7"],
+      "success": true
+    },
+    {
+      "run_number": 7,
+      "timestamp": "2026-03-25T20:30:00Z",
+      "summary": "Finished the Takt CLI with shared CLI utilities, corrected real-schema column behavior, and completed card, label, comment, search, formatting, and DB resolution support.",
+      "acceptance_criteria_completed": ["AC8", "AC9", "AC10", "AC11", "AC12", "AC13"],
+      "success": true
+    }
+  ],
+  "total_runs": 7,
+  "last_updated": "2026-03-25T20:30:00Z"
+}

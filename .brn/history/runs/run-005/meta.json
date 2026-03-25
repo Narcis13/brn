@@ -1,39 +1,24 @@
 {
-  "id": "run-005",
-  "timestamp": "2026-03-25T15:22:10Z",
-  "duration_seconds": 482,
-  "status": "success",
-  "focus": "Board members UI, watch button, unified timeline display",
-  "summary": "Added frontend API client for all social interactions, built board header member avatars with invite popover (AC9), watch button in card modal (AC13), unified comment/activity timeline with @mention rendering (AC10), and comment input with expand-on-focus (AC11). 25 new tests, all 308 pass.",
-  "model": "opus",
-  "effort": "high",
-  "mode": "attended",
-  "files_created": ["trello/src/ui/social-interactions.test.ts"],
-  "files_modified": [
-    "trello/src/ui/api.ts",
-    "trello/src/ui/App.tsx",
-    "trello/src/ui/BoardView.tsx",
-    "trello/src/ui/CardModal.tsx",
-    "trello/public/styles.css"
-  ],
-  "files_deleted": [],
-  "tests": {
-    "passed": 308,
-    "failed": 0,
-    "skipped": 0,
-    "total": 308
+  "run_number": 5,
+  "timestamp": "2026-03-25T19:15:00Z",
+  "duration_minutes": 15,
+  "success": true,
+  "acceptance_criteria_progress": {
+    "completed": ["AC1", "AC2", "AC3", "AC4", "AC5", "AC6"],
+    "in_progress": [],
+    "remaining": ["AC7", "AC8", "AC9", "AC10", "AC11", "AC12", "AC13"]
   },
-  "types_clean": true,
-  "build_clean": true,
-  "commit": "",
-  "acceptance_criteria_met": ["AC9", "AC10", "AC11", "AC13"],
-  "acceptance_criteria_progress": "12/14",
-  "vault_updates": [
-    "patterns/frontend-api-client-update.md",
-    "decisions/avatar-color-hash.md",
-    "patterns/comment-input-expand-pattern.md"
+  "files_created": [
+    "src/cli-board.ts",
+    "src/cli-board.test.ts",
+    ".brn/vault/patterns/cli-command-structure.md",
+    ".brn/vault/patterns/cli-table-formatting.md"
   ],
-  "retry": false,
-  "challenges": "CardDetail type needed backward compat with activity field; board-controls layout required flex wrapper",
-  "next_focus": "AC12: Reaction picker + AC14: Board activity sidebar"
+  "files_modified": [
+    "src/cli.ts",
+    "src/cli-auth.ts"
+  ],
+  "tests_added": 18,
+  "tests_passed": 18,
+  "commit_hash": "642af4d"
 }

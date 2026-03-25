@@ -3,7 +3,6 @@ name: status
 description: Show current BRN feature progress — acceptance criteria, run history, vault size, steering directives, and estimated completion.
 user-invocable: true
 model: sonnet
-effort: medium
 ---
 
 # /status — Progress Dashboard

@@ -3,7 +3,6 @@ name: nightshift
 description: Start the autonomous night shift loop. Prepares clean state (archives done features, initializes from ready specs), then runs /next repeatedly until the feature is complete or blocked.
 user-invocable: true
 model: opus
-effort: high
 ---
 
 # /nightshift — Autonomous Loop
@@ -111,7 +110,6 @@ while [ $run -lt $MAX_RUNS ]; do
 
   claude -p \
     --model opus \
-    --effort high \
     --dangerously-skip-permissions \
     --max-turns 100 \
     "/next" 2>&1 | tee -a "$LOGFILE"

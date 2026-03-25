@@ -469,9 +469,16 @@ export function updateColumn(db: Database, id: string, title: string): ColumnRow
 }
 
 export function deleteColumn(db: Database, id: string): boolean {
-  const existing = db.query("SELECT id FROM columns WHERE id = ?").get(id);
+  const existing = db.query("SELECT id, board_id, position FROM columns WHERE id = ?").get(id) as {
+    id: string;
+    board_id: string;
+    position: number;
+  } | null;
   if (!existing) return false;
   db.query("DELETE FROM columns WHERE id = ?").run(id);
+  db.query(
+    "UPDATE columns SET position = position - 1 WHERE board_id = ? AND position > ?"
+  ).run(existing.board_id, existing.position);
   return true;
 }
 
@@ -1059,9 +1066,21 @@ export function searchCards(
   // Text search in title or description
   const query = params.q?.trim();
   if (query) {
-    sql += " AND (LOWER(c.title) LIKE LOWER(?) ESCAPE '\\' OR LOWER(c.description) LIKE LOWER(?) ESCAPE '\\')";
+    sql += `
+      AND (
+        LOWER(c.title) LIKE LOWER(?) ESCAPE '\\'
+        OR LOWER(c.description) LIKE LOWER(?) ESCAPE '\\'
+        OR EXISTS (
+          SELECT 1
+          FROM card_labels cl
+          JOIN labels l ON cl.label_id = l.id
+          WHERE cl.card_id = c.id
+            AND LOWER(l.name) LIKE LOWER(?) ESCAPE '\\'
+        )
+      )
+    `;
     const searchPattern = `%${escapeLikePattern(query)}%`;
-    sqlParams.push(searchPattern, searchPattern);
+    sqlParams.push(searchPattern, searchPattern, searchPattern);
   }
 
   // Label filter

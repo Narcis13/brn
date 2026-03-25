@@ -1,23 +1,24 @@
-# Verification — Run 002
+# Verification Results
 
 ## Tests
-- Result: PASS
-- Passed: 256, Failed: 0, Skipped: 0
-- Notable: 15 new comment-specific tests added (71 in routes.test.ts), all pass
+✓ All 320 tests pass
+✓ No broken imports
 
-## Type Check
-- Result: PASS
-- Errors: 0
+## Type Checking
+✓ CLI types are correct (fixed undefined command check)
+⚠️ Pre-existing type errors in social-interactions.test.ts (not related to this change)
 
-## Build
-- Result: N/A
+## Manual Testing
+✓ `takt --help` displays usage information
+✓ `takt --version` shows version 0.1.0  
+✓ `takt unknown` shows error and help
+✓ `bun link` successfully registers takt globally
+✓ Global `takt` command works from any directory
 
-## Acceptance Criteria
-| AC | Status | Notes |
-|----|--------|-------|
-| AC2 | MET (this run) | POST/PATCH/DELETE comments endpoints work with auth checks; comment creates 'commented' activity entry and auto-watches card |
-| AC1 | MET (run-001) | — |
-| AC5 | MET (run-001) | — |
-| AC6 | MET (run-001) | — |
-
-## Overall: PASS
+## AC2 Requirements Met
+✓ src/cli.ts exists with #!/usr/bin/env bun shebang
+✓ package.json has bin.takt pointing to it
+✓ takt --help prints usage summary
+✓ takt --version prints version
+✓ unknown commands print error + help
+✓ bun link makes takt globally available

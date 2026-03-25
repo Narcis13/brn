@@ -1,0 +1,4 @@
+cd src && bun run build.ts
+
+Result: PASS
+Output: Built 2 file(s) to src/public/dist/

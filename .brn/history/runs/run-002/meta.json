@@ -1,37 +1,15 @@
 {
-  "id": "run-002",
-  "timestamp": "2026-03-25T12:35:00Z",
-  "duration_seconds": 187,
-  "status": "success",
-  "focus": "Comments API — CRUD with authorization, activity logging, auto-watch",
-  "summary": "Implemented POST/PATCH/DELETE comment endpoints with three-tier authorization (member/author/owner), activity logging, and auto-watch. Added 5 db functions and 15 new tests. All 256 tests pass.",
-  "model": "opus",
-  "effort": "high",
-  "mode": "attended",
-  "files_created": [],
-  "files_modified": [
-    "trello/src/db.ts",
-    "trello/src/routes.ts",
-    "trello/src/routes.test.ts"
-  ],
-  "files_deleted": [],
-  "tests": {
-    "passed": 256,
-    "failed": 0,
-    "skipped": 0,
-    "total": 256
-  },
-  "types_clean": true,
-  "build_clean": true,
-  "commit": "591432d",
-  "acceptance_criteria_met": ["AC2"],
-  "acceptance_criteria_progress": "4/14",
-  "vault_updates": [
-    "patterns/comment-crud-with-side-effects.md",
-    "anti-patterns/sqlite-datetime-second-granularity.md",
-    "decisions/comment-auth-three-tier.md"
-  ],
-  "retry": false,
-  "challenges": "SQLite datetime second-level granularity caused initial test failure",
-  "next_focus": "Reactions API (AC3)"
+  "run_number": 2,
+  "timestamp": "2026-03-25T18:15:00Z",
+  "duration_seconds": 300,
+  "success": true,
+  "acceptance_criteria_focus": "AC2",
+  "acceptance_criteria_completed": ["AC2"],
+  "files_created": ["src/cli.ts"],
+  "files_modified": ["package.json"],
+  "tests_run": 320,
+  "tests_passed": 320,
+  "verification_status": "passed",
+  "blocked": false,
+  "retry_count": 0
 }

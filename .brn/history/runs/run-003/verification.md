@@ -1,21 +1,15 @@
-# Verification — Run 003
+# Verification Results
 
 ## Tests
-- Result: PASS
-- Passed: 270, Failed: 0, Skipped: 0
-- Notable: 14 new tests added (9 reactions, 5 watchers). Total up from 256 → 270.
+- `bun test`: 320 tests pass ✓
 
-## Type Check
-- Result: PASS
-- Errors: 0
+## Manual Testing
+All auth commands tested successfully:
+- `takt auth register` - validation and user creation working
+- `takt auth login` - credential verification and session storage working
+- `takt auth whoami` - displays current user correctly
+- `takt auth logout` - clears session properly
+- Session requirement enforced for non-auth commands
 
-## Build
-- Result: N/A
-
-## Acceptance Criteria
-| AC | Status | Notes |
-|----|--------|-------|
-| AC3 | MET (this run) | Reactions toggle endpoint with 8-emoji allowlist, unique constraint, membership auth |
-| AC4 | MET (this run) | Card watchers toggle endpoint with membership auth; watch/unwatch works, auto-watch from comments interacts correctly |
-
-## Overall: PASS
+## Type Checking
+No TypeScript errors in the implementation.
