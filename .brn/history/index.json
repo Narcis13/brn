@@ -9,5 +9,16 @@
     "ac_progress": "3/14",
     "vault_entries_added": 2,
     "files_changed": 4
+  },
+  {
+    "id": "run-002",
+    "timestamp": "2026-03-25T12:35:00Z",
+    "status": "success",
+    "focus": "Comments API — CRUD with authorization, activity logging, auto-watch",
+    "summary": "Implemented POST/PATCH/DELETE comment endpoints with three-tier authorization, activity logging on comment creation, and auto-watch via INSERT OR IGNORE. 15 new tests added, all 256 pass.",
+    "ac_met": ["AC2"],
+    "ac_progress": "4/14",
+    "vault_entries_added": 3,
+    "files_changed": 3
   }
 ]

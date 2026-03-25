@@ -38,6 +38,10 @@ import {
   getBoardMembers,
   addBoardMember,
   removeBoardMember,
+  createComment,
+  getCommentById,
+  updateComment,
+  deleteComment,
   type BoardRow,
   type SearchDueFilter,
 } from "./db.ts";
@@ -589,6 +593,104 @@ export function createApp(db: Database): Hono<Env> {
     // Create activity entry
     createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" }, c.get("userId"));
     
+    return c.json({ ok: true });
+  });
+
+  // --- Comment routes ---
+
+  app.post("/api/boards/:boardId/cards/:cardId/comments", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const body = await c.req.json<{ content?: string }>();
+    if (!body.content || body.content.trim() === "") {
+      return c.json({ error: "content is required" }, 400);
+    }
+    if (body.content.length > 5000) {
+      return c.json({ error: "content must be 5000 characters or less" }, 400);
+    }
+
+    const comment = createComment(db, cardId, board.id, userId, body.content.trim());
+    return c.json({
+      id: comment.id,
+      content: comment.content,
+      user_id: comment.user_id,
+      username: comment.username,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      reactions: [],
+    }, 201);
+  });
+
+  app.patch("/api/boards/:boardId/cards/:cardId/comments/:commentId", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const commentId = c.req.param("commentId");
+    const existing = getCommentById(db, commentId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "comment not found" }, 404);
+    }
+
+    // Author-only edit
+    if (existing.user_id !== userId) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const body = await c.req.json<{ content?: string }>();
+    if (!body.content || body.content.trim() === "") {
+      return c.json({ error: "content is required" }, 400);
+    }
+    if (body.content.length > 5000) {
+      return c.json({ error: "content must be 5000 characters or less" }, 400);
+    }
+
+    const updated = updateComment(db, commentId, body.content.trim());
+    if (!updated) return c.json({ error: "comment not found" }, 404);
+
+    return c.json({
+      id: updated.id,
+      content: updated.content,
+      user_id: updated.user_id,
+      username: updated.username,
+      created_at: updated.created_at,
+      updated_at: updated.updated_at,
+      reactions: [],
+    });
+  });
+
+  app.delete("/api/boards/:boardId/cards/:cardId/comments/:commentId", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const commentId = c.req.param("commentId");
+    const existing = getCommentById(db, commentId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "comment not found" }, 404);
+    }
+
+    // Author or board owner can delete
+    if (existing.user_id !== userId && !isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    deleteComment(db, commentId);
     return c.json({ ok: true });
   });
 

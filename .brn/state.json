@@ -5,7 +5,7 @@
   "status": "in_progress",
   "acceptance_criteria": [
     {"id": "AC1", "text": "board_members table created; board creator auto-inserted as owner; GET/POST/DELETE /api/boards/:boardId/members endpoints work with proper authorization (invite=owner, remove=owner, list=member)", "met": true},
-    {"id": "AC2", "text": "comments table created; POST/PATCH/DELETE comments endpoints work with auth checks (create=member, edit=author, delete=author or owner); comment creates 'commented' activity entry and auto-watches card for commenter", "met": false},
+    {"id": "AC2", "text": "comments table created; POST/PATCH/DELETE comments endpoints work with auth checks (create=member, edit=author, delete=author or owner); comment creates 'commented' activity entry and auto-watches card for commenter", "met": true},
     {"id": "AC3", "text": "reactions table created; POST /api/boards/:boardId/reactions toggles reactions (add/remove); enforces 8-emoji allow-list; unique constraint per user/emoji/target; returns action and reaction object", "met": false},
     {"id": "AC4", "text": "card_watchers table created; POST /api/boards/:boardId/cards/:cardId/watch toggles watching; card detail response includes is_watching boolean and watcher_count number", "met": false},
     {"id": "AC5", "text": "activity table gains user_id column; all new activity entries record acting user's ID; existing entries without user_id show 'System' as actor", "met": true},
@@ -19,9 +19,9 @@
     {"id": "AC13", "text": "Watch button (eye icon) in card modal header; filled/highlighted when watching, outline when not; tooltip 'Watch'/'Watching'; watcher count shown; auto-watch on commenting", "met": false},
     {"id": "AC14", "text": "Board activity sidebar: toggle button in board header (clock icon); slides from right as overlay; unified feed newest first; card title links open modal; Load more pagination; close button and click-outside to dismiss", "met": false}
   ],
-  "run_count": 1,
-  "current_focus": "Comments API endpoints (AC2)",
-  "last_run": "run-001",
+  "run_count": 2,
+  "current_focus": "Reactions API (AC3)",
+  "last_run": "run-002",
   "retry_count": 0,
   "blocked": false
 }

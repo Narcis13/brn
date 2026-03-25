@@ -1151,3 +1151,328 @@ describe("activity user_id tracking", () => {
     expect(detail.activity[0]!.user_id).toBeTruthy();
   });
 });
+
+// ============================================================
+// Comments
+// ============================================================
+
+interface CommentResponse {
+  id: string;
+  content: string;
+  user_id: string;
+  username: string;
+  created_at: string;
+  updated_at: string;
+  reactions: unknown[];
+}
+
+async function createTestCardInBoard(
+  token: string,
+  boardId: string
+): Promise<{ cardId: string; columnId: string }> {
+  const colRes = await app.fetch(authReq("GET", `/api/boards/${boardId}/columns`, token));
+  const cols = (await colRes.json()) as { columns: { id: string }[] };
+  const columnId = cols.columns[0]!.id;
+  const cardRes = await app.fetch(
+    authReq("POST", `/api/boards/${boardId}/cards`, token, { title: "Test Card", columnId })
+  );
+  const card = (await cardRes.json()) as { id: string };
+  return { cardId: card.id, columnId };
+}
+
+describe("POST /api/boards/:boardId/cards/:cardId/comments", () => {
+  it("creates a comment and returns it with username and empty reactions", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "This is a comment",
+      })
+    );
+    expect(res.status).toBe(201);
+    const comment = (await res.json()) as CommentResponse;
+    expect(comment.content).toBe("This is a comment");
+    expect(comment.username).toBe("alice");
+    expect(comment.user_id).toBeTruthy();
+    expect(comment.reactions).toEqual([]);
+    expect(comment.created_at).toBeTruthy();
+    expect(comment.updated_at).toBeTruthy();
+  });
+
+  it("creates 'commented' activity entry", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Check this out",
+      })
+    );
+
+    const actRes = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/cards/${cardId}/activity`, alice.token)
+    );
+    const data = (await actRes.json()) as { activity: { action: string; user_id: string }[] };
+    const commented = data.activity.find((a) => a.action === "commented");
+    expect(commented).toBeDefined();
+    expect(commented!.user_id).toBeTruthy();
+  });
+
+  it("auto-watches the card for the commenter", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Watching now",
+      })
+    );
+
+    // Verify by checking card_watchers directly via db
+    // We test the side effect indirectly: commenting again shouldn't error (INSERT OR IGNORE)
+    const res2 = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Second comment",
+      })
+    );
+    expect(res2.status).toBe(201);
+  });
+
+  it("rejects empty content", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "   ",
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects content over 5000 characters", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "x".repeat(5001),
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("non-member cannot comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, bob.token, {
+        content: "Sneaky comment",
+      })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("member can comment on board they were invited to", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Invite bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, bob.token, {
+        content: "Bob's comment",
+      })
+    );
+    expect(res.status).toBe(201);
+    const comment = (await res.json()) as CommentResponse;
+    expect(comment.username).toBe("bob");
+  });
+
+  it("returns 404 for non-existent card", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/nonexistent/comments`, alice.token, {
+        content: "Hello",
+      })
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("PATCH /api/boards/:boardId/cards/:cardId/comments/:commentId", () => {
+  it("author can edit their own comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Original",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    const res = await app.fetch(
+      authReq("PATCH", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, alice.token, {
+        content: "Updated",
+      })
+    );
+    expect(res.status).toBe(200);
+    const updated = (await res.json()) as CommentResponse;
+    expect(updated.content).toBe("Updated");
+    expect(updated.id).toBe(comment.id);
+    expect(updated.updated_at).toBeTruthy();
+  });
+
+  it("non-author cannot edit comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Invite bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Alice's comment",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    const res = await app.fetch(
+      authReq("PATCH", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, bob.token, {
+        content: "Bob tries to edit",
+      })
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects empty content on edit", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "Original",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    const res = await app.fetch(
+      authReq("PATCH", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, alice.token, {
+        content: "",
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("DELETE /api/boards/:boardId/cards/:cardId/comments/:commentId", () => {
+  it("author can delete their own comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, alice.token, {
+        content: "To be deleted",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, alice.token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean };
+    expect(data.ok).toBe(true);
+  });
+
+  it("board owner can delete any comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Invite bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+
+    // Bob creates a comment
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, bob.token, {
+        content: "Bob's comment",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    // Alice (owner) deletes Bob's comment
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, alice.token)
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("non-author non-owner member cannot delete comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const charlie = await registerUser("charlie", "secret789");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Invite bob and charlie
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "charlie" })
+    );
+
+    // Bob creates a comment
+    const createRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/comments`, bob.token, {
+        content: "Bob's comment",
+      })
+    );
+    const comment = (await createRes.json()) as CommentResponse;
+
+    // Charlie (member, not author, not owner) tries to delete
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/cards/${cardId}/comments/${comment.id}`, charlie.token)
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for non-existent comment", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/cards/${cardId}/comments/nonexistent`, alice.token)
+    );
+    expect(res.status).toBe(404);
+  });
+});

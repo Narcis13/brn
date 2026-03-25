@@ -1084,3 +1084,76 @@ export function reorderColumns(db: Database, boardId: string, columnIds: string[
 
   return true;
 }
+
+// --- Comment helpers ---
+
+export interface CommentWithUser {
+  id: string;
+  card_id: string;
+  board_id: string;
+  user_id: string;
+  username: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createComment(
+  db: Database,
+  cardId: string,
+  boardId: string,
+  userId: string,
+  content: string
+): CommentWithUser {
+  const id = nanoid();
+
+  db.query(
+    "INSERT INTO comments (id, card_id, board_id, user_id, content) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, cardId, boardId, userId, content);
+
+  // Create "commented" activity entry
+  createActivity(db, cardId, boardId, "commented", null, userId);
+
+  // Auto-watch card for commenter
+  addCardWatcher(db, cardId, userId);
+
+  return db.query(
+    `SELECT c.id, c.card_id, c.board_id, c.user_id, u.username, c.content, c.created_at, c.updated_at
+     FROM comments c
+     JOIN users u ON c.user_id = u.id
+     WHERE c.id = ?`
+  ).get(id) as CommentWithUser;
+}
+
+export function getCommentById(db: Database, commentId: string): CommentWithUser | null {
+  return db.query(
+    `SELECT c.id, c.card_id, c.board_id, c.user_id, u.username, c.content, c.created_at, c.updated_at
+     FROM comments c
+     JOIN users u ON c.user_id = u.id
+     WHERE c.id = ?`
+  ).get(commentId) as CommentWithUser | null;
+}
+
+export function updateComment(db: Database, commentId: string, content: string): CommentWithUser | null {
+  const existing = db.query("SELECT id FROM comments WHERE id = ?").get(commentId);
+  if (!existing) return null;
+
+  db.query(
+    "UPDATE comments SET content = ?, updated_at = datetime('now') WHERE id = ?"
+  ).run(content, commentId);
+
+  return getCommentById(db, commentId);
+}
+
+export function deleteComment(db: Database, commentId: string): boolean {
+  const result = db.query("DELETE FROM comments WHERE id = ?").run(commentId);
+  return result.changes > 0;
+}
+
+// --- Card watcher helpers ---
+
+export function addCardWatcher(db: Database, cardId: string, userId: string): void {
+  db.query(
+    "INSERT OR IGNORE INTO card_watchers (card_id, user_id) VALUES (?, ?)"
+  ).run(cardId, userId);
+}
