@@ -1,6 +1,6 @@
 ---
 title: Takt CLI — Rename app to Takt and add a full CLI alongside the web API
-status: ready
+status: active
 priority: high
 ---
 
