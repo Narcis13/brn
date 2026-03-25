@@ -1,0 +1,25 @@
+{
+  "run_number": 14,
+  "timestamp": "2026-03-24T15:30:00",
+  "duration_minutes": 5,
+  "acceptance_criteria_progress": {
+    "total": 14,
+    "met": 14,
+    "completed_this_run": ["AC14"]
+  },
+  "files_modified": [
+    "trello/src/ui/CalendarView.test.tsx",
+    ".brn/state.json",
+    ".brn/specs/feature-calendar-view.md"
+  ],
+  "tests": {
+    "added": 4,
+    "total": 225,
+    "passing": 225,
+    "failing": 0
+  },
+  "outcome": "success",
+  "feature_complete": true,
+  "pr_created": true,
+  "pr_url": "https://github.com/Narcis13/brn/pull/5"
+}
