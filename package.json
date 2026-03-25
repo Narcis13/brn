@@ -1,8 +1,12 @@
 {
   "name": "takt",
+  "version": "0.1.0",
   "module": "index.ts",
   "type": "module",
   "private": true,
+  "bin": {
+    "takt": "./src/cli.ts"
+  },
   "scripts": {
     "orchestrate": "bun run .superclaude/orchestrator/loop.ts --mode=auto",
     "step": "bun run .superclaude/orchestrator/loop.ts --mode=step",

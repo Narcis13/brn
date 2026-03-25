@@ -6,8 +6,15 @@
       "summary": "Renamed package to 'takt' and moved trello/ to src/. All tests pass.",
       "acceptance_criteria_completed": ["AC1"],
       "success": true
+    },
+    {
+      "run_number": 2,
+      "timestamp": "2026-03-25T18:15:00Z",
+      "summary": "Created CLI entry point with help, version, and error handling. Global takt command works.",
+      "acceptance_criteria_completed": ["AC2"],
+      "success": true
     }
   ],
-  "total_runs": 1,
-  "last_updated": "2026-03-25T10:00:00Z"
+  "total_runs": 2,
+  "last_updated": "2026-03-25T18:15:00Z"
 }
