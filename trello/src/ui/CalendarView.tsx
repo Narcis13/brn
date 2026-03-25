@@ -4,6 +4,14 @@ import * as api from "./api.ts";
 import { getDueBadge } from "./card-utils.ts";
 import { QuickCreatePopover } from "./QuickCreatePopover.tsx";
 
+/** Format a Date as YYYY-MM-DD using local timezone (avoids UTC shift from toISOString) */
+function toLocalDateString(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 interface CalendarViewProps {
   boardId: string;
   columns: Column[];
@@ -68,7 +76,7 @@ function getMonthGrid(year: number, month: number): DateCell[] {
       cellDate.getMonth() === today.getMonth() &&
       cellDate.getDate() === today.getDate();
     
-    const dateString = cellDate.toISOString().split("T")[0];
+    const dateString = toLocalDateString(cellDate);
     if (dateString) {
       cells.push({
         date: cellDate,
@@ -136,8 +144,8 @@ function getTimeFromDate(dateStr: string | null | undefined): string | null {
 function isCardInWeek(card: CalendarCard, weekStart: Date, weekEnd: Date): boolean {
   if (!card.due_date && !card.start_date) return false;
   
-  const weekStartStr = weekStart.toISOString().split("T")[0];
-  const weekEndStr = weekEnd.toISOString().split("T")[0];
+  const weekStartStr = toLocalDateString(weekStart);
+  const weekEndStr = toLocalDateString(weekEnd);
   
   if (!weekStartStr || !weekEndStr) return false;
   
@@ -180,8 +188,8 @@ function formatDateRange(year: number, month: number): { start: string; end: str
   endDate.setDate(startDate.getDate() + 41);
   
   return {
-    start: startDate.toISOString().split("T")[0] || "",
-    end: endDate.toISOString().split("T")[0] || ""
+    start: toLocalDateString(startDate),
+    end: toLocalDateString(endDate)
   };
 }
 
@@ -284,8 +292,8 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
       // Week mode
       const weekStart = getWeekStart(currentDate);
       const weekEnd = getWeekEnd(currentDate);
-      start = weekStart.toISOString().split("T")[0] || "";
-      end = weekEnd.toISOString().split("T")[0] || "";
+      start = toLocalDateString(weekStart);
+      end = toLocalDateString(weekEnd);
     }
     
     try {
@@ -444,16 +452,16 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
       const dueTime = getTimeFromDate(card.due_date);
       const newDueDate = new Date(card.due_date.split("T")[0] || "");
       newDueDate.setDate(newDueDate.getDate() + daysDiff);
-      const newDueDateStr = newDueDate.toISOString().split("T")[0];
+      const newDueDateStr = toLocalDateString(newDueDate);
       updates.due_date = dueTime ? `${newDueDateStr}T${dueTime}` : newDueDateStr;
     }
-    
+
     // If card has both dates, shift start_date by same delta
     if (card.start_date && card.due_date) {
       const startTime = getTimeFromDate(card.start_date);
       const newStartDate = new Date(card.start_date.split("T")[0] || "");
       newStartDate.setDate(newStartDate.getDate() + daysDiff);
-      const newStartDateStr = newStartDate.toISOString().split("T")[0];
+      const newStartDateStr = toLocalDateString(newStartDate);
       updates.start_date = startTime ? `${newStartDateStr}T${startTime}` : newStartDateStr;
     }
     
@@ -506,14 +514,14 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
         const startTime = getTimeFromDate(card.start_date);
         const newStartDate = new Date(card.start_date.split("T")[0]!);
         newStartDate.setDate(newStartDate.getDate() + daysDiff);
-        const newStartDateStr = newStartDate.toISOString().split("T")[0];
+        const newStartDateStr = toLocalDateString(newStartDate);
         updates.start_date = startTime ? `${newStartDateStr}T${startTime}` : newStartDateStr;
       }
     } else {
       // Same date and time - no change needed
       return;
     }
-    
+
     // Update the card with new dates
     await api.updateCard(boardId, card.id, updates);
     await loadCalendarData();
@@ -562,10 +570,10 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
       const daysDiff = Math.round((new Date(dateString).getTime() - new Date(originalDateOnly!).getTime()) / (1000 * 60 * 60 * 24));
       const newStartDate = new Date(card.start_date.split("T")[0]!);
       newStartDate.setDate(newStartDate.getDate() + daysDiff);
-      const newStartDateStr = newStartDate.toISOString().split("T")[0];
+      const newStartDateStr = toLocalDateString(newStartDate);
       updates.start_date = newStartDateStr;
     }
-    
+
     // Update the card with new dates
     await api.updateCard(boardId, card.id, updates);
     await loadCalendarData();
@@ -794,10 +802,10 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
               <div className="calendar-week-time-label">All day</div>
               <div className="calendar-week-allday-cells">
                 {getWeekDays(currentDate).map((day, index) => {
-                  const dayStr = day.toISOString().split("T")[0];
+                  const dayStr = toLocalDateString(day);
                   const isToday = new Date().toDateString() === day.toDateString();
                   const isWeekend = index >= 5;
-                  
+
                   // Get all-day cards (cards without times) for this day
                   const allDayCards = cards.filter(card => {
                     if (card.due_date && !getTimeFromDate(card.due_date)) {
@@ -859,7 +867,7 @@ export function CalendarView({ boardId, columns, onCardClick, onCardCreated }: C
               
               <div className="calendar-week-columns">
                 {getWeekDays(currentDate).map((day, dayIndex) => {
-                  const dayStr = day.toISOString().split("T")[0];
+                  const dayStr = toLocalDateString(day);
                   const isToday = new Date().toDateString() === day.toDateString();
                   const isWeekend = dayIndex >= 5;
                   

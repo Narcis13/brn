@@ -1264,34 +1264,45 @@ body.modal-open {
 }
 
 .date-field {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.date-field span {
+.date-field > span {
   display: block;
   color: #5e6c84;
   font-size: 12px;
   font-weight: 700;
-  margin-bottom: 8px;
-}
-
-.date-input-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
 }
 
 .date-display {
   font-size: 14px;
   color: #172b4d;
-  margin-bottom: 8px;
   font-weight: 500;
+}
+
+.date-input-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.date-input-row input[type="date"] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .date-input-row input[type="time"] {
   flex: 0 0 auto;
   width: auto;
-  min-width: 120px;
+  min-width: 110px;
+}
+
+.date-input-row .btn-text {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .btn-text {
@@ -1838,6 +1849,8 @@ body.modal-open {
 /* Multi-day card bars */
 .calendar-multiday-bar {
   position: absolute;
+  left: 4px;
+  right: 4px;
   height: 20px;
   background: #0079bf;
   border-radius: 4px;
@@ -1850,9 +1863,7 @@ body.modal-open {
   justify-content: space-between;
   gap: 4px;
   border-left: 3px solid;
-  margin: 0 4px;
   box-shadow: 0 1px 3px rgba(9, 30, 66, 0.15);
-  grid-column: var(--col-span);
 }
 
 .calendar-multiday-bar:hover {
