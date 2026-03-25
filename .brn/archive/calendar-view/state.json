@@ -1,0 +1,28 @@
+{
+  "feature": "calendar-view",
+  "spec": "feature-calendar-view.md",
+  "branch": "feat/calendar-view",
+  "status": "done",
+  "acceptance_criteria": [
+    {"id": "AC1", "text": "Cards due_date and start_date accept both YYYY-MM-DD and YYYY-MM-DDTHH:MM formats; validation rejects malformed times (T25:00, T14:60, T1:5); 24:00 rejected, 00:00 and 23:59 accepted", "met": true},
+    {"id": "AC2", "text": "GET /api/boards/:boardId/calendar?start=&end= returns cards overlapping date range (due in range, start in range, or spanning range); cards with no dates excluded; response includes id, title, dates, column_id, column_title, labels, checklist counts", "met": true},
+    {"id": "AC3", "text": "PATCH /api/boards/:boardId/cards/:cardId enhanced validation accepts YYYY-MM-DD or YYYY-MM-DDTHH:MM; rejects malformed datetime values", "met": true},
+    {"id": "AC4", "text": "Board|Calendar tab toggle above search bar; active tab highlighted; switching preserves board context without page reload; search bar hidden in calendar view", "met": true},
+    {"id": "AC5", "text": "Month view: 7-column Mon-Sun grid, nav bar with < Month Year > and Today button, day numbers (gray for outside month), card chips (max 3 + '+N more'), today cell highlighted", "met": true},
+    {"id": "AC6", "text": "Multi-day bars for cards with start_date and due_date spanning multiple days, positioned above single-day cards, showing card title", "met": true},
+    {"id": "AC7", "text": "Week view: 7 columns Mon-Sun, nav bar with date range and Today button, all-day row for date-only cards, time grid 07:00-22:00 with 30min slots, timed cards as blocks at correct position", "met": true},
+    {"id": "AC8", "text": "Quick-create popover on empty cell/slot click: title input (auto-focused), column dropdown, pre-filled date/time, Enter submits, Escape closes, optimistic UI", "met": true},
+    {"id": "AC9", "text": "Card chips show truncated title, first label color as border/dot, due-date badge color; tooltip on hover; draggable with HTML5 DnD (semi-transparent clone, target highlight)", "met": true},
+    {"id": "AC10", "text": "Drag-to-reschedule on month view: updates due_date (preserving time); multi-day cards shift both dates by same delta", "met": true},
+    {"id": "AC11", "text": "Drag-to-reschedule on week view: vertical drag changes time, horizontal drag changes day", "met": true},
+    {"id": "AC12", "text": "CardModal date inputs gain optional time picker: 'Add time' toggle reveals time input, display shows date+time format, 'Remove time' clears time, saves on blur/change", "met": true},
+    {"id": "AC13", "text": "Empty state message when no cards have dates; loading skeleton on calendar grid; +N more overflow; today marker distinct; weekend columns shaded differently", "met": true},
+    {"id": "AC14", "text": "Navigation: prev/next month/week buttons, Today button jumps to current period, both views support full navigation", "met": true}
+  ],
+  "run_count": 14,
+  "current_focus": "All acceptance criteria met - ready for PR",
+  "last_run": "2026-03-24T15:30:00",
+  "retry_count": 0,
+  "blocked": false,
+  "pr_url": "https://github.com/Narcis13/brn/pull/5"
+}
