@@ -1,0 +1,20 @@
+{
+  "run_number": 6,
+  "timestamp": "2026-03-25T20:00:00Z",
+  "duration_minutes": 45,
+  "acceptance_criteria": {
+    "focused_on": "AC7",
+    "completed": ["AC7"],
+    "remaining": ["AC8", "AC9", "AC10", "AC11", "AC12", "AC13"]
+  },
+  "files": {
+    "created": ["src/cli-column.ts", "src/cli-column.test.ts"],
+    "modified": ["src/cli.ts", "src/cli-auth.ts", ".brn/state.json"]
+  },
+  "tests": {
+    "added": 15,
+    "total_passing": 353,
+    "total_failing": 0
+  },
+  "success": true
+}

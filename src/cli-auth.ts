@@ -13,6 +13,8 @@ export interface TaktConfig {
   dbPath: string;
 }
 
+export type Session = TaktConfig;
+
 export function ensureConfigDir(): void {
   mkdirSync(CONFIG_DIR, { recursive: true });
 }

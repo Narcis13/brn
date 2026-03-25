@@ -13,7 +13,6 @@
       "summary": "Created CLI entry point with help, version, and error handling. Global takt command works.",
       "acceptance_criteria_completed": ["AC2"],
       "success": true
-    }
     },
     {
       "run_number": 3,
@@ -28,8 +27,22 @@
       "summary": "Implemented serve command with port flag support. Updated outputs to say 'Takt'.",
       "acceptance_criteria_completed": ["AC5"],
       "success": true
+    },
+    {
+      "run_number": 5,
+      "timestamp": "2026-03-25T19:15:00Z",
+      "summary": "Implemented all board commands with proper access control and formatting options.",
+      "acceptance_criteria_completed": ["AC6"],
+      "success": true
+    },
+    {
+      "run_number": 6,
+      "timestamp": "2026-03-25T20:00:00Z",
+      "summary": "Implemented all column commands (list, create, update, delete, reorder) with tests.",
+      "acceptance_criteria_completed": ["AC7"],
+      "success": true
     }
   ],
-  "total_runs": 4,
-  "last_updated": "2026-03-25T19:00:00Z"
+  "total_runs": 6,
+  "last_updated": "2026-03-25T20:00:00Z"
 }

@@ -13,6 +13,13 @@ import {
   kickFromBoardCommand,
   showBoardActivity 
 } from "./cli-board";
+import {
+  listColumns,
+  createColumn,
+  updateColumn,
+  deleteColumn,
+  reorderColumns
+} from "./cli-column";
 
 const args = process.argv.slice(2);
 const [command, subcommand, ...rest] = args;
@@ -137,6 +144,9 @@ async function main(): Promise<void> {
       break;
     case 'board':
       await handleBoard(subcommand, rest);
+      break;
+    case 'column':
+      await handleColumn(subcommand, rest);
       break;
     case 'serve':
       await handleServe(rest);
@@ -383,6 +393,93 @@ async function handleBoard(subcommand: string | undefined, args: string[]): Prom
       console.error('  invite <id> <username>    Invite user to board (owner only)');
       console.error('  kick <id> <username>      Remove member from board (owner only)');
       console.error('  activity <id> [--limit N] Show recent activity');
+      process.exit(1);
+  }
+}
+
+async function handleColumn(subcommand: string | undefined, args: string[]): Promise<void> {
+  const session = await loadSession();
+  if (!session) {
+    console.error('Not logged in. Run "takt auth login" first.');
+    process.exit(1);
+  }
+  
+  const db = getDb(session.dbPath);
+  
+  // Parse global options
+  const options: any = {
+    json: args.includes('--json'),
+    quiet: args.includes('--quiet'),
+    fullIds: args.includes('--full-ids'),
+    yes: args.includes('--yes') || args.includes('-y'),
+  };
+  
+  // Remove option flags from args
+  const filteredArgs = args.filter(arg => !arg.startsWith('--') && arg !== '-y');
+  
+  switch (subcommand) {
+    case 'list': {
+      const [boardId] = filteredArgs;
+      if (!boardId) {
+        console.error('Usage: takt column list <boardId>');
+        process.exit(1);
+      }
+      await listColumns(db, session, boardId, options);
+      break;
+    }
+    
+    case 'create': {
+      const [boardId, title] = filteredArgs;
+      if (!boardId || !title) {
+        console.error('Usage: takt column create <boardId> <title>');
+        process.exit(1);
+      }
+      await createColumn(db, session, boardId, title, options);
+      break;
+    }
+    
+    case 'update': {
+      const [columnId] = filteredArgs;
+      const titleIndex = args.indexOf('--title');
+      if (!columnId || titleIndex === -1 || !args[titleIndex + 1]) {
+        console.error('Usage: takt column update <id> --title <title>');
+        process.exit(1);
+      }
+      const title = args[titleIndex + 1] as string;
+      await updateColumn(db, session, columnId, title, options);
+      break;
+    }
+    
+    case 'delete': {
+      const [columnId] = filteredArgs;
+      if (!columnId) {
+        console.error('Usage: takt column delete <id> [--yes]');
+        process.exit(1);
+      }
+      await deleteColumn(db, session, columnId, options);
+      break;
+    }
+    
+    case 'reorder': {
+      const [boardId, ...rest] = filteredArgs;
+      if (!boardId || rest.length === 0) {
+        console.error('Usage: takt column reorder <boardId> <id1,id2,...>');
+        process.exit(1);
+      }
+      const columnIds = rest.join(' ').split(',').map(id => id.trim());
+      await reorderColumns(db, session, boardId, columnIds, options);
+      break;
+    }
+    
+    default:
+      console.error(`Unknown column subcommand: '${subcommand}'`);
+      console.error('');
+      console.error('Available column commands:');
+      console.error('  list <boardId>                 List columns in a board');
+      console.error('  create <boardId> <title>       Create a new column');
+      console.error('  update <id> --title <title>    Update column title');
+      console.error('  delete <id> [--yes]            Delete column and its cards');
+      console.error('  reorder <boardId> <id1,id2>    Reorder columns');
       process.exit(1);
   }
 }
