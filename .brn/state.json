@@ -6,8 +6,8 @@
   "acceptance_criteria": [
     {"id": "AC1", "text": "Package renamed to 'takt' in package.json; trello/ directory moved to src/; all internal imports, build scripts, and references updated; bun test passes with no broken imports", "met": true},
     {"id": "AC2", "text": "src/cli.ts exists with #!/usr/bin/env bun shebang; package.json has bin.takt pointing to it; takt --help prints usage summary; takt --version prints version; unknown commands print error + help; bun link makes takt globally available", "met": true},
-    {"id": "AC3", "text": "takt auth register/login/whoami/logout work: register creates user in DB, login stores session in ~/.takt/config.json with userId+username+dbPath, whoami prints current user, logout removes session; wrong credentials print error and exit 1", "met": false},
-    {"id": "AC4", "text": "All commands except auth register/login, serve, --help/--version require valid session; missing session prints 'Not logged in. Run takt auth login first.' and exits 1", "met": false},
+    {"id": "AC3", "text": "takt auth register/login/whoami/logout work: register creates user in DB, login stores session in ~/.takt/config.json with userId+username+dbPath, whoami prints current user, logout removes session; wrong credentials print error and exit 1", "met": true},
+    {"id": "AC4", "text": "All commands except auth register/login, serve, --help/--version require valid session; missing session prints 'Not logged in. Run takt auth login first.' and exits 1", "met": true},
     {"id": "AC5", "text": "takt serve [--port N] builds UI bundle then starts Bun.serve on given port (default 3001); output says 'Takt running at http://localhost:<port>'; console output says 'Takt' not 'Mini Trello'", "met": false},
     {"id": "AC6", "text": "Board commands work: list (shows user's boards as table), create (prints new ID), show (prints overview with columns/cards/members), delete (owner only, --yes skips confirm), members, invite, kick, activity [--limit]", "met": false},
     {"id": "AC7", "text": "Column commands work: list (position order), create (appends, prints ID), update --title, delete (with --yes), reorder (comma-separated IDs)", "met": false},
@@ -18,9 +18,9 @@
     {"id": "AC12", "text": "Output formatting: aligned text tables, IDs truncated to 8 chars (--full-ids for full), dates as YYYY-MM-DD, ANSI colors (green/red/yellow/cyan), --json flag for raw JSON, --quiet flag for minimal output", "met": false},
     {"id": "AC13", "text": "DB path resolution: local ./data/kanban.db when in project dir; ~/.takt/config.json dbPath when global; takt serve uses import.meta.dir; clear error if no DB found", "met": false}
   ],
-  "run_count": 2,
-  "current_focus": "AC3: Authentication commands",
-  "last_run": "2026-03-25T18:15:00Z",
+  "run_count": 3,
+  "current_focus": "AC5: Serve command",
+  "last_run": "2026-03-25T18:30:00Z",
   "retry_count": 0,
   "blocked": false
 }

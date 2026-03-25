@@ -1,5 +1,9 @@
 #!/usr/bin/env bun
 
+import { resolve } from "node:path";
+import { getDb, getUserByUsername, createUser } from "./src/db";
+import { register, login, saveSession, loadSession, clearSession } from "./cli-auth";
+
 const args = process.argv.slice(2);
 const [command, subcommand, ...rest] = args;
 
@@ -106,8 +110,108 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  console.log(`Command '${command}' is not yet implemented.`);
-  process.exit(0);
+  const isAuthCommand = command === 'auth';
+  const requiresAuth = !isAuthCommand && command !== 'serve' && !args[0]?.startsWith('--');
+  
+  if (requiresAuth) {
+    const session = await loadSession();
+    if (!session) {
+      console.error('Not logged in. Run "takt auth login" first.');
+      process.exit(1);
+    }
+  }
+  
+  switch (command) {
+    case 'auth':
+      await handleAuth(subcommand, rest);
+      break;
+    default:
+      console.log(`Command '${command}' is not yet implemented.`);
+      process.exit(0);
+  }
+}
+
+async function handleAuth(subcommand: string | undefined, args: string[]): Promise<void> {
+  const dbPath = resolve(import.meta.dir, '../data/kanban.db');
+  
+  switch (subcommand) {
+    case 'register': {
+      const [username, password] = args;
+      if (!username || !password) {
+        console.error('Usage: takt auth register <username> <password>');
+        process.exit(1);
+      }
+      
+      const USERNAME_REGEX = /^[a-zA-Z0-9_]{3,30}$/;
+      const MIN_PASSWORD_LENGTH = 6;
+      
+      if (!USERNAME_REGEX.test(username)) {
+        console.error('Username must be 3-30 characters, alphanumeric and underscore only');
+        process.exit(1);
+      }
+      
+      if (password.length < MIN_PASSWORD_LENGTH) {
+        console.error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+        process.exit(1);
+      }
+      
+      const db = getDb(dbPath);
+      const existing = getUserByUsername(db, username);
+      if (existing) {
+        console.error('Username already taken');
+        process.exit(1);
+      }
+      
+      const user = await register(db, username, password);
+      console.log(`User '${user.username}' created successfully`);
+      break;
+    }
+    
+    case 'login': {
+      const [username, password] = args;
+      if (!username || !password) {
+        console.error('Usage: takt auth login <username> <password>');
+        process.exit(1);
+      }
+      
+      const db = getDb(dbPath);
+      const user = await login(db, username, password);
+      if (!user) {
+        console.error('Invalid username or password');
+        process.exit(1);
+      }
+      
+      await saveSession(user.id, user.username, dbPath);
+      console.log(`Logged in as '${user.username}'`);
+      break;
+    }
+    
+    case 'whoami': {
+      const session = await loadSession();
+      if (!session) {
+        console.log('Not logged in');
+      } else {
+        console.log(session.username);
+      }
+      break;
+    }
+    
+    case 'logout': {
+      await clearSession();
+      console.log('Logged out');
+      break;
+    }
+    
+    default:
+      console.error(`Unknown auth subcommand: '${subcommand}'`);
+      console.error('');
+      console.error('Available auth commands:');
+      console.error('  register <username> <password>  Create a new user account');
+      console.error('  login <username> <password>     Login and save session');
+      console.error('  whoami                         Show current logged-in user');
+      console.error('  logout                         Remove saved session');
+      process.exit(1);
+  }
 }
 
 main().catch(err => {
