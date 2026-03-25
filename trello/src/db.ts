@@ -136,6 +136,65 @@ function migrate(db: Database): void {
       timestamp TEXT NOT NULL DEFAULT (datetime('now'))
     )
   `);
+
+  // Add user_id column to activity table (nullable for legacy entries)
+  const activityColumns = db.prepare("PRAGMA table_info(activity)").all() as { name: string }[];
+  const activityColumnNames = activityColumns.map(c => c.name);
+  if (!activityColumnNames.includes('user_id')) {
+    db.exec("ALTER TABLE activity ADD COLUMN user_id TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL");
+  }
+
+  // Create board_members table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS board_members (
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('owner', 'member')),
+      invited_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (board_id, user_id)
+    )
+  `);
+
+  // Create comments table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content TEXT NOT NULL CHECK(length(content) BETWEEN 1 AND 5000),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Create reactions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS reactions (
+      id TEXT PRIMARY KEY,
+      target_type TEXT NOT NULL CHECK(target_type IN ('comment', 'activity')),
+      target_id TEXT NOT NULL,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      emoji TEXT NOT NULL CHECK(length(emoji) BETWEEN 1 AND 10),
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(target_type, target_id, user_id, emoji)
+    )
+  `);
+
+  // Create card_watchers table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS card_watchers (
+      card_id TEXT NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      PRIMARY KEY (card_id, user_id)
+    )
+  `);
+
+  // Backfill board_members for existing boards (add creators as owners)
+  db.exec(`
+    INSERT OR IGNORE INTO board_members (board_id, user_id, role)
+    SELECT id, user_id, 'owner' FROM boards
+  `);
 }
 
 // --- Types ---
@@ -204,6 +263,24 @@ export interface ActivityRow {
   action: string;
   detail: string | null;
   timestamp: string;
+  user_id: string | null;
+}
+
+export interface BoardMemberRow {
+  board_id: string;
+  user_id: string;
+  role: "owner" | "member";
+  invited_at: string;
+}
+
+export interface CommentRow {
+  id: string;
+  card_id: string;
+  board_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // --- User helpers ---
@@ -236,13 +313,20 @@ export function getUserById(db: Database, id: string): UserRow | null {
 
 export function getUserBoards(db: Database, userId: string): BoardRow[] {
   return db.query(
-    "SELECT id, title, user_id, created_at FROM boards WHERE user_id = ? ORDER BY created_at DESC"
+    `SELECT DISTINCT b.id, b.title, b.user_id, b.created_at
+     FROM boards b
+     JOIN board_members bm ON b.id = bm.board_id
+     WHERE bm.user_id = ?
+     ORDER BY b.created_at DESC`
   ).all(userId) as BoardRow[];
 }
 
 export function createBoard(db: Database, title: string, userId: string): BoardRow {
   const id = nanoid();
   db.query("INSERT INTO boards (id, title, user_id) VALUES (?, ?, ?)").run(id, title, userId);
+
+  // Auto-insert creator as board owner
+  db.query("INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, 'owner')").run(id, userId);
 
   // Seed 3 default columns
   const defaults = ["To Do", "In Progress", "Done"];
@@ -269,6 +353,51 @@ export function deleteBoard(db: Database, id: string): boolean {
   if (!existing) return false;
   db.query("DELETE FROM boards WHERE id = ?").run(id);
   return true;
+}
+
+// --- Board member helpers ---
+
+export function isBoardMember(db: Database, boardId: string, userId: string): boolean {
+  const row = db.query(
+    "SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?"
+  ).get(boardId, userId);
+  return row !== null;
+}
+
+export function isBoardOwner(db: Database, boardId: string, userId: string): boolean {
+  const row = db.query(
+    "SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ? AND role = 'owner'"
+  ).get(boardId, userId);
+  return row !== null;
+}
+
+export function getBoardMembers(db: Database, boardId: string): (BoardMemberRow & { username: string })[] {
+  return db.query(
+    `SELECT bm.board_id, bm.user_id, bm.role, bm.invited_at, u.username
+     FROM board_members bm
+     JOIN users u ON bm.user_id = u.id
+     WHERE bm.board_id = ?
+     ORDER BY bm.role = 'owner' DESC, bm.invited_at ASC`
+  ).all(boardId) as (BoardMemberRow & { username: string })[];
+}
+
+export function addBoardMember(db: Database, boardId: string, userId: string, role: "owner" | "member" = "member"): BoardMemberRow & { username: string } {
+  db.query(
+    "INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, ?)"
+  ).run(boardId, userId, role);
+  return db.query(
+    `SELECT bm.board_id, bm.user_id, bm.role, bm.invited_at, u.username
+     FROM board_members bm
+     JOIN users u ON bm.user_id = u.id
+     WHERE bm.board_id = ? AND bm.user_id = ?`
+  ).get(boardId, userId) as BoardMemberRow & { username: string };
+}
+
+export function removeBoardMember(db: Database, boardId: string, userId: string): boolean {
+  const result = db.query(
+    "DELETE FROM board_members WHERE board_id = ? AND user_id = ?"
+  ).run(boardId, userId);
+  return result.changes > 0;
 }
 
 // --- Column helpers ---
@@ -359,7 +488,8 @@ export function createCard(
   title: string,
   columnId: string,
   description: string = "",
-  dueDate: string | null = null
+  dueDate: string | null = null,
+  userId: string | null = null
 ): CardRow | null {
   const col = db.query("SELECT id, board_id FROM columns WHERE id = ?").get(columnId) as { id: string; board_id: string } | null;
   if (!col) return null;
@@ -374,7 +504,7 @@ export function createCard(
   ).run(id, title, description, position, columnId, dueDate);
 
   // Create activity for card creation
-  createActivity(db, id, col.board_id, "created");
+  createActivity(db, id, col.board_id, "created", null, userId);
 
   return db.query(
     "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
@@ -570,17 +700,18 @@ export function createActivity(
   cardId: string,
   boardId: string,
   action: string,
-  detail: unknown = null
+  detail: unknown = null,
+  userId: string | null = null
 ): ActivityRow {
   const id = nanoid();
   const detailJson = detail ? JSON.stringify(detail) : null;
-  
+
   db.query(
-    "INSERT INTO activity (id, card_id, board_id, action, detail) VALUES (?, ?, ?, ?, ?)"
-  ).run(id, cardId, boardId, action, detailJson);
-  
+    "INSERT INTO activity (id, card_id, board_id, action, detail, user_id) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(id, cardId, boardId, action, detailJson, userId);
+
   return db.query(
-    "SELECT id, card_id, board_id, action, detail, timestamp FROM activity WHERE id = ?"
+    "SELECT id, card_id, board_id, action, detail, timestamp, user_id FROM activity WHERE id = ?"
   ).get(id) as ActivityRow;
 }
 
@@ -591,10 +722,10 @@ export function getCardActivity(
   offset: number = 0
 ): ActivityRow[] {
   return db.query(
-    `SELECT id, card_id, board_id, action, detail, timestamp 
-     FROM activity 
-     WHERE card_id = ? 
-     ORDER BY timestamp DESC 
+    `SELECT id, card_id, board_id, action, detail, timestamp, user_id
+     FROM activity
+     WHERE card_id = ?
+     ORDER BY timestamp DESC
      LIMIT ? OFFSET ?`
   ).all(cardId, limit, offset) as ActivityRow[];
 }
@@ -661,7 +792,8 @@ export function updateCardWithActivity(
     dueDate?: string | null;
     startDate?: string | null;
     checklist?: string;
-  }
+  },
+  userId: string | null = null
 ): CardRow | null {
   const existing = db.query(
     "SELECT id, title, description, position, column_id, created_at, due_date, start_date, checklist, updated_at FROM cards WHERE id = ?"
@@ -699,7 +831,7 @@ export function updateCardWithActivity(
       createActivity(db, id, boardId, "moved", {
         from: oldCol.title,
         to: newCol.title
-      });
+      }, userId);
     }
   } else if (changes.length > 0) {
     // Log edited activity if not a move
@@ -709,11 +841,11 @@ export function updateCardWithActivity(
         due_date: updatedCard.due_date,
         prev_start_date: existing.start_date,
         prev_due_date: existing.due_date,
-      });
+      }, userId);
     } else {
       createActivity(db, id, boardId, "edited", {
         fields: changes,
-      });
+      }, userId);
     }
   }
 

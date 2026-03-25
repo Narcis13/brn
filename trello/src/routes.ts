@@ -33,6 +33,11 @@ import {
   searchCards,
   getCalendarCards,
   reorderColumns,
+  isBoardMember,
+  isBoardOwner,
+  getBoardMembers,
+  addBoardMember,
+  removeBoardMember,
   type BoardRow,
   type SearchDueFilter,
 } from "./db.ts";
@@ -47,7 +52,8 @@ const MIN_PASSWORD_LENGTH = 6;
 
 function getVerifiedBoard(db: Database, boardId: string, userId: string): BoardRow | null {
   const board = getBoardById(db, boardId);
-  if (!board || board.user_id !== userId) return null;
+  if (!board) return null;
+  if (!isBoardMember(db, boardId, userId)) return null;
   return board;
 }
 
@@ -176,10 +182,82 @@ export function createApp(db: Database): Hono<Env> {
     const boardId = c.req.param("id");
     const userId = c.get("userId");
     const board = getBoardById(db, boardId);
-    if (!board || board.user_id !== userId) {
+    if (!board || !isBoardMember(db, boardId, userId)) {
       return c.json({ error: "not found" }, 404);
     }
+    if (!isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
     deleteBoard(db, boardId);
+    return c.json({ ok: true });
+  });
+
+  // --- Board Member routes ---
+
+  app.get("/api/boards/:boardId/members", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    const members = getBoardMembers(db, board.id);
+    return c.json({
+      members: members.map((m) => ({
+        id: m.user_id,
+        username: m.username,
+        role: m.role,
+        invited_at: m.invited_at,
+      })),
+    });
+  });
+
+  app.post("/api/boards/:boardId/members", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getBoardById(db, boardId);
+    if (!board) return c.json({ error: "not found" }, 404);
+    if (!isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const body = await c.req.json<{ username?: string }>();
+    if (!body.username || body.username.trim() === "") {
+      return c.json({ error: "username is required" }, 400);
+    }
+
+    const targetUser = getUserByUsername(db, body.username.trim());
+    if (!targetUser) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    if (isBoardMember(db, boardId, targetUser.id)) {
+      return c.json({ error: "User is already a board member" }, 409);
+    }
+
+    const member = addBoardMember(db, boardId, targetUser.id);
+    return c.json(
+      { id: member.user_id, username: member.username, role: member.role, invited_at: member.invited_at },
+      201
+    );
+  });
+
+  app.delete("/api/boards/:boardId/members/:userId", (c) => {
+    const boardId = c.req.param("boardId");
+    const currentUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+    const board = getBoardById(db, boardId);
+    if (!board) return c.json({ error: "not found" }, 404);
+    if (!isBoardOwner(db, boardId, currentUserId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    // Cannot remove the board owner
+    if (isBoardOwner(db, boardId, targetUserId)) {
+      return c.json({ error: "Cannot remove the board owner" }, 400);
+    }
+
+    const removed = removeBoardMember(db, boardId, targetUserId);
+    if (!removed) {
+      return c.json({ error: "member not found" }, 404);
+    }
+
     return c.json({ ok: true });
   });
 
@@ -275,7 +353,7 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "due_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
     }
     
-    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null);
+    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null, c.get("userId"));
     if (!card) return c.json({ error: "column not found" }, 404);
     return c.json(card, 201);
   });
@@ -351,7 +429,7 @@ export function createApp(db: Database): Hono<Env> {
       dueDate: body.due_date,
       startDate: body.start_date,
       checklist: body.checklist,
-    });
+    }, c.get("userId"));
     if (!card) return c.json({ error: "card not found or invalid date range" }, 404);
     return c.json(card);
   });
@@ -482,7 +560,7 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color });
+    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color }, c.get("userId"));
 
     return c.json({ ok: true }, 201);
   });
@@ -509,7 +587,7 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" });
+    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" }, c.get("userId"));
     
     return c.json({ ok: true });
   });

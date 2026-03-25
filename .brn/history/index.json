@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "id": "run-001",
+    "timestamp": "2026-03-25T12:00:00Z",
+    "status": "success",
+    "focus": "Foundation: database schema, board members, authorization refactor",
+    "summary": "Created all 4 new social interaction tables, added user_id to activity, implemented board_members API endpoints, and refactored authorization from single-owner to membership-based. 18 new tests, all 241 pass.",
+    "ac_met": ["AC1", "AC5", "AC6"],
+    "ac_progress": "3/14",
+    "vault_entries_added": 2,
+    "files_changed": 4
+  }
+]

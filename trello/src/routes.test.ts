@@ -894,3 +894,260 @@ describe("GET /api/boards/:boardId/calendar", () => {
     expect(data.cards[0]!.due_date).toBe(null);
   });
 });
+
+// ============================================================
+// Board Members
+// ============================================================
+
+describe("GET /api/boards/:boardId/members", () => {
+  it("returns the board owner as a member", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/members`, token));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { members: { id: string; username: string; role: string; invited_at: string }[] };
+    expect(data.members).toHaveLength(1);
+    expect(data.members[0]!.username).toBe("testuser");
+    expect(data.members[0]!.role).toBe("owner");
+  });
+
+  it("returns 404 for non-member", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/members`, bob.token));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/boards/:boardId/members", () => {
+  it("owner can invite a user by username", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    expect(res.status).toBe(201);
+    const data = (await res.json()) as { id: string; username: string; role: string };
+    expect(data.username).toBe("bob");
+    expect(data.role).toBe("member");
+  });
+
+  it("invited member can access the board", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    // Invite bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+
+    // Bob can now access the board's columns
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, bob.token));
+    expect(res.status).toBe(200);
+  });
+
+  it("returns 404 for non-existent username", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, token, { username: "nonexistent" })
+    );
+    expect(res.status).toBe(404);
+    const data = (await res.json()) as { error: string };
+    expect(data.error).toBe("User not found");
+  });
+
+  it("returns 409 for already existing member", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    expect(res.status).toBe(409);
+    const data = (await res.json()) as { error: string };
+    expect(data.error).toBe("User is already a board member");
+  });
+
+  it("non-owner cannot invite members", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const charlie = await registerUser("charlie", "secret789");
+    const board = await createTestBoard(alice.token);
+
+    // Invite bob as member
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+
+    // Bob (member) tries to invite charlie
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, bob.token, { username: "charlie" })
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("DELETE /api/boards/:boardId/members/:userId", () => {
+  it("owner can remove a member", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    // Invite and then remove bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/members/${bob.user.id}`, alice.token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { ok: boolean };
+    expect(data.ok).toBe(true);
+
+    // Bob can no longer access the board
+    const accessRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, bob.token));
+    expect(accessRes.status).toBe(404);
+  });
+
+  it("owner cannot remove themselves", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/members/${alice.user.id}`, alice.token)
+    );
+    expect(res.status).toBe(400);
+    const data = (await res.json()) as { error: string };
+    expect(data.error).toBe("Cannot remove the board owner");
+  });
+
+  it("non-owner cannot remove members", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const charlie = await registerUser("charlie", "secret789");
+    const board = await createTestBoard(alice.token);
+
+    await app.fetch(authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" }));
+    await app.fetch(authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "charlie" }));
+
+    // Bob (member) tries to remove charlie
+    const res = await app.fetch(
+      authReq("DELETE", `/api/boards/${board.id}/members/${charlie.user.id}`, bob.token)
+    );
+    expect(res.status).toBe(403);
+  });
+});
+
+// ============================================================
+// Board membership authorization
+// ============================================================
+
+describe("board membership authorization", () => {
+  it("board creator is automatically a member", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+
+    // Creator can access the board
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token));
+    expect(res.status).toBe(200);
+  });
+
+  it("non-member cannot access board endpoints", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, bob.token));
+    expect(res.status).toBe(404);
+  });
+
+  it("invited member can access board endpoints", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    // Invite bob
+    await app.fetch(authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" }));
+
+    // Bob can access columns, create cards, etc.
+    const colRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, bob.token));
+    expect(colRes.status).toBe(200);
+    const cols = (await colRes.json()) as { columns: { id: string }[] };
+    const columnId = cols.columns[0]!.id;
+
+    const cardRes = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards`, bob.token, { title: "Bob's card", columnId })
+    );
+    expect(cardRes.status).toBe(201);
+  });
+
+  it("member can only delete boards they own", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token);
+
+    await app.fetch(authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" }));
+
+    // Bob (member) tries to delete the board
+    const res = await app.fetch(authReq("DELETE", `/api/boards/${board.id}`, bob.token));
+    expect(res.status).toBe(403);
+  });
+
+  it("boards list includes boards where user is a member", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret456");
+    const board = await createTestBoard(alice.token, "Shared Board");
+
+    // Invite bob
+    await app.fetch(authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" }));
+
+    // Bob's board list includes the shared board
+    const res = await app.fetch(authReq("GET", "/api/boards", bob.token));
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { boards: { id: string; title: string }[] };
+    expect(data.boards.some(b => b.id === board.id)).toBe(true);
+  });
+});
+
+// ============================================================
+// Activity user_id tracking
+// ============================================================
+
+describe("activity user_id tracking", () => {
+  it("records user_id when creating a card", async () => {
+    const { token } = await registerUser();
+    const board = await createTestBoard(token);
+    const colRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/columns`, token));
+    const cols = (await colRes.json()) as { columns: { id: string }[] };
+    const columnId = cols.columns[0]!.id;
+
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards`, token, { title: "Test Card", columnId })
+    );
+
+    // Check activity has user_id
+    const actRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/cards`, token));
+    // Use the card detail endpoint to check activity
+    const searchRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/search?q=Test`, token));
+    const cards = (await searchRes.json()) as { cards: { id: string }[] };
+    const cardId = cards.cards[0]!.id;
+
+    const detailRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/cards/${cardId}`, token));
+    expect(detailRes.status).toBe(200);
+    const detail = (await detailRes.json()) as { activity: { user_id: string | null }[] };
+    expect(detail.activity.length).toBeGreaterThan(0);
+    expect(detail.activity[0]!.user_id).toBeTruthy();
+  });
+});
