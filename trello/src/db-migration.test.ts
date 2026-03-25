@@ -22,7 +22,7 @@ test("database migration creates all new tables and columns", () => {
     expect(cardLabelColumns).toContain("card_id");
     expect(cardLabelColumns).toContain("label_id");
 
-    // Check activity table exists
+    // Check activity table exists with user_id column
     const activityInfo = db.prepare("PRAGMA table_info(activity)").all() as { name: string }[];
     const activityColumns = activityInfo.map(c => c.name);
     expect(activityColumns).toContain("id");
@@ -31,6 +31,37 @@ test("database migration creates all new tables and columns", () => {
     expect(activityColumns).toContain("action");
     expect(activityColumns).toContain("detail");
     expect(activityColumns).toContain("timestamp");
+    expect(activityColumns).toContain("user_id");
+
+    // Check board_members table exists
+    const bmInfo = db.prepare("PRAGMA table_info(board_members)").all() as { name: string }[];
+    const bmColumns = bmInfo.map(c => c.name);
+    expect(bmColumns).toContain("board_id");
+    expect(bmColumns).toContain("user_id");
+    expect(bmColumns).toContain("role");
+    expect(bmColumns).toContain("invited_at");
+
+    // Check comments table exists
+    const commentsInfo = db.prepare("PRAGMA table_info(comments)").all() as { name: string }[];
+    const commentColumns = commentsInfo.map(c => c.name);
+    expect(commentColumns).toContain("id");
+    expect(commentColumns).toContain("card_id");
+    expect(commentColumns).toContain("user_id");
+    expect(commentColumns).toContain("content");
+
+    // Check reactions table exists
+    const reactionsInfo = db.prepare("PRAGMA table_info(reactions)").all() as { name: string }[];
+    const reactionColumns = reactionsInfo.map(c => c.name);
+    expect(reactionColumns).toContain("id");
+    expect(reactionColumns).toContain("target_type");
+    expect(reactionColumns).toContain("target_id");
+    expect(reactionColumns).toContain("emoji");
+
+    // Check card_watchers table exists
+    const watchersInfo = db.prepare("PRAGMA table_info(card_watchers)").all() as { name: string }[];
+    const watcherColumns = watchersInfo.map(c => c.name);
+    expect(watcherColumns).toContain("card_id");
+    expect(watcherColumns).toContain("user_id");
 
     // Check cards table has new columns
     const cardsInfo = db.prepare("PRAGMA table_info(cards)").all() as { name: string }[];
@@ -69,7 +100,7 @@ test("database migration creates all new tables and columns", () => {
     db.exec("INSERT INTO users (id, username, password_hash) VALUES ('u2', 'test2', 'hash')");
     db.exec("INSERT INTO boards (id, title, user_id) VALUES ('b2', 'Board 2', 'u2')");
     db.exec("INSERT INTO columns (id, title, position, board_id) VALUES ('col2', 'Todo', 0, 'b2')");
-    db.exec("INSERT INTO cards (id, title, position, column_id) VALUES ('c2', 'Card 2', 0, 'col2')");
+    db.exec("INSERT INTO cards (id, title, position, column_id, updated_at) VALUES ('c2', 'Card 2', 0, 'col2', datetime('now'))");
     db.exec("INSERT INTO activity (id, card_id, board_id, action, detail) VALUES ('a1', 'c2', 'b2', 'created', null)");
     
     const activity = db.query("SELECT * FROM activity WHERE id = 'a1'").get() as any;
@@ -112,6 +143,10 @@ test("migration is idempotent - can run multiple times safely", () => {
     expect(tableNames).toContain("boards");
     expect(tableNames).toContain("columns");
     expect(tableNames).toContain("users");
+    expect(tableNames).toContain("board_members");
+    expect(tableNames).toContain("comments");
+    expect(tableNames).toContain("reactions");
+    expect(tableNames).toContain("card_watchers");
 
   } finally {
     db2.close();

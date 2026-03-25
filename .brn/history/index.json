@@ -1,111 +1,68 @@
-{
-  "feature": "calendar-view",
-  "runs": [
-    {
-      "run": 1,
-      "timestamp": "2026-03-24T10:30:00",
-      "summary": "Enhanced date validation to support YYYY-MM-DD and YYYY-MM-DDTHH:MM formats",
-      "acceptance_criteria_completed": ["AC1", "AC3"],
-      "files_changed": 6,
-      "tests_added": 21
-    },
-    {
-      "run": 2,
-      "timestamp": "2026-03-24T11:15:00",
-      "summary": "Implemented calendar data endpoint with date range filtering",
-      "acceptance_criteria_completed": ["AC2"],
-      "files_changed": 4,
-      "tests_added": 8
-    },
-    {
-      "run": 3,
-      "timestamp": "2026-03-24T11:25:00",
-      "summary": "Implemented Board|Calendar tab toggle UI with proper styling",
-      "acceptance_criteria_completed": ["AC4"],
-      "files_changed": 3,
-      "tests_added": 5
-    },
-    {
-      "run": 4,
-      "timestamp": "2026-03-24T11:30:00",
-      "summary": "Implemented calendar month view with grid layout, navigation, and card display",
-      "acceptance_criteria_completed": ["AC5"],
-      "files_changed": 5,
-      "tests_added": 13
-    },
-    {
-      "run": 5,
-      "timestamp": "2026-03-24T12:00:00",
-      "summary": "Implemented multi-day card bars with row allocation algorithm and week-spanning support",
-      "acceptance_criteria_completed": ["AC6"],
-      "files_changed": 4,
-      "tests_added": 5
-    },
-    {
-      "run": 6,
-      "timestamp": "2026-03-24T12:30:00",
-      "summary": "Implemented week view with 7-day columns, all-day row, and time grid with 30-min slots",
-      "acceptance_criteria_completed": ["AC7"],
-      "files_changed": 3,
-      "tests_added": 6
-    },
-    {
-      "run": 7,
-      "timestamp": "2026-03-24T13:00:00",
-      "summary": "Implemented quick-create popover for calendar view with date/time prefilling",
-      "acceptance_criteria_completed": ["AC8"],
-      "files_changed": 8,
-      "tests_added": 9
-    },
-    {
-      "run": 9,
-      "timestamp": "2026-03-24T13:25:00",
-      "summary": "Implemented card chip enhancements with drag-and-drop functionality and visual feedback",
-      "acceptance_criteria_completed": ["AC9"],
-      "files_changed": 8,
-      "tests_added": 12
-    },
-    {
-      "run": 10,
-      "timestamp": "2026-03-24T13:45:00",
-      "summary": "Implemented drag-to-reschedule for month view with multi-day card support",
-      "acceptance_criteria_completed": ["AC10"],
-      "files_changed": 2,
-      "tests_added": 3
-    },
-    {
-      "run": 11,
-      "timestamp": "2026-03-24T14:00:00",
-      "summary": "Implemented week view drag-to-reschedule with vertical/horizontal drag detection",
-      "acceptance_criteria_completed": ["AC11"],
-      "files_changed": 3,
-      "tests_added": 9
-    },
-    {
-      "run": 12,
-      "timestamp": "2026-03-24T14:30:00",
-      "summary": "Implemented optional time picker for CardModal date inputs with toggle functionality",
-      "acceptance_criteria_completed": ["AC12"],
-      "files_changed": 3,
-      "tests_added": 19
-    },
-    {
-      "run": 13,
-      "timestamp": "2026-03-24T15:00:00",
-      "summary": "Implemented UI polish with empty states, loading skeletons, and weekend shading",
-      "acceptance_criteria_completed": ["AC13"],
-      "files_changed": 5,
-      "tests_added": 5
-    },
-    {
-      "run": 14,
-      "timestamp": "2026-03-24T15:30:00",
-      "summary": "Added navigation tests for AC14, marked feature complete and ready for PR",
-      "acceptance_criteria_completed": ["AC14"],
-      "files_changed": 3,
-      "tests_added": 4
-    }
-  ],
-  "total_runs": 14,
-  "last_run": "2026-03-24T15:30:00"
-}
+[
+  {
+    "id": "run-001",
+    "timestamp": "2026-03-25T12:00:00Z",
+    "status": "success",
+    "focus": "Foundation: database schema, board members, authorization refactor",
+    "summary": "Created all 4 new social interaction tables, added user_id to activity, implemented board_members API endpoints, and refactored authorization from single-owner to membership-based. 18 new tests, all 241 pass.",
+    "ac_met": ["AC1", "AC5", "AC6"],
+    "ac_progress": "3/14",
+    "vault_entries_added": 2,
+    "files_changed": 4
+  },
+  {
+    "id": "run-002",
+    "timestamp": "2026-03-25T12:35:00Z",
+    "status": "success",
+    "focus": "Comments API — CRUD with authorization, activity logging, auto-watch",
+    "summary": "Implemented POST/PATCH/DELETE comment endpoints with three-tier authorization, activity logging on comment creation, and auto-watch via INSERT OR IGNORE. 15 new tests added, all 256 pass.",
+    "ac_met": ["AC2"],
+    "ac_progress": "4/14",
+    "vault_entries_added": 3,
+    "files_changed": 3
+  },
+  {
+    "id": "run-003",
+    "timestamp": "2026-03-25T13:21:10Z",
+    "status": "success",
+    "focus": "Reactions API + Watchers API toggle endpoints",
+    "summary": "Implemented POST toggle endpoints for reactions (8-emoji allowlist, comment/activity targets, board-scoped validation) and card watchers (watch/unwatch toggle). 14 new tests added, all 270 pass.",
+    "ac_met": ["AC3", "AC4"],
+    "ac_progress": "6/14",
+    "vault_entries_added": 2,
+    "files_changed": 3
+  },
+  {
+    "id": "run-004",
+    "timestamp": "2026-03-25T14:00:45Z",
+    "status": "success",
+    "focus": "Enhanced card detail with unified timeline + board activity feed",
+    "summary": "Rewrote getCardDetail to return unified timeline (comments+activity with reactions), is_watching, watcher_count, board_members. Added board-wide activity feed endpoint with before-cursor pagination. 13 new tests, all 283 pass.",
+    "ac_met": ["AC7", "AC8"],
+    "ac_progress": "8/14",
+    "vault_entries_added": 3,
+    "files_changed": 4
+  },
+  {
+    "id": "run-005",
+    "timestamp": "2026-03-25T15:22:10Z",
+    "status": "success",
+    "focus": "Board members UI, watch button, unified timeline display",
+    "summary": "Added frontend API client for all social interactions, built board header member avatars with invite popover (AC9), watch button in card modal (AC13), unified comment/activity timeline with @mention rendering and comment CRUD (AC10, AC11). 25 new tests, all 308 pass.",
+    "ac_met": ["AC9", "AC10", "AC11", "AC13"],
+    "ac_progress": "12/14",
+    "vault_entries_added": 3,
+    "files_changed": 6
+  },
+  {
+    "id": "run-006",
+    "timestamp": "2026-03-25T16:31:00Z",
+    "status": "success",
+    "focus": "Reaction picker UI + Board activity sidebar (feature complete)",
+    "summary": "Implemented reaction picker (smiley hover trigger, 8-emoji bar, toggle via API, interactive chips) and board activity sidebar (overlay panel, paginated feed, card links, click-outside dismiss). Added @mention autocomplete to comment input. 12 new tests, all 320 pass. ALL 14/14 ACs MET.",
+    "ac_met": ["AC12", "AC14"],
+    "ac_progress": "14/14",
+    "vault_entries_added": 2,
+    "files_changed": 4
+  }
+]

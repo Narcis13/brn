@@ -1,24 +1,37 @@
 {
-  "run": 1,
-  "timestamp": "2026-03-24T10:30:00",
-  "duration_minutes": 15,
-  "files_created": [
-    "trello/src/date-utils.ts",
-    "trello/src/date-utils.test.ts",
-    "trello/src/routes-date-validation.test.ts",
-    ".brn/vault/patterns/date-time-validation-pattern.md"
-  ],
+  "id": "run-001",
+  "timestamp": "2026-03-25T12:00:00Z",
+  "duration_seconds": 345,
+  "status": "success",
+  "focus": "Foundation: database schema, board members, authorization refactor",
+  "summary": "Created all 4 new social interaction tables, added user_id to activity, implemented board_members API endpoints, and refactored authorization from single-owner to membership-based model. 18 new tests added, all 241 pass.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
   "files_modified": [
+    "trello/src/db.ts",
     "trello/src/routes.ts",
-    "trello/src/date-utils.ts"
+    "trello/src/routes.test.ts",
+    "trello/src/db-migration.test.ts"
   ],
-  "tests_written": 21,
-  "tests_passed": 126,
-  "acceptance_criteria_progress": {
-    "AC1": { "before": false, "after": true },
-    "AC2": { "before": false, "after": false },
-    "AC3": { "before": false, "after": true }
+  "files_deleted": [],
+  "tests": {
+    "passed": 241,
+    "failed": 0,
+    "skipped": 0,
+    "total": 241
   },
-  "vault_entries_added": 1,
-  "key_achievement": "Enhanced date validation to support both YYYY-MM-DD and YYYY-MM-DDTHH:MM formats with comprehensive test coverage"
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "4e53593",
+  "acceptance_criteria_met": ["AC1", "AC5", "AC6"],
+  "acceptance_criteria_progress": "3/14",
+  "vault_updates": [
+    "patterns/board-membership-authorization.md",
+    "decisions/all-tables-upfront-migration.md"
+  ],
+  "retry": false,
+  "challenges": "Pre-existing test failure in db-migration.test.ts, authorization behavior change from 404 to 403",
+  "next_focus": "Comments API endpoints (AC2)"
 }

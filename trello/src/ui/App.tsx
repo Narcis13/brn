@@ -100,7 +100,9 @@ export function App(): React.ReactElement {
         {view.kind === "board-list" && (
           <BoardList onSelectBoard={handleSelectBoard} />
         )}
-        {view.kind === "board" && <BoardView boardId={view.board.id} />}
+        {view.kind === "board" && user && (
+          <BoardView boardId={view.board.id} currentUser={user} />
+        )}
       </main>
     </>
   );

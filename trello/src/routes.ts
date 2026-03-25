@@ -33,6 +33,23 @@ import {
   searchCards,
   getCalendarCards,
   reorderColumns,
+  isBoardMember,
+  isBoardOwner,
+  getBoardMembers,
+  addBoardMember,
+  removeBoardMember,
+  createComment,
+  getCommentById,
+  updateComment,
+  deleteComment,
+  isAllowedEmoji,
+  toggleReaction,
+  targetExists,
+  getTargetBoardId,
+  toggleCardWatcher,
+  isWatching,
+  getWatcherCount,
+  getBoardFeed,
   type BoardRow,
   type SearchDueFilter,
 } from "./db.ts";
@@ -47,7 +64,8 @@ const MIN_PASSWORD_LENGTH = 6;
 
 function getVerifiedBoard(db: Database, boardId: string, userId: string): BoardRow | null {
   const board = getBoardById(db, boardId);
-  if (!board || board.user_id !== userId) return null;
+  if (!board) return null;
+  if (!isBoardMember(db, boardId, userId)) return null;
   return board;
 }
 
@@ -176,10 +194,82 @@ export function createApp(db: Database): Hono<Env> {
     const boardId = c.req.param("id");
     const userId = c.get("userId");
     const board = getBoardById(db, boardId);
-    if (!board || board.user_id !== userId) {
+    if (!board || !isBoardMember(db, boardId, userId)) {
       return c.json({ error: "not found" }, 404);
     }
+    if (!isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
     deleteBoard(db, boardId);
+    return c.json({ ok: true });
+  });
+
+  // --- Board Member routes ---
+
+  app.get("/api/boards/:boardId/members", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    const members = getBoardMembers(db, board.id);
+    return c.json({
+      members: members.map((m) => ({
+        id: m.user_id,
+        username: m.username,
+        role: m.role,
+        invited_at: m.invited_at,
+      })),
+    });
+  });
+
+  app.post("/api/boards/:boardId/members", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getBoardById(db, boardId);
+    if (!board) return c.json({ error: "not found" }, 404);
+    if (!isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const body = await c.req.json<{ username?: string }>();
+    if (!body.username || body.username.trim() === "") {
+      return c.json({ error: "username is required" }, 400);
+    }
+
+    const targetUser = getUserByUsername(db, body.username.trim());
+    if (!targetUser) {
+      return c.json({ error: "User not found" }, 404);
+    }
+
+    if (isBoardMember(db, boardId, targetUser.id)) {
+      return c.json({ error: "User is already a board member" }, 409);
+    }
+
+    const member = addBoardMember(db, boardId, targetUser.id);
+    return c.json(
+      { id: member.user_id, username: member.username, role: member.role, invited_at: member.invited_at },
+      201
+    );
+  });
+
+  app.delete("/api/boards/:boardId/members/:userId", (c) => {
+    const boardId = c.req.param("boardId");
+    const currentUserId = c.get("userId");
+    const targetUserId = c.req.param("userId");
+    const board = getBoardById(db, boardId);
+    if (!board) return c.json({ error: "not found" }, 404);
+    if (!isBoardOwner(db, boardId, currentUserId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    // Cannot remove the board owner
+    if (isBoardOwner(db, boardId, targetUserId)) {
+      return c.json({ error: "Cannot remove the board owner" }, 400);
+    }
+
+    const removed = removeBoardMember(db, boardId, targetUserId);
+    if (!removed) {
+      return c.json({ error: "member not found" }, 404);
+    }
+
     return c.json({ ok: true });
   });
 
@@ -275,7 +365,7 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "due_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
     }
     
-    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null);
+    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null, c.get("userId"));
     if (!card) return c.json({ error: "column not found" }, 404);
     return c.json(card, 201);
   });
@@ -351,7 +441,7 @@ export function createApp(db: Database): Hono<Env> {
       dueDate: body.due_date,
       startDate: body.start_date,
       checklist: body.checklist,
-    });
+    }, c.get("userId"));
     if (!card) return c.json({ error: "card not found or invalid date range" }, 404);
     return c.json(card);
   });
@@ -482,7 +572,7 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color });
+    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color }, c.get("userId"));
 
     return c.json({ ok: true }, 201);
   });
@@ -509,27 +599,181 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     // Create activity entry
-    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" });
+    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" }, c.get("userId"));
     
     return c.json({ ok: true });
+  });
+
+  // --- Comment routes ---
+
+  app.post("/api/boards/:boardId/cards/:cardId/comments", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const body = await c.req.json<{ content?: string }>();
+    if (!body.content || body.content.trim() === "") {
+      return c.json({ error: "content is required" }, 400);
+    }
+    if (body.content.length > 5000) {
+      return c.json({ error: "content must be 5000 characters or less" }, 400);
+    }
+
+    const comment = createComment(db, cardId, board.id, userId, body.content.trim());
+    return c.json({
+      id: comment.id,
+      content: comment.content,
+      user_id: comment.user_id,
+      username: comment.username,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      reactions: [],
+    }, 201);
+  });
+
+  app.patch("/api/boards/:boardId/cards/:cardId/comments/:commentId", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const commentId = c.req.param("commentId");
+    const existing = getCommentById(db, commentId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "comment not found" }, 404);
+    }
+
+    // Author-only edit
+    if (existing.user_id !== userId) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    const body = await c.req.json<{ content?: string }>();
+    if (!body.content || body.content.trim() === "") {
+      return c.json({ error: "content is required" }, 400);
+    }
+    if (body.content.length > 5000) {
+      return c.json({ error: "content must be 5000 characters or less" }, 400);
+    }
+
+    const updated = updateComment(db, commentId, body.content.trim());
+    if (!updated) return c.json({ error: "comment not found" }, 404);
+
+    return c.json({
+      id: updated.id,
+      content: updated.content,
+      user_id: updated.user_id,
+      username: updated.username,
+      created_at: updated.created_at,
+      updated_at: updated.updated_at,
+      reactions: [],
+    });
+  });
+
+  app.delete("/api/boards/:boardId/cards/:cardId/comments/:commentId", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const commentId = c.req.param("commentId");
+    const existing = getCommentById(db, commentId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "comment not found" }, 404);
+    }
+
+    // Author or board owner can delete
+    if (existing.user_id !== userId && !isBoardOwner(db, boardId, userId)) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+
+    deleteComment(db, commentId);
+    return c.json({ ok: true });
+  });
+
+  // --- Reactions route ---
+
+  app.post("/api/boards/:boardId/reactions", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{ target_type?: string; target_id?: string; emoji?: string }>();
+
+    if (!body.target_type || (body.target_type !== "comment" && body.target_type !== "activity")) {
+      return c.json({ error: "target_type must be 'comment' or 'activity'" }, 400);
+    }
+    if (!body.target_id) {
+      return c.json({ error: "target_id is required" }, 400);
+    }
+    if (!body.emoji || !isAllowedEmoji(body.emoji)) {
+      return c.json({ error: "emoji must be one of: 👍 👎 ❤️ 🎉 😄 😕 🚀 👀" }, 400);
+    }
+
+    // Verify target exists and belongs to this board
+    if (!targetExists(db, body.target_type, body.target_id)) {
+      return c.json({ error: "target not found" }, 404);
+    }
+    const targetBoardId = getTargetBoardId(db, body.target_type, body.target_id);
+    if (targetBoardId !== boardId) {
+      return c.json({ error: "target not found" }, 404);
+    }
+
+    const result = toggleReaction(db, body.target_type, body.target_id, userId, body.emoji);
+    return c.json(result);
+  });
+
+  // --- Watchers route ---
+
+  app.post("/api/boards/:boardId/cards/:cardId/watch", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const watching = toggleCardWatcher(db, cardId, userId);
+    return c.json({ watching });
   });
 
   // --- New Card Detail routes ---
 
   app.get("/api/boards/:boardId/cards/:cardId", (c) => {
-    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, c.req.param("boardId"), userId);
     if (!board) return c.json({ error: "not found" }, 404);
-    
+
     const cardId = c.req.param("cardId");
-    const cardDetail = getCardDetail(db, cardId);
+    const cardDetail = getCardDetail(db, cardId, userId);
     if (!cardDetail) return c.json({ error: "card not found" }, 404);
-    
+
     // Verify card belongs to this board
     const cardCol = getColumnById(db, cardDetail.column_id);
     if (!cardCol || cardCol.board_id !== board.id) {
       return c.json({ error: "card not found" }, 404);
     }
-    
+
     return c.json(cardDetail);
   });
 
@@ -555,12 +799,26 @@ export function createApp(db: Database): Hono<Env> {
     return c.json({ activity });
   });
 
+  // --- Board activity feed ---
+
+  app.get("/api/boards/:boardId/activity", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const url = new URL(c.req.url);
+    const limitParam = parseInt(url.searchParams.get("limit") || "30", 10);
+    const before = url.searchParams.get("before") ?? undefined;
+
+    const feed = getBoardFeed(db, board.id, limitParam, before);
+    return c.json(feed);
+  });
+
   // --- Search route ---
 
   app.get("/api/boards/:boardId/search", (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
-    
+
     const url = new URL(c.req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
     const labelId = url.searchParams.get("label") || undefined;

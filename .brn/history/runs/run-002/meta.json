@@ -1,15 +1,37 @@
 {
-  "run": 2,
-  "timestamp": "2026-03-24T11:15:00",
-  "duration_minutes": 45,
-  "acceptance_criteria_completed": ["AC2"],
-  "files_changed": 4,
-  "files_created": 2,
-  "tests_added": 8,
-  "tests_total": 134,
-  "verification": {
-    "tests_pass": true,
-    "types_valid": true,
-    "lint_clean": true
-  }
+  "id": "run-002",
+  "timestamp": "2026-03-25T12:35:00Z",
+  "duration_seconds": 187,
+  "status": "success",
+  "focus": "Comments API — CRUD with authorization, activity logging, auto-watch",
+  "summary": "Implemented POST/PATCH/DELETE comment endpoints with three-tier authorization (member/author/owner), activity logging, and auto-watch. Added 5 db functions and 15 new tests. All 256 tests pass.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": [
+    "trello/src/db.ts",
+    "trello/src/routes.ts",
+    "trello/src/routes.test.ts"
+  ],
+  "files_deleted": [],
+  "tests": {
+    "passed": 256,
+    "failed": 0,
+    "skipped": 0,
+    "total": 256
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "591432d",
+  "acceptance_criteria_met": ["AC2"],
+  "acceptance_criteria_progress": "4/14",
+  "vault_updates": [
+    "patterns/comment-crud-with-side-effects.md",
+    "anti-patterns/sqlite-datetime-second-granularity.md",
+    "decisions/comment-auth-three-tier.md"
+  ],
+  "retry": false,
+  "challenges": "SQLite datetime second-level granularity caused initial test failure",
+  "next_focus": "Reactions API (AC3)"
 }

@@ -2,33 +2,32 @@
 
 ## Tests
 - Result: PASS
-- Passed: 160, Failed: 0, Skipped: 0
-- Notable: Added 5 new tests for multi-day card functionality
+- Passed: 308, Failed: 0, Skipped: 0
+- Notable: 25 new tests covering mention detection, relative time, avatar colors, member display logic, watch toggle, timeline sorting, comment authorization, reaction display
 
 ## Type Check
 - Result: PASS
-- Errors: Fixed 3 unrelated type errors in BoardView.test.tsx
+- Errors: 0
 
 ## Build
-- Result: PASS
-- Built 2 files to trello/public/dist/
+- Result: N/A
 
 ## Acceptance Criteria
 | AC | Status | Notes |
 |----|--------|-------|
-| AC1 | MET | Date validation (previous run) |
-| AC2 | MET | Calendar endpoint (previous run) |
-| AC3 | MET | PATCH validation (previous run) |
-| AC4 | MET | Tab toggle (previous run) |
-| AC5 | MET | Month view (previous run) |
-| AC6 | MET (this run) | Multi-day bars with proper layering |
-| AC7 | NOT YET | Week view pending |
-| AC8 | NOT YET | Quick-create pending |
-| AC9 | NOT YET | Card chip details pending |
-| AC10 | NOT YET | Drag-to-reschedule month pending |
-| AC11 | NOT YET | Drag-to-reschedule week pending |
-| AC12 | NOT YET | Time picker pending |
-| AC13 | NOT YET | Polish features pending |
-| AC14 | NOT YET | Full navigation pending |
+| AC1 | MET (run-001) | Board members table + API |
+| AC2 | MET (run-002) | Comments API |
+| AC3 | MET (run-003) | Reactions API |
+| AC4 | MET (run-003) | Watchers API |
+| AC5 | MET (run-001) | Activity user_id |
+| AC6 | MET (run-001) | Authorization refactor |
+| AC7 | MET (run-004) | Card detail timeline |
+| AC8 | MET (run-004) | Board activity feed |
+| AC9 | MET (this run) | Board header member avatars + invite popover |
+| AC10 | MET (this run) | Unified timeline in card modal |
+| AC11 | MET (this run) | Comment input with expand-on-focus |
+| AC12 | NOT YET | Reaction picker |
+| AC13 | MET (this run) | Watch button in card modal |
+| AC14 | NOT YET | Board activity sidebar |
 
 ## Overall: PASS

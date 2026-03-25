@@ -1,47 +1,40 @@
-# Run 002: Calendar Data Endpoint
+# Run 002: Comments API — CRUD with authorization, activity, and auto-watch
 
 ## Context
-Second run of the calendar-view feature. AC1 (date validation) and AC3 (PATCH validation) were completed in run 001. Focus on AC2: Calendar data endpoint.
+Run-001 established the database schema (all 4 social interaction tables), board members API, and authorization refactor. The comments table already exists; this run implements the API endpoints on top of it.
 
-## What Happened
-1. **Test-First Development**: Created comprehensive tests for the calendar endpoint before implementation:
-   - Date range filtering (cards within range)
-   - Overlapping date logic (spans into, out of, or entire range)
-   - Rich data response (labels, checklist counts, column info)
-   - Edge cases (only start_date, empty results)
-   - Validation (missing/invalid parameters)
-   - Security (404 for other users' boards)
+## Approach
+Vertical slice: implement all three comment endpoints (POST, PATCH, DELETE) plus the db-layer helper functions in a single step. Side effects (activity logging, auto-watch) are bundled in the `createComment` db function for transactional consistency.
 
-2. **Database Query Implementation**: 
-   - Added `CalendarCardResult` interface extending card data with calculated fields
-   - Created `getCalendarCards` function with complex date overlap logic
-   - Three overlap conditions: due in range, start in range, or spanning range
-   - Reused label batching pattern from search endpoint
+## What Was Built
 
-3. **Route Handler**:
-   - Added GET /api/boards/:boardId/calendar endpoint
-   - Parameter validation reusing existing `isValidDateFormat`
-   - Clean error messages for missing or invalid dates
-
-4. **Testing Results**: All 134 tests pass, including 8 new calendar endpoint tests
+### Files Modified
+- `trello/src/db.ts` — Added 5 new functions: `createComment`, `getCommentById`, `updateComment`, `deleteComment`, `addCardWatcher`. Added `CommentWithUser` interface. `createComment` bundles side effects: creates "commented" activity entry and auto-watches card via INSERT OR IGNORE.
+- `trello/src/routes.ts` — Added 3 comment endpoints under `/api/boards/:boardId/cards/:cardId/comments`. POST validates content (1-5000 chars), creates comment, returns with empty reactions array. PATCH is author-only edit. DELETE allows author or board owner.
+- `trello/src/routes.test.ts` — Added 15 new tests across 3 describe blocks covering: create success, activity creation, auto-watch idempotency, empty content rejection, length validation, non-member rejection, member access, non-existent card, author edit, non-author edit rejection, empty edit rejection, author delete, owner delete, non-author/non-owner delete rejection, non-existent comment.
 
 ## Key Decisions
-- **Date Range SQL**: Used compound OR conditions for flexibility
-- **Rich Response**: Include labels and checklist counts like board view
-- **Parameter Validation**: Reuse existing date validation for consistency
-- **Batch Loading**: Prevent N+1 queries with label batching
+- **Side effects in db layer**: Activity logging and auto-watch happen inside `createComment()` rather than in the route handler. This ensures consistency if `createComment` is ever called from other code paths.
+- **Three-tier auth**: create=member, edit=author-only, delete=author+owner. Matches the spec's moderation model.
+- **INSERT OR IGNORE for watchers**: Makes `addCardWatcher` idempotent — safe to call multiple times for the same user/card.
+- **Content validation in route**: Length >5000 checked before hitting the db CHECK constraint, giving a cleaner error message.
 
-## Challenges
-- Complex SQL overlap logic required careful parameter binding order
-- Maintaining consistency with existing card response shapes
+## Challenges & Solutions
+- **SQLite datetime granularity**: Initial test asserted `updated_at !== created_at` after immediate edit, but both resolve to the same second. Fixed by asserting on content change and field presence instead.
 
-## Learnings
-- Date range queries benefit from explicit NULL checks in SQL
-- ISO 8601 format enables string comparison for date ranges
-- TDD helped catch edge cases early (e.g., cards with only start_date)
+## Verification Results
+- Tests: 256 passed, 0 failed
+- Types: clean
+- Build: N/A
 
-## Next Steps
-AC2 is now complete. Next priorities would be the UI components:
-- AC4: Board|Calendar tab toggle
-- AC5: Month view grid
-- Or continuing with more backend work first
+## Acceptance Criteria Progress
+- AC2 met this run: comments table + POST/PATCH/DELETE endpoints with auth + activity + auto-watch
+- Overall: 4/14 met
+
+## Vault Entries Added
+- `patterns/comment-crud-with-side-effects.md` (pattern): Bundle side effects in db-layer create function
+- `anti-patterns/sqlite-datetime-second-granularity.md` (anti-pattern): datetime('now') second-level granularity breaks rapid create/update assertions
+- `decisions/comment-auth-three-tier.md` (decision): Three-tier authorization for comments
+
+## What's Next
+AC3: Reactions API — POST toggle endpoint with 8-emoji allowlist and unique constraint handling.

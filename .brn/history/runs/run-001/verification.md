@@ -1,26 +1,33 @@
-# Verification Results
+# Verification — Run 001
 
-## Test Results
-- **Unit tests (date-utils.test.ts)**: ✅ 12/12 passed
-- **Integration tests (routes-date-validation.test.ts)**: ✅ 9/9 passed  
-- **Full test suite**: ✅ 126/126 passed
-- **No regressions detected**
+## Tests
+- Result: PASS
+- Passed: 241, Failed: 0, Skipped: 0
+- Notable: 18 new tests added for board members, authorization, and activity tracking
 
 ## Type Check
-- **TypeScript compilation**: ✅ Passed (after fixing strict mode issues)
+- Result: PASS
+- Errors: 0
+
+## Build
+- Result: N/A (no build step required for this backend change)
 
 ## Acceptance Criteria
-- **AC1**: ✅ COMPLETE
-  - Date-only format (YYYY-MM-DD) validated
-  - DateTime format (YYYY-MM-DDTHH:MM) validated
-  - Malformed times rejected (T25:00, T14:60, T1:5)
-  - 24:00 rejected, 00:00 and 23:59 accepted
-- **AC3**: ✅ COMPLETE
-  - PATCH endpoint enhanced with new validation
-  - Rejects malformed datetime values with clear error messages
+| AC | Status | Notes |
+|----|--------|-------|
+| AC1 | MET | board_members table created; board creator auto-inserted as owner; GET/POST/DELETE endpoints work with proper authorization |
+| AC2 | NOT YET | comments table created (schema ready), endpoints not yet implemented |
+| AC3 | NOT YET | reactions table created (schema ready), endpoints not yet implemented |
+| AC4 | NOT YET | card_watchers table created (schema ready), endpoints not yet implemented |
+| AC5 | MET | activity table gains user_id column; all new activity entries record acting user's ID; existing entries have null user_id |
+| AC6 | MET | All board-scoped endpoints check board_members for authorization; non-members get 404; members who aren't owners get 403 for owner-only actions |
+| AC7 | NOT YET | Card detail enhancement pending |
+| AC8 | NOT YET | Board activity feed pending |
+| AC9 | NOT YET | UI pending |
+| AC10 | NOT YET | UI pending |
+| AC11 | NOT YET | UI pending |
+| AC12 | NOT YET | UI pending |
+| AC13 | NOT YET | UI pending |
+| AC14 | NOT YET | UI pending |
 
-## Manual Testing Checklist
-- [ ] Existing cards with date-only values still work
-- [ ] Can update card with datetime value via API
-- [ ] Invalid formats return helpful error messages
-- [ ] UI continues to work with date-only values
+## Overall: PASS

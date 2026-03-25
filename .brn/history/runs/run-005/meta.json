@@ -1,38 +1,39 @@
 {
   "id": "run-005",
-  "timestamp": "2026-03-24T12:00:00",
-  "duration_seconds": 1800,
+  "timestamp": "2026-03-25T15:22:10Z",
+  "duration_seconds": 482,
   "status": "success",
-  "focus": "Multi-day bars implementation for calendar view (AC6)",
-  "summary": "Implemented multi-day card bars with row allocation algorithm to prevent overlaps. Added layered rendering with absolute positioning and CSS Grid spanning. Handled week-spanning cards by splitting into per-week segments.",
-  "model": "claude-3-5-sonnet",
+  "focus": "Board members UI, watch button, unified timeline display",
+  "summary": "Added frontend API client for all social interactions, built board header member avatars with invite popover (AC9), watch button in card modal (AC13), unified comment/activity timeline with @mention rendering (AC10), and comment input with expand-on-focus (AC11). 25 new tests, all 308 pass.",
+  "model": "opus",
   "effort": "high",
   "mode": "attended",
-  "files_created": [],
+  "files_created": ["trello/src/ui/social-interactions.test.ts"],
   "files_modified": [
-    "trello/src/ui/CalendarView.tsx",
-    "trello/public/styles.css", 
-    "trello/src/ui/CalendarView.test.tsx",
-    "trello/src/ui/BoardView.test.tsx"
+    "trello/src/ui/api.ts",
+    "trello/src/ui/App.tsx",
+    "trello/src/ui/BoardView.tsx",
+    "trello/src/ui/CardModal.tsx",
+    "trello/public/styles.css"
   ],
   "files_deleted": [],
   "tests": {
-    "passed": 160,
+    "passed": 308,
     "failed": 0,
     "skipped": 0,
-    "total": 160
+    "total": 308
   },
   "types_clean": true,
   "build_clean": true,
   "commit": "",
-  "acceptance_criteria_met": ["AC6"],
-  "acceptance_criteria_progress": "6/14",
+  "acceptance_criteria_met": ["AC9", "AC10", "AC11", "AC13"],
+  "acceptance_criteria_progress": "12/14",
   "vault_updates": [
-    ".brn/vault/patterns/multi-day-card-layout.md",
-    ".brn/vault/decisions/calendar-layered-rendering.md",
-    ".brn/vault/codebase/calendar-week-spanning.md"
+    "patterns/frontend-api-client-update.md",
+    "decisions/avatar-color-hash.md",
+    "patterns/comment-input-expand-pattern.md"
   ],
   "retry": false,
-  "challenges": "Handling cards that span across week boundaries required splitting bars into segments",
-  "next_focus": "Week view implementation with time slots (AC7)"
+  "challenges": "CardDetail type needed backward compat with activity field; board-controls layout required flex wrapper",
+  "next_focus": "AC12: Reaction picker + AC14: Board activity sidebar"
 }

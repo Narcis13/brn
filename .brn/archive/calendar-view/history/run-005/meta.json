@@ -1,0 +1,38 @@
+{
+  "id": "run-005",
+  "timestamp": "2026-03-24T12:00:00",
+  "duration_seconds": 1800,
+  "status": "success",
+  "focus": "Multi-day bars implementation for calendar view (AC6)",
+  "summary": "Implemented multi-day card bars with row allocation algorithm to prevent overlaps. Added layered rendering with absolute positioning and CSS Grid spanning. Handled week-spanning cards by splitting into per-week segments.",
+  "model": "claude-3-5-sonnet",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": [
+    "trello/src/ui/CalendarView.tsx",
+    "trello/public/styles.css", 
+    "trello/src/ui/CalendarView.test.tsx",
+    "trello/src/ui/BoardView.test.tsx"
+  ],
+  "files_deleted": [],
+  "tests": {
+    "passed": 160,
+    "failed": 0,
+    "skipped": 0,
+    "total": 160
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC6"],
+  "acceptance_criteria_progress": "6/14",
+  "vault_updates": [
+    ".brn/vault/patterns/multi-day-card-layout.md",
+    ".brn/vault/decisions/calendar-layered-rendering.md",
+    ".brn/vault/codebase/calendar-week-spanning.md"
+  ],
+  "retry": false,
+  "challenges": "Handling cards that span across week boundaries required splitting bars into segments",
+  "next_focus": "Week view implementation with time slots (AC7)"
+}

@@ -1,30 +1,29 @@
 {
-  "run_number": 3,
-  "timestamp": "2026-03-24T11:25:00",
-  "duration_minutes": 10,
-  "acceptance_criteria_addressed": ["AC4"],
-  "acceptance_criteria_completed": ["AC4"],
-  "files_created": [
-    "trello/src/ui/BoardView.test.tsx"
-  ],
-  "files_modified": [
-    "trello/src/ui/BoardView.tsx",
-    "trello/public/styles.css"
-  ],
-  "tests_added": 5,
-  "tests_passed": 5,
-  "type_errors": 0,
-  "build_status": "success",
-  "commit_hash": "c559eea",
-  "commit_message": "feat(calendar-view): implement Board|Calendar tab toggle (AC4)",
-  "decisions": [
-    "Use local React state for view mode management",
-    "Keep tab toggle within BoardView component",
-    "Hide search bar in calendar view"
-  ],
-  "learnings": [
-    "TypeScript literal unions need explicit type annotations for better inference",
-    "Jest's toHaveTextContent matcher simplifies active state testing"
-  ],
-  "next_focus": "Month view grid implementation (AC5)"
+  "id": "run-003",
+  "timestamp": "2026-03-25T13:21:10Z",
+  "duration_seconds": 166,
+  "status": "success",
+  "focus": "Reactions API (AC3) + Watchers API (AC4)",
+  "summary": "Implemented POST toggle endpoints for reactions (8-emoji allowlist, comment/activity targets, board scoping) and card watchers (watch/unwatch toggle). 14 new tests, all 270 pass.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": ["trello/src/db.ts", "trello/src/routes.ts", "trello/src/routes.test.ts"],
+  "files_deleted": [],
+  "tests": {
+    "passed": 270,
+    "failed": 0,
+    "skipped": 0,
+    "total": 270
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC3", "AC4"],
+  "acceptance_criteria_progress": "6/14",
+  "vault_updates": ["patterns/toggle-endpoint-pattern.md", "decisions/reactions-scoped-to-board.md"],
+  "retry": false,
+  "challenges": "none",
+  "next_focus": "AC7: Enhanced card detail with unified timeline, reactions, is_watching, watcher_count, board_members"
 }

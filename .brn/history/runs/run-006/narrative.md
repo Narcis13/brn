@@ -1,65 +1,42 @@
-# Run 006: Week View Implementation with Time Slots
+# Run 006: Reaction Picker + Board Activity Sidebar (Feature Complete)
 
-**Date**: 2026-03-24T12:30:00
-**Focus**: Implementing week view with time grid (AC7)
-**Duration**: ~10 minutes
+## Context
+After run-005 built the core UI — member avatars, watch button, unified timeline, comment CRUD, and @mention rendering — two ACs remained: AC12 (reaction picker) and AC14 (board activity sidebar). Both are UI-only features since all backend APIs were built in runs 001-004.
 
-## What Happened
+## Approach
+Tackle both remaining ACs in one run since they're independent UI features with no backend changes. The reaction picker extends the existing timeline items, while the activity sidebar is a new overlay panel in BoardView.
 
-Started with a clear goal: implement the week view for the calendar feature, which includes a 7-column layout for days, an all-day row for date-only cards, and a time grid from 07:00-22:00 with 30-minute slots.
+## What Was Built
 
-### Key Implementation Details
+### Files Modified
+- `trello/src/ui/CardModal.tsx` — Added `ReactionBar` component (smiley icon on hover, 8-emoji horizontal picker, click-to-toggle reactions via API, interactive clickable reaction chips). Added `@mention` autocomplete dropdown to comment textarea with arrow key navigation, Enter/Tab to select, and Escape to dismiss. Replaced static reaction chips with the interactive `ReactionBar` on both comment and activity timeline items.
+- `trello/src/ui/BoardView.tsx` — Added activity sidebar state/logic. Clock icon toggle button in board header. Full-width overlay panel sliding from right with header, scrollable body showing activity+comment feed, member avatars, card title links that open card modal, "Load more" pagination, click-outside and Escape to dismiss.
+- `trello/public/styles.css` — Added styles for: interactive reaction chips (hover states), reaction bar wrapper with positioned emoji picker, @mention autocomplete dropdown, activity sidebar toggle button, overlay panel with slide-in animation, sidebar items with avatar/content/timestamp layout, card title links, load more button.
+- `trello/src/ui/social-interactions.test.ts` — Added 12 new tests covering: allowed emoji set validation, reaction count display, interactive chip mine-state computation, @mention query extraction from cursor position, member filtering by prefix, mention insertion at correct position, activity sidebar relative time, pagination cursor logic, load-more append behavior, comment preview truncation, and activity item type indicators.
 
-1. **View Mode Toggle**: Added a `calendarMode` state to `CalendarView` component that switches between "month" and "week" views. Added toggle buttons in the calendar navigation bar.
+## Key Decisions
+- **ReactionBar as a self-contained component**: Encapsulates picker state, click-outside dismissal, and API calls. Each timeline item gets its own ReactionBar instance — simpler than lifting state.
+- **Smiley button visible on hover only**: Uses CSS `.timeline-item:hover .btn-add-reaction` to show the reaction trigger, keeping the timeline clean when not interacting.
+- **Emoji picker positioned above the trigger**: `position: absolute; bottom: 100%` keeps it in view even at the bottom of the timeline.
+- **Activity sidebar as overlay, not push**: Uses `position: fixed` overlay with a positioned sidebar panel. Click-outside on the overlay area dismisses it. Does not push board content.
+- **Pagination via before cursor**: Passes the last item's timestamp as the `before` parameter for load-more, matching the existing API contract.
 
-2. **Week Calculations**: Created helper functions:
-   - `getWeekStart()` - Calculates Monday of the current week
-   - `getWeekEnd()` - Calculates Sunday of the current week  
-   - `getWeekDays()` - Returns array of 7 dates for the week
-   - `formatWeekRange()` - Formats the week range display (e.g., "March 23 – 29, 2026")
-   - `getTimeFromDate()` - Extracts time portion from datetime strings
-   - `isCardInWeek()` - Determines if a card should appear in the current week view
+## Challenges & Solutions
+- No significant challenges. All APIs were already built and tested. The main care point was ensuring the reaction picker click-outside doesn't interfere with the timeline item hover detection — solved by using `mousedown` events and proper ref containment checks.
 
-3. **Week View Layout**:
-   - **All-day row**: Cards without times display in a dedicated row at the top
-   - **Time grid**: 31 time slots from 07:00 to 22:00 in 30-minute increments
-   - **Card positioning**: Timed cards render at their specific time slot
-   - **Duration handling**: Cards with both start and end times span the appropriate height
+## Verification Results
+- Tests: 320 passed, 0 failed
+- Types: Clean (source files)
+- Build: Success
 
-4. **Styling**: Added comprehensive CSS for the week view including:
-   - Grid layout for columns and time slots
-   - Visual distinction for weekends and today
-   - Card styling that matches the existing design system
-   - Hover effects and proper z-indexing for overlapping cards
+## Acceptance Criteria Progress
+- AC12 met this run: Reaction picker with emoji bar, interactive chips, toggle
+- AC14 met this run: Board activity sidebar with pagination, card links
+- Overall: 14/14 met — FEATURE COMPLETE
 
-### Technical Challenges
+## Vault Entries Added
+- reaction-picker-component-pattern.md (pattern): Self-contained reaction picker with hover trigger and positioned emoji bar
+- activity-sidebar-overlay-pattern.md (pattern): Slide-in overlay sidebar with pagination and click-outside dismissal
 
-1. **TypeScript Strictness**: Had to handle potential undefined values when parsing time strings and array destructuring. Fixed by adding proper null checks and default values.
-
-2. **Time Slot Mapping**: Needed precise logic to map cards to their correct 30-minute slots. Solution involved parsing time components and checking if a card's time falls within each slot's range.
-
-3. **Card Height Calculation**: For cards with duration (start and end times), calculated the visual height based on the time difference in 30-minute increments.
-
-### Testing
-
-Created comprehensive unit tests covering:
-- Week start/end calculations
-- Time slot generation
-- Time extraction from datetime strings
-- Week range formatting
-- Card-to-week assignment logic
-- Duration-based height calculations
-
-All 166 tests pass, including the new week view tests.
-
-## What I Learned
-
-1. **Date Handling in JavaScript**: The built-in Date API is sufficient for calendar calculations without needing external libraries. Careful handling of day-of-week offsets is crucial (JavaScript uses 0=Sunday, but we want 0=Monday).
-
-2. **CSS Grid for Time-Based Layouts**: CSS Grid works excellently for calendar layouts. Using a combination of grid areas and absolute positioning within slots provides flexibility for overlapping events.
-
-3. **Conditional Rendering Complexity**: The calendar component now has significant branching between month and week views. This could be refactored into separate components in the future, but for now the shared navigation and data loading logic makes a single component reasonable.
-
-## Next Steps
-
-The week view is now fully functional with AC7 complete. The next logical step is AC8 - implementing the quick-create popover that allows users to create cards by clicking on empty calendar cells or time slots. This will enhance the calendar's interactivity and make it a true planning tool.
+## What's Next
+All acceptance criteria met. Create PR to finalize the feature.

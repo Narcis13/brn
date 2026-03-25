@@ -1,60 +1,53 @@
-# Run 003 — Board|Calendar Tab Toggle
+# Run 003: Reactions API + Watchers API
 
-## What Happened
+## Context
+Runs 001-002 established the database schema (all tables including reactions and card_watchers), board members with authorization, and comments CRUD. The reactions and card_watchers tables exist but have no API endpoints yet. This run implements both toggle APIs as they share the same pattern (single POST endpoint that adds/removes).
 
-This run focused on implementing AC4: the Board|Calendar tab toggle UI. The implementation added a clean toggle interface above the search bar that allows users to switch between the traditional board view and the new calendar view.
+## Approach
+Paired two small, structurally similar APIs into one step. Both are toggle endpoints: one POST that checks if the resource exists, adds if not, removes if so. This keeps each step coherent and demoable — "users can now react to comments and watch cards."
 
-### Implementation Details
+## What Was Built
 
-1. **Tab Toggle Component**:
-   - Added a tab toggle section above the search bar in BoardView.tsx
-   - Used React state to manage the current view mode ('board' | 'calendar')
-   - Applied proper styling with active/inactive states
+### Files Modified
+- `trello/src/db.ts` — Added 7 new functions and 2 interfaces:
+  - `isAllowedEmoji()` — validates against the 8-emoji allowlist Set
+  - `toggleReaction()` — checks for existing reaction, adds or removes, returns action + reaction object
+  - `targetExists()` — verifies comment or activity row exists
+  - `getTargetBoardId()` — gets board_id from comment or activity for cross-board validation
+  - `toggleCardWatcher()` — checks existing watcher, adds or removes, returns boolean watching state
+  - `isWatching()` — check if user is watching a card
+  - `getWatcherCount()` — count watchers for a card
+  - `ReactionRow` interface for type safety
 
-2. **Styling**:
-   - Created a responsive tab design with hover effects
-   - Active tab highlighted with blue background and white text
-   - Inactive tab has subtle gray background with hover state
-   - Consistent with the existing Trello-like design system
+- `trello/src/routes.ts` — Added 2 new route handlers:
+  - `POST /api/boards/:boardId/reactions` — validates target_type, target_id, emoji against allowlist, verifies target exists and belongs to board, calls toggleReaction
+  - `POST /api/boards/:boardId/cards/:cardId/watch` — verifies card belongs to board, calls toggleCardWatcher, returns watching boolean
 
-3. **Search Bar Behavior**:
-   - Conditionally rendered based on view mode
-   - Visible in board view, hidden in calendar view as per requirements
-   - Smooth transition without page reload
-
-4. **Tests**:
-   - Comprehensive test suite covering all AC4 requirements
-   - Tests for tab visibility, active state, click behavior, and search bar toggling
-   - All tests passing with proper TypeScript types
+- `trello/src/routes.test.ts` — Added 14 new tests across 2 describe blocks:
+  - Reactions (9 tests): add to comment, toggle off, add to activity, reject disallowed emoji, reject missing target_type, 404 for non-existent target, reject non-member, different users same emoji, same user different emoji
+  - Watchers (5 tests): toggle on, toggle off, auto-watch interaction with manual toggle, reject non-member, 404 for non-existent card
 
 ## Key Decisions
-
-1. **State Management**: Used local React state for view mode instead of URL state or context. This keeps the implementation simple and meets the requirement of preserving board context without page reload.
-
-2. **Component Structure**: Kept the tab toggle as part of BoardView rather than extracting a separate component. This avoids premature abstraction since we don't know yet if this pattern will be reused.
-
-3. **Styling Approach**: Extended the existing styles.css file rather than creating component-specific CSS. This maintains consistency with the existing codebase patterns.
+- **Reactions scoped to board URL**: The endpoint is `POST /api/boards/:boardId/reactions` (not nested under cards) because reactions target both comments and activity entries. The route validates that the target's board_id matches the URL's boardId.
+- **Target validation via dynamic table lookup**: `targetExists` and `getTargetBoardId` use the target_type to select the correct table. This avoids separate endpoints for comment vs activity reactions.
+- **Toggle pattern for both**: Both reactions and watchers use a check-then-add-or-remove pattern rather than separate add/remove endpoints, matching the spec's toggle semantics.
 
 ## Challenges & Solutions
+No issues — the tables were already created in run-001, so this was pure business logic. The patterns from comments (membership auth, board verification) applied directly.
 
-1. **TypeScript Test Issues**: Encountered a type error in tests when comparing viewMode to literal strings. Solved by properly typing the viewMode state as `'board' | 'calendar'` union type rather than generic string.
+## Verification Results
+- Tests: 270 passed, 0 failed (14 new)
+- Types: clean
+- Build: N/A
 
-2. **Layout Integration**: Needed to ensure the tab toggle didn't disrupt existing layout. Placed it in a separate section above the search bar with proper spacing.
+## Acceptance Criteria Progress
+- AC3 met this run: reactions toggle with emoji allowlist
+- AC4 met this run: watchers toggle with is_watching support
+- Overall: 6/14 met
 
-## Learnings
+## Vault Entries Added
+- `patterns/toggle-endpoint-pattern.md` (pattern): Toggle add/remove with single POST
+- `decisions/reactions-scoped-to-board.md` (decision): Why reactions live at board level
 
-1. **TypeScript Literal Types**: When using literal string unions in React state, TypeScript's type inference works better with explicit type annotations on the state variable.
-
-2. **Test Assertions**: Jest's `toHaveTextContent` matcher works well for checking active states without needing to inspect CSS classes directly.
-
-3. **Conditional Rendering**: Using logical AND (`&&`) for conditional rendering keeps the JSX clean and readable when toggling UI elements based on state.
-
-## Next Steps
-
-With AC4 complete, the next logical step is AC5: implementing the month view grid. This will involve:
-- Creating the calendar grid structure (7 columns, Mon-Sun)
-- Adding navigation controls
-- Rendering day cells with proper styling
-- Integrating with the calendar data endpoint from AC2
-
-The foundation is now in place to start building the actual calendar views.
+## What's Next
+AC7: Enhanced card detail endpoint — unified timeline (comments + activity sorted newest first with reactions), is_watching, watcher_count, board_members for @mention autocomplete.

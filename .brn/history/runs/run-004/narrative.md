@@ -1,78 +1,47 @@
-# Run 004: Month View Calendar Grid Implementation
+# Run 004: Enhanced card detail with unified timeline + board activity feed
 
 ## Context
-Starting from AC5 implementation with all previous ACs (1-4) completed. The task is to implement the calendar month view with a 7-column grid, navigation, and card display.
+After runs 001-003 built the foundation (schema, board members, authorization, comments, reactions, watchers), the next logical step was to enhance the card detail endpoint (AC7) and add the board-wide activity feed (AC8). These are the last two API-only ACs before UI work begins.
 
-## What I Did
+## Approach
+Tackled both AC7 and AC8 together since they share core concepts: unified timeline from comments + activity, reactions attached to items, and user-centric data (watching, members). The strategy was:
+1. Add reusable db functions (`getCardComments`, `getReactionsGrouped`)
+2. Enhance `getCardDetail` with full timeline, watching state, and board members
+3. Add new `getBoardFeed` function and route for board-wide feed
+4. Update existing tests for new response shape, add comprehensive new tests
 
-### 1. Created CalendarView Component
-- Built a new React component `CalendarView.tsx` with:
-  - Month grid generation logic (42 cells for 6 weeks)
-  - Navigation controls (prev/next month, Today button)
-  - Card fetching using the existing calendar API endpoint
-  - Date cell rendering with proper styling
+## What Was Built
 
-### 2. Key Implementation Details
-- **Grid Generation**: Created a 42-cell grid starting on Monday
-- **Date Range**: Calculated visible date range for the month view
-- **Card Filtering**: Filtered cards by due date and spanning ranges
-- **Today Highlighting**: Special styling for today's date cell
-- **Weekend Styling**: Different background for Saturday/Sunday columns
-- **Card Display**: Limited to 3 cards per cell with "+N more" overflow
+### Files Modified
+- `trello/src/db.ts` — Added `getCardComments`, `getReactionsGrouped` helpers; rewrote `getCardDetail` with unified timeline, is_watching, watcher_count, board_members; added `getBoardFeed` with `before` pagination; exported new interfaces (`TimelineItem`, `TimelineComment`, `TimelineActivity`, `ReactionGroup`, `BoardFeedItem`, `BoardFeedResult`)
+- `trello/src/routes.ts` — Updated card detail handler to pass `userId`; added `GET /api/boards/:boardId/activity` endpoint with limit/before params
+- `trello/src/routes-card-detail.test.ts` — Updated `CardDetailResponse` interface; fixed 1 existing test for new shape; added 13 new tests
+- `trello/src/routes.test.ts` — Fixed 1 existing test referencing old `activity` field
 
-### 3. Integrated with BoardView
-- Added import for CalendarView component
-- Replaced placeholder with actual CalendarView component
-- Connected card click handler to open card modal
+## Key Decisions
+- **In-memory merge over SQL UNION**: Fetch comments and activity separately, map to discriminated union, merge and sort in JS. Simpler, more maintainable, avoids NULL-column padding.
+- **Batch reaction loading**: Single query per target_type for all IDs, group in Map — avoids N+1.
+- **`getCardDetail` signature change**: Added `userId` parameter to compute `is_watching`. Breaking change but necessary.
+- **Board feed `before` pagination**: Uses timestamp-based cursor instead of offset — more reliable for feeds with concurrent writes.
 
-### 4. Added Calendar API Function
-- Added `fetchCalendarCards` to api.ts to fetch cards within date range
-- Used existing calendar endpoint from backend
+## Challenges & Solutions
+- Two existing tests broke because they referenced `detail.activity` which became `detail.timeline` — straightforward fix to use the new field.
+- No other issues — the foundation from runs 001-003 was solid.
 
-### 5. Styled Calendar Grid
-- Added comprehensive CSS for calendar layout
-- Navigation bar styling with buttons
-- Grid layout with proper borders and spacing
-- Card chip styling with label colors
-- Loading skeleton animation
-- Empty state message
+## Verification Results
+- Tests: 283 passed, 0 failed
+- Types: clean
+- Build: N/A
 
-### 6. Wrote Tests
-- Created unit tests following existing pattern (no React Testing Library)
-- Tested month grid generation logic
-- Tested date range calculations
-- Tested card filtering and display limits
-- Tested navigation logic
-- All 13 tests passing
+## Acceptance Criteria Progress
+- AC7 met: card detail returns unified timeline, is_watching, watcher_count, board_members
+- AC8 met: board activity feed with pagination
+- Overall: 8/14 met
 
-### 7. Fixed TypeScript Issues
-- Fixed potential undefined string issues in date formatting
-- Added null checks for array access in tests
-- Type checks now pass for CalendarView
+## Vault Entries Added
+- `patterns/unified-timeline-pattern.md` (pattern): discriminated union merge-sort for heterogeneous timeline
+- `patterns/grouped-reactions-pattern.md` (pattern): batch-fetch and Map-group reactions
+- `decisions/timeline-replaces-activity-array.md` (decision): why timeline replaces flat activity array
 
-## Results
-- ✅ AC5 fully implemented and tested
-- ✅ 7-column Mon-Sun grid with proper layout
-- ✅ Navigation bar with month/year and working prev/next/Today buttons
-- ✅ Day numbers with gray styling for outside month
-- ✅ Card chips displayed (max 3 + overflow indicator)
-- ✅ Today's cell highlighted
-- ✅ Weekend columns have different background
-- ✅ Empty state message when no cards
-- ✅ Loading skeleton during data fetch
-
-## Technical Decisions
-1. Used native Date API for calendar math (no external libraries)
-2. Leveraged existing enriched card data from calendar endpoint
-3. Followed existing test patterns (unit tests without React Testing Library)
-4. Maintained consistency with board view styling
-
-## Files Changed
-- Created: `trello/src/ui/CalendarView.tsx` (new component)
-- Created: `trello/src/ui/CalendarView.test.tsx` (tests)
-- Modified: `trello/src/ui/BoardView.tsx` (integrated CalendarView)
-- Modified: `trello/src/ui/api.ts` (added fetchCalendarCards)
-- Modified: `trello/public/styles.css` (added calendar styles)
-
-## Next Steps
-Ready to implement AC6 (Multi-day bars) which will enhance the existing calendar to show cards spanning multiple days as horizontal bars.
+## What's Next
+AC9-AC14 are all UI work. Next logical step: AC9 (board header member avatars + invite popover) and AC13 (watch button in card modal) — these are the simpler UI pieces that connect to the APIs built in runs 001-004.

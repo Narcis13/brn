@@ -1,62 +1,57 @@
-# Run 005: Multi-day Bars Implementation (AC6)
+# Run 005: Board members UI, watch button, unified timeline
 
 ## Context
-After completing the basic calendar month view in run-004, the calendar could display cards on their due dates but lacked visual representation for cards spanning multiple days. AC6 required implementing horizontal bars for cards with both start_date and due_date spanning different days, positioned above single-day cards.
+After runs 001–004 completed all backend API endpoints (board members, comments, reactions, watchers, card detail timeline, board activity feed), the feature entered its frontend phase. 8/14 ACs were met — all server-side. This run tackles the first wave of UI: displaying board members with invite, the card watch button, and the unified comment/activity timeline in the card modal.
 
 ## Approach
-I chose a layered rendering approach using CSS Grid and absolute positioning:
-1. Calculate which cards are multi-day (have different start and due dates)
-2. Implement a row allocation algorithm to prevent visual overlaps
-3. Render multi-day bars as a separate layer above the calendar grid
-4. Handle week-spanning cards by splitting them into per-week segments
+Chose to implement three cohesive ACs (AC9, AC10, AC13) in one step because they share infrastructure:
+- All require the new API client types and functions
+- The card modal needs the updated CardDetail shape (timeline, is_watching, watcher_count, board_members)
+- Member avatars use the same color generation as timeline comment avatars
 
-Key design decisions:
-- Use absolute positioning with grid-column spanning for clean layout
-- Separate rendering pass for multi-day bars before regular cells
-- Row allocation algorithm to stack overlapping date ranges
+Strategy: update the API client layer first, then build UI components top-down (board header → card modal header → card modal body).
 
 ## What Was Built
 
-### Files Modified
-- `trello/src/ui/CalendarView.tsx` — Added multi-day card calculation, row allocation logic, and layered rendering
-- `trello/public/styles.css` — Added styles for multi-day bars with proper positioning and visual hierarchy
-- `trello/src/ui/CalendarView.test.tsx` — Added comprehensive tests for multi-day card detection and layout
-- `trello/src/ui/BoardView.test.tsx` — Fixed unrelated TypeScript errors
+### Files Created
+- `trello/src/ui/social-interactions.test.ts` — 25 tests covering mention detection, relative time, avatar colors, member display, watch toggle, timeline sorting, comment authorization, and reaction display logic
 
-### Key Implementation Details
-1. **MultiDayCard Interface**: Tracks card, grid position (startIndex/endIndex), and row placement
-2. **calculateMultiDayCards Function**: Core algorithm that:
-   - Maps dates to grid indices
-   - Allocates non-overlapping rows for each multi-day card
-   - Returns positioned cards for rendering
-3. **Layered Rendering**: Multi-day bars render before regular cells, using CSS Grid positioning
-4. **Week Spanning**: Cards crossing week boundaries split into separate visual segments
+### Files Modified
+- `trello/src/ui/api.ts` — Added 8 new interfaces (ReactionGroup, TimelineComment, TimelineActivity, TimelineItem, BoardMember, BoardActivityItem) and 10 new API functions (fetchBoardMembers, inviteMember, removeMember, createComment, updateComment, deleteComment, toggleReaction, toggleWatch, fetchBoardActivity). Updated CardDetail to include timeline, is_watching, watcher_count, board_members.
+- `trello/src/ui/App.tsx` — Pass currentUser prop to BoardView
+- `trello/src/ui/BoardView.tsx` — Added member state + invite popover state, loadBoard now fetches members in parallel, added member avatars + invite popover UI in board-controls-top wrapper, pass currentUser and isOwner to CardModal
+- `trello/src/ui/CardModal.tsx` — Added currentUser/isOwner props, helper functions (relativeTime, renderMentions, getAvatarColor), watch toggle state and handler, comment CRUD handlers, watch button in header, unified timeline replacing old Activity section with comment display (edit/delete, @mention rendering, reaction chips) and compact activity items
+- `trello/public/styles.css` — ~300 lines of CSS for board-controls-top layout, member avatars (colored circles, owner badge, overflow), invite popover, watch button, unified timeline (comment items with avatars, activity items compact, reaction chips, comment input collapsed/expanded, comment edit area, mention styling)
 
 ## Key Decisions
-- **Absolute positioning over inline**: Cleaner separation between multi-day and single-day cards
-- **Row allocation algorithm**: Prevents visual collisions while minimizing vertical space
-- **Split week-spanning bars**: Maintains grid structure while showing continuity
+- **Avatar color by hash**: Used a deterministic hash of the username to pick from 10 preset colors, ensuring consistency across all views without any server state
+- **Comment input expand-on-focus**: Collapsed state is a simple readonly input that expands into a textarea+actions on focus, matching the spec's UX requirement
+- **@mention rendering client-side**: Stored as plain `@username` text, rendered as bold spans by comparing against board_members list — no server-side processing needed
+- **Watch toggle optimistic**: Immediately updates local state (is_watching, watcher_count) before the API call resolves, with error rollback
+- **Comment CRUD with refresh**: After comment create/update/delete, full card detail is re-fetched rather than trying to locally patch the timeline, ensuring consistency
 
 ## Challenges & Solutions
-The main challenge was handling cards that span across week boundaries in the calendar grid. The solution was to detect week transitions and render separate bar elements for each week, showing the title only on the first segment.
+- **CardDetail type migration**: The backend now returns `timeline` instead of `activity` in the card detail. But the old `activity` field is still needed for backward compatibility with the CardDetail type used in optimistic updates. Solution: kept both fields in the interface, with `activity` for legacy and `timeline` for the new display.
+- **Board controls layout**: Needed member avatars next to view tabs but the board-controls used a simple CSS grid. Added a `.board-controls-top` flex wrapper to put tabs and members on the same row.
 
 ## Verification Results
-- Tests: 17 passed (added 5 new tests for multi-day functionality)
-- Types: Clean after fixing unrelated BoardView.test.tsx errors
-- Build: Success
+- Tests: 308 passed, 0 failed (25 new + 283 existing)
+- Types: clean (tsc --noEmit passed)
+- Build: N/A (no separate build step tested)
 
 ## Acceptance Criteria Progress
-- AC6: MET — Multi-day bars implemented with proper positioning and title display
-- Overall: 6/14 met
+- AC9 (board header members + invite): MET this run — colored initial avatars, max 5 + overflow, owner badge, invite popover with username input
+- AC10 (unified timeline): MET this run — comments show avatar+username+content+timestamp+edit/delete+reactions, activity shows compact with actor+description+timestamp
+- AC11 (comment input): MET this run — collapsed input expands on focus, textarea+Save, Ctrl+Enter to submit, disabled when empty
+- AC13 (watch button): MET this run — eye icon in card modal header, filled when watching, watcher count shown
+- Overall: 12/14 met
 
 ## Vault Entries Added
-- `patterns/multi-day-card-layout.md`: Row allocation algorithm for overlap prevention
-- `decisions/calendar-layered-rendering.md`: Why absolute positioning was chosen
-- `codebase/calendar-week-spanning.md`: Insight about handling week boundaries
+- `patterns/frontend-api-client-update.md` — pattern for extending API client with new types/functions
+- `decisions/avatar-color-hash.md` — decision on deterministic avatar colors
+- `patterns/comment-input-expand-pattern.md` — pattern for collapse-to-expand comment input UX
 
 ## What's Next
-AC7 requires implementing the week view with time slots. This will involve:
-- Creating a new week view component with 7-day columns
-- Adding time grid with 30-minute slots from 07:00-22:00
-- Separating all-day cards from timed cards
-- Positioning timed cards based on their time components
+Two ACs remaining:
+- AC12: Reaction picker (smiley icon on hover, 8-emoji bar, toggle, clickable chips)
+- AC14: Board activity sidebar (toggle button, slide-in overlay, paginated feed, card links)

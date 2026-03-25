@@ -1,33 +1,21 @@
-# Verification Results
+# Verification — Run 004
 
 ## Tests
-```
-bun test CalendarView.test.tsx
- 13 pass
- 0 fail
- 32 expect() calls
-Ran 13 tests across 1 file. [6.00ms]
-```
+- Result: PASS
+- Passed: 283, Failed: 0, Skipped: 0
+- Notable: 13 new tests added (7 for enhanced card detail, 6 for board feed). 2 existing tests updated for new response shape.
 
-## Type Checking
-```
-bunx tsc --noEmit
-✅ No TypeScript errors for CalendarView component
-```
+## Type Check
+- Result: PASS
+- Errors: 0
 
-## Manual Verification Checklist for AC5
-- [x] 7-column grid with Mon-Sun headers
-- [x] Navigation bar with < Month Year > format
-- [x] Previous/Next month buttons working
-- [x] Today button returns to current month
-- [x] Day numbers displayed in cells
-- [x] Gray color for days outside current month
-- [x] Card chips show in date cells
-- [x] Maximum 3 cards visible per cell
-- [x] "+N more" shown when >3 cards
-- [x] Today's cell has distinct highlight
-- [x] Weekend columns (Sat/Sun) have different background
-- [x] Empty state message when no cards have dates
-- [x] Loading skeleton shown while fetching
+## Build
+- Result: N/A
 
-All acceptance criteria for AC5 have been met.
+## Acceptance Criteria
+| AC | Status | Notes |
+|----|--------|-------|
+| AC7 | MET (this run) | Card detail returns unified timeline with comments+activity+reactions, is_watching, watcher_count, board_members |
+| AC8 | MET (this run) | Board activity feed endpoint with limit/before pagination, has_more, newest first |
+
+## Overall: PASS
