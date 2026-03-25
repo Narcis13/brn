@@ -3,6 +3,16 @@
 import { resolve } from "node:path";
 import { getDb, getUserByUsername, createUser } from "./src/db";
 import { register, login, saveSession, loadSession, clearSession } from "./cli-auth";
+import { 
+  listBoards, 
+  createBoardCommand, 
+  showBoard, 
+  deleteBoardCommand,
+  listBoardMembers,
+  inviteToBoardCommand,
+  kickFromBoardCommand,
+  showBoardActivity 
+} from "./cli-board";
 
 const args = process.argv.slice(2);
 const [command, subcommand, ...rest] = args;
@@ -124,6 +134,9 @@ async function main(): Promise<void> {
   switch (command) {
     case 'auth':
       await handleAuth(subcommand, rest);
+      break;
+    case 'board':
+      await handleBoard(subcommand, rest);
       break;
     case 'serve':
       await handleServe(rest);
@@ -250,6 +263,128 @@ async function handleServe(args: string[]): Promise<void> {
   
   // Wait for the process to exit
   await proc.exited;
+}
+
+async function handleBoard(subcommand: string | undefined, args: string[]): Promise<void> {
+  const session = await loadSession();
+  if (!session) {
+    console.error('Not logged in. Run "takt auth login" first.');
+    process.exit(1);
+  }
+  
+  const db = getDb(session.dbPath);
+  
+  // Parse global options
+  const options: any = {
+    json: args.includes('--json'),
+    quiet: args.includes('--quiet'),
+    fullIds: args.includes('--full-ids'),
+    yes: args.includes('--yes') || args.includes('-y'),
+  };
+  
+  // Remove option flags from args
+  const filteredArgs = args.filter(arg => !arg.startsWith('--') && arg !== '-y');
+  
+  switch (subcommand) {
+    case 'list':
+      await listBoards(db, session, options);
+      break;
+      
+    case 'create': {
+      const [title] = filteredArgs;
+      if (!title) {
+        console.error('Usage: takt board create <title>');
+        process.exit(1);
+      }
+      await createBoardCommand(db, session, title, options);
+      break;
+    }
+    
+    case 'show': {
+      const [boardId] = filteredArgs;
+      if (!boardId) {
+        console.error('Usage: takt board show <id>');
+        process.exit(1);
+      }
+      await showBoard(db, session, boardId, options);
+      break;
+    }
+    
+    case 'delete': {
+      const [boardId] = filteredArgs;
+      if (!boardId) {
+        console.error('Usage: takt board delete <id> [--yes]');
+        process.exit(1);
+      }
+      await deleteBoardCommand(db, session, boardId, options);
+      break;
+    }
+    
+    case 'members': {
+      const [boardId] = filteredArgs;
+      if (!boardId) {
+        console.error('Usage: takt board members <id>');
+        process.exit(1);
+      }
+      await listBoardMembers(db, session, boardId, options);
+      break;
+    }
+    
+    case 'invite': {
+      const [boardId, username] = filteredArgs;
+      if (!boardId || !username) {
+        console.error('Usage: takt board invite <id> <username>');
+        process.exit(1);
+      }
+      await inviteToBoardCommand(db, session, boardId, username, options);
+      break;
+    }
+    
+    case 'kick': {
+      const [boardId, username] = filteredArgs;
+      if (!boardId || !username) {
+        console.error('Usage: takt board kick <id> <username>');
+        process.exit(1);
+      }
+      await kickFromBoardCommand(db, session, boardId, username, options);
+      break;
+    }
+    
+    case 'activity': {
+      const [boardId] = filteredArgs;
+      if (!boardId) {
+        console.error('Usage: takt board activity <id> [--limit N]');
+        process.exit(1);
+      }
+      
+      // Parse limit option
+      let limit = 20;
+      const limitIndex = args.indexOf('--limit');
+      if (limitIndex !== -1 && args[limitIndex + 1]) {
+        const parsedLimit = Number(args[limitIndex + 1]);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          limit = parsedLimit;
+        }
+      }
+      
+      await showBoardActivity(db, session, boardId, limit, options);
+      break;
+    }
+    
+    default:
+      console.error(`Unknown board subcommand: '${subcommand}'`);
+      console.error('');
+      console.error('Available board commands:');
+      console.error('  list                      List all boards you\'re a member of');
+      console.error('  create <title>            Create a new board');
+      console.error('  show <id>                 Show board overview');
+      console.error('  delete <id> [--yes]       Delete a board (owner only)');
+      console.error('  members <id>              List board members');
+      console.error('  invite <id> <username>    Invite user to board (owner only)');
+      console.error('  kick <id> <username>      Remove member from board (owner only)');
+      console.error('  activity <id> [--limit N] Show recent activity');
+      process.exit(1);
+  }
 }
 
 main().catch(err => {

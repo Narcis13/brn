@@ -7,7 +7,7 @@ import { createUser, getUserByUsername, type UserRow } from "./src/db";
 const CONFIG_DIR = join(homedir(), ".takt");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
-interface TaktConfig {
+export interface TaktConfig {
   userId: string;
   username: string;
   dbPath: string;
