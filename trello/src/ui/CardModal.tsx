@@ -49,6 +49,46 @@ function sortLabels(labels: Label[]): Label[] {
   return [...labels].sort((left, right) => left.position - right.position);
 }
 
+function extractDateAndTime(dateTimeString: string | null): { date: string; time: string } {
+  if (!dateTimeString) return { date: "", time: "" };
+  
+  if (dateTimeString.includes('T')) {
+    const [date, timeWithZ] = dateTimeString.split('T');
+    const time = timeWithZ ? timeWithZ.replace('Z', '').slice(0, 5) : "";
+    return { date: date ?? "", time };
+  }
+  
+  return { date: dateTimeString, time: "" };
+}
+
+function combineDateAndTime(date: string, time: string): string {
+  if (!date) return "";
+  if (!time) return date;
+  return `${date}T${time}`;
+}
+
+function formatDateTimeDisplay(dateTimeString: string | null): string {
+  if (!dateTimeString) return "";
+  
+  const date = new Date(dateTimeString);
+  if (isNaN(date.getTime())) return "";
+  
+  const hasTime = dateTimeString.includes('T');
+  
+  const options: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    ...(hasTime ? {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    } : {})
+  };
+  
+  return new Intl.DateTimeFormat('en-US', options).format(date);
+}
+
 function renderFormattedDescription(description: string): React.ReactNode {
   if (description.trim() === "") {
     return <p className="empty-inline-state">Add a description...</p>;
@@ -131,6 +171,8 @@ export function CardModal({
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState(PRESET_LABEL_COLORS[0] ?? "#e74c3c");
   const [newChecklistText, setNewChecklistText] = useState("");
+  const [showStartTime, setShowStartTime] = useState(false);
+  const [showDueTime, setShowDueTime] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const requestVersion = useRef(0);
@@ -204,6 +246,9 @@ export function CardModal({
         setBoardLabels(labelResponse.labels);
         setTitle(cardDetail.title);
         setDescriptionDraft(cardDetail.description);
+        // Check if dates have time components
+        setShowStartTime(cardDetail.start_date ? cardDetail.start_date.includes('T') : false);
+        setShowDueTime(cardDetail.due_date ? cardDetail.due_date.includes('T') : false);
         onCardUpdatedRef.current(cardDetail);
       })
       .catch((err: unknown) => {
@@ -343,16 +388,33 @@ export function CardModal({
     nextStartDate: string | null,
     nextDueDate: string | null
   ): boolean {
-    if (nextStartDate && nextDueDate && nextStartDate > nextDueDate) {
-      setError("Start date must be before or equal to due date");
-      return false;
+    if (nextStartDate && nextDueDate) {
+      // Extract just the dates for comparison
+      const startDate = extractDateAndTime(nextStartDate).date;
+      const dueDate = extractDateAndTime(nextDueDate).date;
+      
+      if (startDate > dueDate) {
+        setError("Start date must be before or equal to due date");
+        return false;
+      }
+      
+      // If same date, check times
+      if (startDate === dueDate && nextStartDate.includes('T') && nextDueDate.includes('T')) {
+        const startTime = extractDateAndTime(nextStartDate).time;
+        const dueTime = extractDateAndTime(nextDueDate).time;
+        if (startTime > dueTime) {
+          setError("Start time must be before or equal to due time on the same day");
+          return false;
+        }
+      }
     }
     return true;
   }
 
   async function saveDateField(
     field: "start_date" | "due_date",
-    value: string | null
+    value: string | null,
+    includeTime: boolean = false
   ): Promise<void> {
     if (!detail) return;
 
@@ -363,10 +425,67 @@ export function CardModal({
     }
 
     setError("");
+    
+    // Clear time state if date is cleared
+    if (!value) {
+      if (field === "start_date") {
+        setShowStartTime(false);
+      } else {
+        setShowDueTime(false);
+      }
+    }
+    
     await persistCardPatch(
       { [field]: value },
       (current) => ({ ...current, [field]: value })
     );
+  }
+
+  async function toggleTimeForDate(field: "start_date" | "due_date"): Promise<void> {
+    if (!detail) return;
+
+    const isStartDate = field === "start_date";
+    const currentValue = isStartDate ? detail.start_date : detail.due_date;
+    const showTime = isStartDate ? showStartTime : showDueTime;
+    
+    if (showTime) {
+      // Remove time
+      const { date } = extractDateAndTime(currentValue);
+      if (isStartDate) {
+        setShowStartTime(false);
+      } else {
+        setShowDueTime(false);
+      }
+      await saveDateField(field, date || null);
+    } else {
+      // Add time (default to current time)
+      const { date } = extractDateAndTime(currentValue);
+      if (date) {
+        const now = new Date();
+        const hours = now.getHours().toString().padStart(2, '0');
+        const minutes = now.getMinutes().toString().padStart(2, '0');
+        const dateTime = combineDateAndTime(date, `${hours}:${minutes}`);
+        
+        if (isStartDate) {
+          setShowStartTime(true);
+        } else {
+          setShowDueTime(true);
+        }
+        await saveDateField(field, dateTime);
+      }
+    }
+  }
+
+  async function updateTime(field: "start_date" | "due_date", time: string): Promise<void> {
+    if (!detail) return;
+    
+    const currentValue = field === "start_date" ? detail.start_date : detail.due_date;
+    const { date } = extractDateAndTime(currentValue);
+    
+    if (date) {
+      const dateTime = combineDateAndTime(date, time);
+      await saveDateField(field, dateTime);
+    }
   }
 
   async function saveChecklist(items: ChecklistItem[]): Promise<void> {
@@ -715,14 +834,32 @@ export function CardModal({
                 <h3>Dates</h3>
               </div>
               <div className="date-grid">
-                <label className="date-field">
+                <div className="date-field">
                   <span>Start date</span>
+                  {detail.start_date && (
+                    <div className="date-display">{formatDateTimeDisplay(detail.start_date)}</div>
+                  )}
                   <div className="date-input-row">
                     <input
                       type="date"
-                      value={detail.start_date ?? ""}
-                      onChange={(e) => void saveDateField("start_date", e.target.value || null)}
+                      value={extractDateAndTime(detail.start_date).date}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        if (showStartTime && newDate) {
+                          const { time } = extractDateAndTime(detail.start_date);
+                          void saveDateField("start_date", combineDateAndTime(newDate, time));
+                        } else {
+                          void saveDateField("start_date", newDate || null);
+                        }
+                      }}
                     />
+                    {showStartTime && detail.start_date && (
+                      <input
+                        type="time"
+                        value={extractDateAndTime(detail.start_date).time}
+                        onChange={(e) => void updateTime("start_date", e.target.value)}
+                      />
+                    )}
                     <button
                       type="button"
                       className="btn-text"
@@ -731,17 +868,44 @@ export function CardModal({
                     >
                       Clear
                     </button>
+                    {detail.start_date && (
+                      <button
+                        type="button"
+                        className="btn-text"
+                        onClick={() => void toggleTimeForDate("start_date")}
+                      >
+                        {showStartTime ? "Remove time" : "Add time"}
+                      </button>
+                    )}
                   </div>
-                </label>
+                </div>
 
-                <label className="date-field">
+                <div className="date-field">
                   <span>Due date</span>
+                  {detail.due_date && (
+                    <div className="date-display">{formatDateTimeDisplay(detail.due_date)}</div>
+                  )}
                   <div className="date-input-row">
                     <input
                       type="date"
-                      value={detail.due_date ?? ""}
-                      onChange={(e) => void saveDateField("due_date", e.target.value || null)}
+                      value={extractDateAndTime(detail.due_date).date}
+                      onChange={(e) => {
+                        const newDate = e.target.value;
+                        if (showDueTime && newDate) {
+                          const { time } = extractDateAndTime(detail.due_date);
+                          void saveDateField("due_date", combineDateAndTime(newDate, time));
+                        } else {
+                          void saveDateField("due_date", newDate || null);
+                        }
+                      }}
                     />
+                    {showDueTime && detail.due_date && (
+                      <input
+                        type="time"
+                        value={extractDateAndTime(detail.due_date).time}
+                        onChange={(e) => void updateTime("due_date", e.target.value)}
+                      />
+                    )}
                     <button
                       type="button"
                       className="btn-text"
@@ -750,8 +914,17 @@ export function CardModal({
                     >
                       Clear
                     </button>
+                    {detail.due_date && (
+                      <button
+                        type="button"
+                        className="btn-text"
+                        onClick={() => void toggleTimeForDate("due_date")}
+                      >
+                        {showDueTime ? "Remove time" : "Add time"}
+                      </button>
+                    )}
                   </div>
-                </label>
+                </div>
               </div>
             </section>
 

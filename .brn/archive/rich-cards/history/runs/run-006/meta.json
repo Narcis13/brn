@@ -1,0 +1,62 @@
+{
+  "run": 6,
+  "timestamp": "2026-03-23T19:29:09Z",
+  "duration_ms": 560981,
+  "status": "completed",
+  "focus": "board search/filter UX and column drag-reordering",
+  "acceptance_criteria_progress": {
+    "AC13": {
+      "before": false,
+      "after": true,
+      "notes": "Implemented HTML5 column-header drag-and-drop with midpoint placement, optimistic local order updates, and persistence through the existing reorder endpoint."
+    },
+    "AC14": {
+      "before": false,
+      "after": true,
+      "notes": "Added a board search bar, label-pill toggles, instant local filtering, and debounced server reconciliation against the board search API."
+    },
+    "AC17": {
+      "before": false,
+      "after": true,
+      "notes": "Added the centered board no-results state, completing the remaining empty/edge-state gap for this feature."
+    }
+  },
+  "files": {
+    "modified": [
+      "/trello/public/styles.css",
+      "/trello/src/ui/BoardView.tsx",
+      "/trello/src/ui/api.ts",
+      "/.brn/specs/feature-rich-cards.md",
+      "/.brn/history/index.json",
+      "/.brn/state.json"
+    ],
+    "created": [
+      "/trello/src/ui/board-utils.ts",
+      "/trello/src/ui/board-utils.test.ts",
+      "/.brn/history/runs/run-006/prompt.md",
+      "/.brn/history/runs/run-006/output.md",
+      "/.brn/history/runs/run-006/narrative.md",
+      "/.brn/history/runs/run-006/verification.md",
+      "/.brn/history/runs/run-006/meta.json",
+      "/.brn/vault/patterns/hybrid-board-search-filtering.md",
+      "/.brn/vault/decisions/optimistic-column-reorder-by-id-sequence.md"
+    ]
+  },
+  "verification": {
+    "tests": {
+      "command": "bun test",
+      "passed": 105,
+      "failed": 0
+    },
+    "typecheck": {
+      "command": "bunx tsc --noEmit",
+      "passed": true
+    },
+    "build": {
+      "command": "cd trello && bun run build.ts",
+      "passed": true
+    }
+  },
+  "summary": "Finished the remaining board workspace controls for rich-cards with search/filter UX, no-results handling, tested board utilities, and optimistic column drag-reordering.",
+  "next_focus": "archive rich-cards and initialize the next ready feature"
+}

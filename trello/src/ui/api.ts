@@ -213,11 +213,12 @@ export function createCard(
   boardId: string,
   title: string,
   columnId: string,
-  description: string = ""
+  description: string = "",
+  due_date?: string | null
 ): Promise<CardRecord> {
   return request(`/boards/${boardId}/cards`, {
     method: "POST",
-    body: JSON.stringify({ title, columnId, description }),
+    body: JSON.stringify({ title, columnId, description, due_date }),
   });
 }
 
@@ -279,6 +280,15 @@ export function searchBoard(
   return request(`/boards/${boardId}/search${query ? `?${query}` : ""}`, {
     signal,
   });
+}
+
+export function fetchCalendarCards(
+  boardId: string,
+  start: string,
+  end: string
+): Promise<{ cards: BoardCard[] }> {
+  const params = new URLSearchParams({ start, end });
+  return request(`/boards/${boardId}/calendar?${params.toString()}`);
 }
 
 export function createLabel(

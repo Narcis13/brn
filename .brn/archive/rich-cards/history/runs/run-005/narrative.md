@@ -1,0 +1,11 @@
+# Run 005 Narrative
+
+The active `rich-cards` feature had already completed the backend data model and endpoint work, leaving the remaining acceptance criteria concentrated in the frontend. The existing UI still used a simple modal with a save button and had no way to surface labels, due dates, checklist progress, or activity, so the next coherent slice was a true card-detail experience plus richer board-card rendering.
+
+The run started by extending the board columns data flow to return richer card summaries. `getAllColumns` now attaches card labels and computed checklist totals/done counts, and `routes.test.ts` gained focused coverage to keep that contract stable. On the client side, `trello/src/ui/api.ts` now exposes typed card detail, label, activity, and checklist models, plus the additional endpoints needed by the modal.
+
+With the data contract in place, the old `CardModal` was replaced entirely. Existing cards now open into a full-width detail modal that fetches authoritative detail, shows labels, dates, description, checklist, and activity, and performs optimistic writes on blur or change. The description section supports basic formatting helpers and a rendered preview, the label picker allows toggle assignment plus inline creation from a preset palette, and checklist interactions update progress immediately. New cards still use an explicit save action because there is no entity to autosave until creation succeeds; that tradeoff keeps edit-mode autosave without introducing partial cards.
+
+The board surface was updated in parallel. `BoardView` now patches local column state optimistically when modal edits succeed, and each board card renders label dots, due-date status badges, and a checklist mini progress meter. The stylesheet was expanded to support the new modal layout and card metadata while preserving the existing Trello-like direction.
+
+Verification passed on the first full run: `99` tests passed, `bunx tsc --noEmit` was clean, and the browser bundle built successfully. The next remaining feature slice is board-level search/filter UI plus column drag-reordering, with `AC17` still open because the search no-results state and loading/saving skeletons were not part of this run.

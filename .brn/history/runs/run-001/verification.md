@@ -1,37 +1,26 @@
-# Verification Report for Run 001
+# Verification Results
 
 ## Test Results
-✅ **All tests pass** (35 total, 2 new)
+- **Unit tests (date-utils.test.ts)**: ✅ 12/12 passed
+- **Integration tests (routes-date-validation.test.ts)**: ✅ 9/9 passed  
+- **Full test suite**: ✅ 126/126 passed
+- **No regressions detected**
 
-```bash
-bun test v1.3.8 (b64edcb4)
+## Type Check
+- **TypeScript compilation**: ✅ Passed (after fixing strict mode issues)
 
- 33 pass
- 0 fail
- 98 expect() calls
-Ran 33 tests across 2 files. [2.15s]
-```
+## Acceptance Criteria
+- **AC1**: ✅ COMPLETE
+  - Date-only format (YYYY-MM-DD) validated
+  - DateTime format (YYYY-MM-DDTHH:MM) validated
+  - Malformed times rejected (T25:00, T14:60, T1:5)
+  - 24:00 rejected, 00:00 and 23:59 accepted
+- **AC3**: ✅ COMPLETE
+  - PATCH endpoint enhanced with new validation
+  - Rejects malformed datetime values with clear error messages
 
-## Type Checking
-✅ **No TypeScript errors**
-
-```bash
-bunx tsc --noEmit
-# No output (success)
-```
-
-## Build Status
-✅ **No build required for database changes**
-
-## Acceptance Criteria Verification
-- **AC1**: ✅ Verified via test that labels table exists with correct schema and constraints
-- **AC2**: ✅ Verified via test that cards table has new columns with correct defaults
-- **AC3**: ✅ Verified via test that activity table exists with cascade deletes
-
-## Database Schema Validation
-Confirmed through tests:
-- Foreign key constraints are properly enforced
-- Unique constraints work (board_id + label name)
-- Cascade deletes function correctly
-- Default values are set appropriately
-- Migration can run multiple times (idempotent)
+## Manual Testing Checklist
+- [ ] Existing cards with date-only values still work
+- [ ] Can update card with datetime value via API
+- [ ] Invalid formats return helpful error messages
+- [ ] UI continues to work with date-only values

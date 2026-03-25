@@ -1,11 +1,62 @@
-# Run 005 Narrative
+# Run 005: Multi-day Bars Implementation (AC6)
 
-The active `rich-cards` feature had already completed the backend data model and endpoint work, leaving the remaining acceptance criteria concentrated in the frontend. The existing UI still used a simple modal with a save button and had no way to surface labels, due dates, checklist progress, or activity, so the next coherent slice was a true card-detail experience plus richer board-card rendering.
+## Context
+After completing the basic calendar month view in run-004, the calendar could display cards on their due dates but lacked visual representation for cards spanning multiple days. AC6 required implementing horizontal bars for cards with both start_date and due_date spanning different days, positioned above single-day cards.
 
-The run started by extending the board columns data flow to return richer card summaries. `getAllColumns` now attaches card labels and computed checklist totals/done counts, and `routes.test.ts` gained focused coverage to keep that contract stable. On the client side, `trello/src/ui/api.ts` now exposes typed card detail, label, activity, and checklist models, plus the additional endpoints needed by the modal.
+## Approach
+I chose a layered rendering approach using CSS Grid and absolute positioning:
+1. Calculate which cards are multi-day (have different start and due dates)
+2. Implement a row allocation algorithm to prevent visual overlaps
+3. Render multi-day bars as a separate layer above the calendar grid
+4. Handle week-spanning cards by splitting them into per-week segments
 
-With the data contract in place, the old `CardModal` was replaced entirely. Existing cards now open into a full-width detail modal that fetches authoritative detail, shows labels, dates, description, checklist, and activity, and performs optimistic writes on blur or change. The description section supports basic formatting helpers and a rendered preview, the label picker allows toggle assignment plus inline creation from a preset palette, and checklist interactions update progress immediately. New cards still use an explicit save action because there is no entity to autosave until creation succeeds; that tradeoff keeps edit-mode autosave without introducing partial cards.
+Key design decisions:
+- Use absolute positioning with grid-column spanning for clean layout
+- Separate rendering pass for multi-day bars before regular cells
+- Row allocation algorithm to stack overlapping date ranges
 
-The board surface was updated in parallel. `BoardView` now patches local column state optimistically when modal edits succeed, and each board card renders label dots, due-date status badges, and a checklist mini progress meter. The stylesheet was expanded to support the new modal layout and card metadata while preserving the existing Trello-like direction.
+## What Was Built
 
-Verification passed on the first full run: `99` tests passed, `bunx tsc --noEmit` was clean, and the browser bundle built successfully. The next remaining feature slice is board-level search/filter UI plus column drag-reordering, with `AC17` still open because the search no-results state and loading/saving skeletons were not part of this run.
+### Files Modified
+- `trello/src/ui/CalendarView.tsx` — Added multi-day card calculation, row allocation logic, and layered rendering
+- `trello/public/styles.css` — Added styles for multi-day bars with proper positioning and visual hierarchy
+- `trello/src/ui/CalendarView.test.tsx` — Added comprehensive tests for multi-day card detection and layout
+- `trello/src/ui/BoardView.test.tsx` — Fixed unrelated TypeScript errors
+
+### Key Implementation Details
+1. **MultiDayCard Interface**: Tracks card, grid position (startIndex/endIndex), and row placement
+2. **calculateMultiDayCards Function**: Core algorithm that:
+   - Maps dates to grid indices
+   - Allocates non-overlapping rows for each multi-day card
+   - Returns positioned cards for rendering
+3. **Layered Rendering**: Multi-day bars render before regular cells, using CSS Grid positioning
+4. **Week Spanning**: Cards crossing week boundaries split into separate visual segments
+
+## Key Decisions
+- **Absolute positioning over inline**: Cleaner separation between multi-day and single-day cards
+- **Row allocation algorithm**: Prevents visual collisions while minimizing vertical space
+- **Split week-spanning bars**: Maintains grid structure while showing continuity
+
+## Challenges & Solutions
+The main challenge was handling cards that span across week boundaries in the calendar grid. The solution was to detect week transitions and render separate bar elements for each week, showing the title only on the first segment.
+
+## Verification Results
+- Tests: 17 passed (added 5 new tests for multi-day functionality)
+- Types: Clean after fixing unrelated BoardView.test.tsx errors
+- Build: Success
+
+## Acceptance Criteria Progress
+- AC6: MET — Multi-day bars implemented with proper positioning and title display
+- Overall: 6/14 met
+
+## Vault Entries Added
+- `patterns/multi-day-card-layout.md`: Row allocation algorithm for overlap prevention
+- `decisions/calendar-layered-rendering.md`: Why absolute positioning was chosen
+- `codebase/calendar-week-spanning.md`: Insight about handling week boundaries
+
+## What's Next
+AC7 requires implementing the week view with time slots. This will involve:
+- Creating a new week view component with 7-day columns
+- Adding time grid with 30-minute slots from 07:00-22:00
+- Separating all-day cards from timed cards
+- Positioning timed cards based on their time components

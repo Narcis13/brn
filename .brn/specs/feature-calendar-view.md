@@ -1,6 +1,6 @@
 ---
 title: Calendar View — Time-aware card scheduling with month and week views, drag-to-reschedule, and quick-create
-status: ready
+status: done
 priority: high
 ---
 

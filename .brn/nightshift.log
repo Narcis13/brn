@@ -1,83 +1,216 @@
 === BRN NIGHT SHIFT ===
-Feature: rich-cards
-Started: Mon Mar 23 18:52:58 EET 2026
+Feature: calendar-view
+Started: Tue Mar 24 20:42:21 EET 2026
 
-[18:52:58] ━━━ Run 1 starting ━━━
+[20:42:21] ━━━ Run 1 starting ━━━
 ## Summary
 
-Run 001 completed successfully. Database migration for the rich-cards feature has been implemented:
+Run 001 complete! Successfully enhanced date validation to support both YYYY-MM-DD and YYYY-MM-DDTHH:MM formats. AC1 and AC3 are now met. All tests pass, TypeScript compilation successful.
 
-- ✅ Created labels, card_labels, and activity tables
-- ✅ Enhanced cards table with new columns (due_date, start_date, checklist, updated_at)  
-- ✅ Migration is non-destructive and idempotent
-- ✅ All tests pass (35 total, 2 new)
-- ✅ AC1, AC2, AC3 completed
+Next run should focus on implementing the calendar data endpoint (AC2).
+[20:51:48] Run 1 finished in 567s | AC: 2/14 | Vault: 23 entries | Status: in-progress
 
-Next run should focus on implementing label CRUD API endpoints (AC4).
-[19:00:33] Run 1 finished in 455s | AC: 3/17 | Vault: 11 entries | Status: in_progress
-
-[19:00:43] ━━━ Run 2 starting ━━━
-Perfect! I have successfully completed run 002 of the rich-cards feature. In this run, I:
-
-1. ✅ Implemented label CRUD endpoints (AC4)
-2. ✅ Implemented card-label assignment endpoints (AC5)
-3. ✅ Added comprehensive test coverage (33 new tests, all passing)
-4. ✅ Followed existing code patterns and conventions
-5. ✅ Committed the changes with proper documentation
-
-The next run should focus on:
-- Enhanced PATCH /cards/:cardId endpoint (AC6)
-- GET /cards/:cardId with full details (AC7)
-- Activity tracking functionality
-[19:14:19] Run 2 finished in 816s | AC: 5/17 | Vault: 13 entries | Status: in_progress
-
-[19:14:29] ━━━ Run 3 starting ━━━
+[20:51:58] ━━━ Run 2 starting ━━━
 ## Summary
 
-Successfully implemented enhanced card endpoints (AC6-AC8):
+Successfully implemented AC2: Calendar data endpoint
+- Created comprehensive tests first (TDD approach)
+- Implemented `getCalendarCards` function with complex date overlap logic
+- Added GET /api/boards/:boardId/calendar endpoint
+- All tests passing (134 total, 8 new)
+- Updated vault with 2 new patterns and 1 decision
+- Committed changes and updated state
 
-✅ **AC6**: Enhanced PATCH endpoint now accepts dates, checklist with validation and activity tracking
-✅ **AC7**: GET card detail returns full info with labels, activity, and computed checklist stats  
-✅ **AC8**: GET activity endpoint provides paginated activity history
+3 of 14 acceptance criteria now complete (AC1, AC2, AC3).
+[21:14:58] Run 2 finished in 1380s | AC: 3/14 | Vault: 25 entries | Status: in-progress
 
-**Key accomplishments:**
-- Added comprehensive activity tracking throughout the system
-- Implemented date and checklist validation
-- Created thorough test coverage (15 new tests)
-- All 83 tests passing with no TypeScript errors
+[21:15:08] ━━━ Run 3 starting ━━━
+## Summary
 
-The next run should focus on AC9 (search endpoint) and AC10 (column reorder).
-[19:24:58] Run 3 finished in 629s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+Successfully implemented AC4 (Board|Calendar tab toggle):
 
-[19:25:08] ━━━ Run 4 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:29:37] Run 4 finished in 269s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+✅ Added view mode state and toggle UI above search bar
+✅ Applied proper styling with active states and hover effects  
+✅ Hid search bar and filters when in calendar view
+✅ All 143 tests pass
+✅ Created vault entries for patterns and decisions
 
-[19:29:47] ━━━ Run 5 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:29:49] Run 5 finished in 2s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+The implementation follows the project's established patterns and includes proper CSS styling to avoid the "unstyled UI" anti-pattern. Next priority is AC5 (Month view grid).
+[21:38:58] Run 3 finished in 1430s | AC: 4/14 | Vault: 27 entries | Status: in-progress
 
-[19:29:59] ━━━ Run 6 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:00] Run 6 finished in 1s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+[21:39:08] ━━━ Run 4 starting ━━━
+## Summary
 
-[19:30:10] ━━━ Run 7 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:11] Run 7 finished in 1s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+Successfully implemented AC5 (Month view calendar grid) with:
 
-[19:30:21] ━━━ Run 8 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:23] Run 8 finished in 2s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+✅ CalendarView component with 7-column Mon-Sun grid  
+✅ Navigation bar with prev/next month buttons and Today button  
+✅ Day numbers displayed with gray styling for outside month  
+✅ Card chips shown in date cells (max 3 visible + "+N more")  
+✅ Today's cell highlighted  
+✅ Weekend columns with different background  
+✅ Empty state message  
+✅ Loading skeleton  
+✅ 13 tests passing  
+✅ TypeScript checks clean  
 
-[19:30:33] ━━━ Run 9 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:34] Run 9 finished in 1s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+The calendar month view is now fully functional. Next step would be AC6 to add multi-day bars for cards spanning multiple days.
+[21:51:04] Run 4 finished in 716s | AC: 5/14 | Vault: 29 entries | Status: in-progress
 
-[19:30:44] ━━━ Run 10 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:46] Run 10 finished in 2s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+[21:51:14] ━━━ Run 5 starting ━━━
+## Summary
 
-[19:30:56] ━━━ Run 11 starting ━━━
-Claude AI usage limit reached|1774299600
-[19:30:57] Run 11 finished in 1s | AC: 5/17 | Vault: 14 entries | Status: in_progress
+Successfully implemented AC6 (Multi-day bars) for the calendar view feature:
 
+✅ **What was built:**
+- Multi-day card detection and row allocation algorithm
+- Layered rendering with CSS Grid positioning
+- Week-spanning support for cards crossing calendar rows
+- Proper visual hierarchy with bars above single-day cards
+
+✅ **Verification:**
+- All 160 tests passing
+- TypeScript types clean
+- Build successful
+
+✅ **Knowledge captured:**
+- Multi-day card layout pattern
+- Layered rendering decision
+- Week-spanning insight
+
+**Progress:** 6/14 acceptance criteria met
+
+**Next focus:** AC7 - Week view implementation with time slots
+[22:37:38] Run 5 finished in 2784s | AC: 6/14 | Vault: 32 entries | Status: in-progress
+
+[22:37:49] ━━━ Run 6 starting ━━━
+## Summary
+
+Successfully implemented the calendar week view (AC7):
+
+✅ **Completed**:
+- 7-column layout for Mon-Sun with proper week calculations
+- Navigation with week range display and prev/next/today buttons
+- All-day row for date-only cards
+- Time grid from 07:00-22:00 with 30-minute slots
+- Timed cards positioned at correct slots with duration-based heights
+- Mode toggle between Month and Week views
+- Comprehensive unit tests for week calculations
+- TypeScript types properly handled
+
+**Next Focus**: AC8 - Quick-create popover for creating cards by clicking empty calendar cells/slots
+
+All 166 tests passing. Feature progressing smoothly with 7 of 14 acceptance criteria now complete.
+[22:47:56] Run 6 finished in 608s | AC: 7/14 | Vault: 34 entries | Status: in-progress
+
+[22:48:06] ━━━ Run 7 starting ━━━
+## Summary
+
+✅ Successfully implemented AC8: Quick-create popover for calendar view
+
+**What was done:**
+- Created `QuickCreatePopover` component with auto-focus, positioning, and dismiss behaviors
+- Integrated popover with both month and week calendar views
+- Extended backend to accept `due_date` during card creation
+- Added comprehensive styling with entrance animation
+- Wrote tests covering date formatting and popover behavior
+
+**Key achievements:**
+- Clean component architecture
+- Viewport-aware positioning
+- Seamless calendar integration
+- All tests passing (175 total)
+- TypeScript compilation successful
+
+**Next focus:** AC9 - Card chip enhancements and drag feedback
+[23:21:49] Run 7 finished in 2023s | AC: 8/14 | Vault: 37 entries | Status: in-progress
+
+[23:21:59] ━━━ Run 8 starting ━━━
+Perfect! I've successfully completed AC9 by implementing card chip enhancements and drag-and-drop functionality for the calendar view. Here's a summary of what was accomplished:
+
+## AC9 Implementation Complete ✅
+
+### What was implemented:
+1. **Draggable Cards** - All calendar cards now have `draggable` attribute and proper event handlers
+2. **Visual Feedback** - Cards show opacity 0.5 when dragging, drop zones highlight in blue
+3. **Drop Functionality** - Cards can be dropped on different dates to reschedule
+4. **API Integration** - Dropping a card updates its due date via the API
+5. **Validation** - Cards cannot be dropped on their current date
+6. **Tests** - Created comprehensive unit tests for drag-and-drop logic
+
+### Technical details:
+- Added drag state management with `useRef` hook
+- Implemented handlers: `handleCardDragStart`, `handleCardDragEnd`, `handleCellDragOver`, `handleCellDrop`
+- Added CSS classes for visual feedback: `.dragging`, `.calendar-cell-drop-active`, `.calendar-week-slot-drop-active`
+- Works for all card types: month view chips, multi-day bars, week view cards
+
+### Results:
+- All 185 tests pass ✅
+- TypeScript compilation successful ✅
+- Feature committed and state updated
+
+The calendar view now has 9 of 14 acceptance criteria completed (64%). Next up is AC10: Drag-to-reschedule on month view.
+[23:37:57] Run 8 finished in 958s | AC: 9/14 | Vault: 37 entries | Status: in-progress
+
+[23:38:07] ━━━ Run 9 starting ━━━
+The `/next` command has been executed. It successfully completed AC10 (Drag-to-reschedule on month view) and indicates that the next step will be implementing AC11: drag-to-reschedule for the week view. All tests are passing (188 total).
+[23:47:17] Run 9 finished in 550s | AC: 10/14 | Vault: 39 entries | Status: in-progress
+
+[23:47:27] ━━━ Run 10 starting ━━━
+## Summary
+
+I've successfully implemented AC11: "Drag-to-reschedule on week view: vertical drag changes time, horizontal drag changes day". 
+
+Key accomplishments:
+1. **Enhanced drag state management** to store full card data
+2. **Implemented direction detection** to distinguish vertical (time) vs horizontal (date) drags
+3. **Added all-day row support** for removing time components
+4. **Comprehensive test coverage** with 9 new tests
+5. **Visual feedback** for drop targets
+
+The implementation correctly handles:
+- Vertical dragging to change only time
+- Horizontal dragging to change only date while preserving time
+- Multi-day cards maintaining their duration
+- Dragging to/from all-day row
+
+All tests pass and TypeScript compilation succeeds. The feature is now ready for use, and AC12 (time picker in CardModal) is set as the next focus.
+[23:59:05] Run 10 finished in 698s | AC: 11/14 | Vault: 40 entries | Status: in-progress
+
+[23:59:16] ━━━ Run 11 starting ━━━
+✅ AC12 completed! CardModal now has optional time picker functionality. Users can add specific times to dates, remove times to revert to date-only, and see formatted date/time displays.
+[00:10:21] Run 11 finished in 665s | AC: 12/14 | Vault: 41 entries | Status: in-progress
+
+[00:10:31] ━━━ Run 12 starting ━━━
+## Summary
+
+Successfully implemented AC13: UI polish and empty states for the calendar view. The implementation included:
+
+1. **Empty state message** - Already implemented, showing when no cards have dates
+2. **Loading skeleton** - Enhanced with view-specific layouts (grid for month, custom for week)  
+3. **+N more overflow** - Already implemented, showing when >3 cards per cell
+4. **Today marker distinct** - Already implemented with special CSS styling
+5. **Weekend columns shaded** - Already implemented across all views
+
+Added 5 tests to verify the implementations and created vault entries for UI polish patterns and implementation decisions. The feature now has 13 of 14 acceptance criteria completed, with only AC14 (Navigation) remaining.
+[00:16:25] Run 12 finished in 354s | AC: 13/14 | Vault: 43 entries | Status: in-progress
+
+[00:16:35] ━━━ Run 13 starting ━━━
+## ✅ Feature Complete!
+
+The **calendar-view** feature has been successfully completed:
+
+- **All 14 acceptance criteria met** with 225 passing tests
+- **Pull Request #5** created: https://github.com/Narcis13/brn/pull/5
+- Feature branch ready for review and merge
+
+The next `/next` execution will archive this feature and pick up the next available spec.
+[00:21:58] Run 13 finished in 323s | AC: 14/14 | Vault: 45 entries | Status: done
+
+[00:21:58] ✓ FEATURE COMPLETE in 13 runs (13177s total)
+
+=== NIGHT SHIFT ENDED ===
+Total runs: 13
+Total time: 13177s
+Final status: done
+Vault entries: 45

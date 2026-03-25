@@ -1,0 +1,30 @@
+{
+  "feature": "rich-cards",
+  "spec": "feature-rich-cards.md",
+  "branch": "feat/rich-cards",
+  "status": "done",
+  "acceptance_criteria": [
+    {"id": "AC1", "text": "Labels table (id, board_id, name, color, position) with UNIQUE(board_id, name); Card-Labels junction table with CASCADE deletes", "met": true},
+    {"id": "AC2", "text": "Cards table gains description, due_date, start_date, checklist (JSON), created_at, updated_at columns — migration non-destructive", "met": true},
+    {"id": "AC3", "text": "Activity table (id, card_id, board_id, action enum, detail JSON, timestamp) with CASCADE deletes", "met": true},
+    {"id": "AC4", "text": "Label CRUD endpoints: GET/POST/PATCH/DELETE under /api/boards/:boardId/labels with position ordering and duplicate name validation", "met": true},
+    {"id": "AC5", "text": "Card-Label assignment: POST/DELETE under /api/boards/:boardId/cards/:cardId/labels with 409 on duplicate, 404 if label not on board", "met": true},
+    {"id": "AC6", "text": "Enhanced PATCH /cards/:cardId accepts description, due_date, start_date, checklist, column_id; validates start_date <= due_date; creates activity entries on changes", "met": true},
+    {"id": "AC7", "text": "GET /cards/:cardId returns full detail: labels array, activity log (last 50), checklist_total, checklist_done", "met": true},
+    {"id": "AC8", "text": "GET /cards/:cardId/activity returns paginated activity (limit 50, offset param), newest first", "met": true},
+    {"id": "AC9", "text": "GET /boards/:boardId/search with q, label, due params — case-insensitive text search, label filter, due date status filter", "met": true},
+    {"id": "AC10", "text": "PATCH /boards/:boardId/columns/reorder accepts column_ids array, reassigns positions, 400 on mismatch", "met": true},
+    {"id": "AC11", "text": "Card Detail Modal: opens on card click, full-width (max 700px), editable title, labels, dates, description with formatting, checklist with progress bar, activity log, close via X/Escape/backdrop", "met": true},
+    {"id": "AC12", "text": "Board card face shows: label color dots, due date badge (red/orange/yellow/gray by status), checklist progress mini bar", "met": true},
+    {"id": "AC13", "text": "Column drag-reorder using HTML5 drag-and-drop on column headers", "met": true},
+    {"id": "AC14", "text": "Search bar above columns with real-time client-side filtering and debounced API search; filter bar with label pills toggle", "met": true},
+    {"id": "AC15", "text": "Label Picker in card detail: dropdown with color swatches, create new label with preset palette, toggle assignment, checkmarks on assigned", "met": true},
+    {"id": "AC16", "text": "All changes in card detail save immediately on blur/change (optimistic UI, no save button)", "met": true},
+    {"id": "AC17", "text": "Empty/edge states handled: empty checklist placeholder, no labels prompt, no activity message, no search results message", "met": true}
+  ],
+  "run_count": 6,
+  "current_focus": "feature complete",
+  "last_run": "2026-03-23T19:29:09Z",
+  "retry_count": 0,
+  "blocked": false
+}

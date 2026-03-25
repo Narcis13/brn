@@ -1,16 +1,44 @@
-## Test Result Summary
-- `bun test`: pass, `105` passing and `0` failing.
+# Verification Results - Run 006
 
-## Typecheck Result Summary
-- `bunx tsc --noEmit`: pass, no diagnostics emitted.
+## Test Results
+✅ **All tests passing**: 166/166 tests pass
 
-## Build Result Summary
-- `cd trello && bun run build.ts`: pass, built `2` files to `trello/public/dist/`.
+### New Tests Added
+- `CalendarView.week.test.tsx`: 6 unit tests for week view functionality
+  - Week start calculation (Monday-based weeks)
+  - Time slot generation (07:00-22:00, 30-min increments)
+  - Time extraction from datetime strings
+  - Week range formatting
+  - Card-to-week assignment logic
+  - Duration-based height calculations
 
-## Acceptance Criteria Touched This Run
-- `AC13`: Column headers now support HTML5 drag-and-drop reorder with optimistic UI and persistence through `/api/boards/:boardId/columns/reorder`.
-- `AC14`: Added board search input, instant local filtering, debounced server search reconciliation, and label-pill toggles.
-- `AC17`: Added the board-level "No cards match your search." empty state while preserving existing checklist, label, and activity empty states from prior runs.
+## Type Checking
+✅ **TypeScript compilation successful**: No type errors
 
-## Overall
-- Pass
+### Fixed Type Issues
+- Added null checks for potentially undefined array elements
+- Proper handling of string splits that might not have expected parts
+- Default values for parseInt operations
+
+## Manual Verification Checklist
+
+### AC7: Week View Implementation
+- [x] 7 columns for Mon-Sun
+- [x] Navigation bar with week date range (e.g., "March 23 – 29, 2026")
+- [x] Today button functional in week view
+- [x] All-day row at top for date-only cards
+- [x] Time grid from 07:00 to 22:00
+- [x] 30-minute time slots
+- [x] Timed cards appear as blocks at correct position
+- [x] Cards with duration span appropriate height
+- [x] Weekend columns have different background shade
+- [x] Today's column is highlighted
+
+## Build Verification
+✅ **Build successful**: `bun build` completes without errors
+
+## Integration Points Verified
+- [x] Calendar data endpoint works with week date ranges
+- [x] View toggle between Month and Week preserves board context
+- [x] Card click handler works in week view
+- [x] CSS properly loaded and applied

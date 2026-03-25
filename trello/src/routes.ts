@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { sign, verify } from "hono/jwt";
+import { isValidDateFormat } from "./date-utils";
 import {
   createUser,
   getUserByUsername,
@@ -30,6 +31,7 @@ import {
   getCardActivity,
   getCardDetail,
   searchCards,
+  getCalendarCards,
   reorderColumns,
   type BoardRow,
   type SearchDueFilter,
@@ -255,7 +257,7 @@ export function createApp(db: Database): Hono<Env> {
   app.post("/api/boards/:boardId/cards", async (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
-    const body = await c.req.json<{ title?: string; description?: string; columnId?: string }>();
+    const body = await c.req.json<{ title?: string; description?: string; columnId?: string; due_date?: string | null }>();
     if (!body.title || body.title.trim() === "") {
       return c.json({ error: "title is required" }, 400);
     }
@@ -267,7 +269,13 @@ export function createApp(db: Database): Hono<Env> {
     if (!col || col.board_id !== board.id) {
       return c.json({ error: "column not found" }, 404);
     }
-    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "");
+    
+    // Validate due_date if provided
+    if (body.due_date !== undefined && body.due_date !== null && !isValidDateFormat(body.due_date)) {
+      return c.json({ error: "due_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
+    
+    const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null);
     if (!card) return c.json({ error: "column not found" }, 404);
     return c.json(card, 201);
   });
@@ -299,6 +307,12 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     // Validate dates if provided
+    if (body.start_date !== undefined && body.start_date !== null && !isValidDateFormat(body.start_date)) {
+      return c.json({ error: "start_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
+    if (body.due_date !== undefined && body.due_date !== null && !isValidDateFormat(body.due_date)) {
+      return c.json({ error: "due_date must be in format YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
     if (body.start_date && body.due_date && body.start_date > body.due_date) {
       return c.json({ error: "start_date must be before or equal to due_date" }, 400);
     }
@@ -569,6 +583,35 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     const cards = searchCards(db, board.id, { q, labelId, due });
+    return c.json({ cards });
+  });
+
+  // --- Calendar route ---
+
+  app.get("/api/boards/:boardId/calendar", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+    
+    const url = new URL(c.req.url);
+    const start = url.searchParams.get("start");
+    const end = url.searchParams.get("end");
+    
+    // Validate parameters
+    if (!start || !end) {
+      return c.json({ error: "start and end parameters are required" }, 400);
+    }
+    
+    // Validate date formats (accept both YYYY-MM-DD and YYYY-MM-DDTHH:MM)
+    const isValidStart = isValidDateFormat(start);
+    const isValidEnd = isValidDateFormat(end);
+    
+    if (!isValidStart || !isValidEnd) {
+      return c.json({ error: "Invalid date format. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM" }, 400);
+    }
+    
+    // Get calendar cards
+    const cards = getCalendarCards(db, board.id, start, end);
+    
     return c.json({ cards });
   });
 
