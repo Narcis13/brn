@@ -15,6 +15,57 @@ export interface Activity {
   timestamp: string;
 }
 
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  user_ids: string[];
+}
+
+export interface TimelineComment {
+  type: "comment";
+  id: string;
+  content: string;
+  user_id: string;
+  username: string;
+  created_at: string;
+  updated_at: string;
+  reactions: ReactionGroup[];
+}
+
+export interface TimelineActivity {
+  type: "activity";
+  id: string;
+  action: string;
+  detail: string | null;
+  user_id: string | null;
+  username: string | null;
+  timestamp: string;
+  reactions: ReactionGroup[];
+}
+
+export type TimelineItem = TimelineComment | TimelineActivity;
+
+export interface BoardMember {
+  id: string;
+  username: string;
+  role: "owner" | "member";
+  invited_at: string;
+}
+
+export interface BoardActivityItem {
+  type: "comment" | "activity";
+  id: string;
+  card_id?: string;
+  card_title?: string;
+  content?: string;
+  action?: string;
+  detail?: string | null;
+  user_id: string | null;
+  username: string | null;
+  timestamp: string;
+  reactions: ReactionGroup[];
+}
+
 export interface ChecklistItem {
   id: string;
   text: string;
@@ -42,6 +93,10 @@ export interface BoardCard extends CardRecord {
 
 export interface CardDetail extends BoardCard {
   activity: Activity[];
+  timeline: TimelineItem[];
+  is_watching: boolean;
+  watcher_count: number;
+  board_members: { id: string; username: string }[];
 }
 
 export interface SearchCard extends BoardCard {
@@ -321,4 +376,104 @@ export function removeCardLabel(
   return request(`/boards/${boardId}/cards/${cardId}/labels/${labelId}`, {
     method: "DELETE",
   });
+}
+
+// --- Board Members ---
+
+export function fetchBoardMembers(
+  boardId: string
+): Promise<{ members: BoardMember[] }> {
+  return request(`/boards/${boardId}/members`);
+}
+
+export function inviteMember(
+  boardId: string,
+  username: string
+): Promise<BoardMember> {
+  return request(`/boards/${boardId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ username }),
+  });
+}
+
+export function removeMember(
+  boardId: string,
+  userId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/members/${userId}`, {
+    method: "DELETE",
+  });
+}
+
+// --- Comments ---
+
+export function createComment(
+  boardId: string,
+  cardId: string,
+  content: string
+): Promise<TimelineComment> {
+  return request(`/boards/${boardId}/cards/${cardId}/comments`, {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function updateComment(
+  boardId: string,
+  cardId: string,
+  commentId: string,
+  content: string
+): Promise<TimelineComment> {
+  return request(`/boards/${boardId}/cards/${cardId}/comments/${commentId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content }),
+  });
+}
+
+export function deleteComment(
+  boardId: string,
+  cardId: string,
+  commentId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/cards/${cardId}/comments/${commentId}`, {
+    method: "DELETE",
+  });
+}
+
+// --- Reactions ---
+
+export function toggleReaction(
+  boardId: string,
+  targetType: "comment" | "activity",
+  targetId: string,
+  emoji: string
+): Promise<{ action: "added" | "removed"; reaction: { id: string; emoji: string; user_id: string } }> {
+  return request(`/boards/${boardId}/reactions`, {
+    method: "POST",
+    body: JSON.stringify({ target_type: targetType, target_id: targetId, emoji }),
+  });
+}
+
+// --- Watchers ---
+
+export function toggleWatch(
+  boardId: string,
+  cardId: string
+): Promise<{ watching: boolean }> {
+  return request(`/boards/${boardId}/cards/${cardId}/watch`, {
+    method: "POST",
+  });
+}
+
+// --- Board Activity Feed ---
+
+export function fetchBoardActivity(
+  boardId: string,
+  options?: { limit?: number; before?: string }
+): Promise<{ items: BoardActivityItem[]; has_more: boolean }> {
+  const params = new URLSearchParams();
+  if (options?.limit) params.set("limit", String(options.limit));
+  if (options?.before) params.set("before", options.before);
+  const query = params.toString();
+  return request(`/boards/${boardId}/activity${query ? `?${query}` : ""}`);
 }

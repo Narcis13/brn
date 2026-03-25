@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardCard, CardDetail, ChecklistItem, Label } from "./api.ts";
+import type { BoardCard, CardDetail, ChecklistItem, Label, User, TimelineItem } from "./api.ts";
 import * as api from "./api.ts";
 import {
   describeActivity,
@@ -27,10 +27,76 @@ interface CardModalProps {
   boardId: string;
   card: BoardCard | null;
   columnId: string;
+  currentUser: User;
+  isOwner: boolean;
   onCreate: (title: string, description: string) => Promise<void>;
   onDelete: (() => Promise<void>) | null;
   onCardUpdated: (card: BoardCard | CardDetail) => void;
   onClose: () => void;
+}
+
+const AVATAR_COLORS = [
+  "#e74c3c", "#3498db", "#27ae60", "#f39c12", "#8e44ad",
+  "#16a085", "#c0392b", "#2980b9", "#d35400", "#2d3436",
+];
+
+function getAvatarColor(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]!;
+}
+
+function relativeTime(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  if (Number.isNaN(then)) return timestamp;
+  const diff = now - then;
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return formatActivityTimestamp(timestamp);
+}
+
+function renderMentions(
+  content: string,
+  boardMembers: { id: string; username: string }[]
+): React.ReactNode {
+  const memberUsernames = new Set(boardMembers.map((m) => m.username));
+  const parts: React.ReactNode[] = [];
+  const regex = /@(\w+)/g;
+  let lastIndex = 0;
+  let match = regex.exec(content);
+  let key = 0;
+
+  while (match !== null) {
+    if (match.index > lastIndex) {
+      parts.push(content.slice(lastIndex, match.index));
+    }
+    const username = match[1]!;
+    if (memberUsernames.has(username)) {
+      parts.push(
+        <strong key={key++} className="mention">
+          @{username}
+        </strong>
+      );
+    } else {
+      parts.push(match[0]);
+    }
+    lastIndex = regex.lastIndex;
+    match = regex.exec(content);
+  }
+
+  if (lastIndex < content.length) {
+    parts.push(content.slice(lastIndex));
+  }
+  return parts;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -154,6 +220,8 @@ export function CardModal({
   boardId,
   card,
   columnId,
+  currentUser,
+  isOwner,
   onCreate,
   onDelete,
   onCardUpdated,
@@ -173,8 +241,14 @@ export function CardModal({
   const [newChecklistText, setNewChecklistText] = useState("");
   const [showStartTime, setShowStartTime] = useState(false);
   const [showDueTime, setShowDueTime] = useState(false);
+  const [commentText, setCommentText] = useState("");
+  const [commentFocused, setCommentFocused] = useState(false);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState("");
+  const [watchLoading, setWatchLoading] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const commentRef = useRef<HTMLTextAreaElement>(null);
   const requestVersion = useRef(0);
   const onCardUpdatedRef = useRef(onCardUpdated);
   onCardUpdatedRef.current = onCardUpdated;
@@ -232,6 +306,10 @@ export function CardModal({
     setDetail({
       ...card,
       activity: [],
+      timeline: [],
+      is_watching: false,
+      watcher_count: 0,
+      board_members: [],
     });
 
     void Promise.all([
@@ -382,6 +460,69 @@ export function CardModal({
       (current) => ({ ...current, description: nextDescription }),
       () => setDescriptionDraft(previousDescription)
     );
+  }
+
+  async function handleToggleWatch(): Promise<void> {
+    if (!card || !detail || watchLoading) return;
+    setWatchLoading(true);
+    try {
+      const { watching } = await api.toggleWatch(boardId, card.id);
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_watching: watching,
+              watcher_count: watching
+                ? prev.watcher_count + 1
+                : Math.max(0, prev.watcher_count - 1),
+            }
+          : prev
+      );
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    } finally {
+      setWatchLoading(false);
+    }
+  }
+
+  async function handleSubmitComment(): Promise<void> {
+    if (!card || !detail) return;
+    const trimmed = commentText.trim();
+    if (trimmed === "") return;
+
+    setCommentText("");
+    setCommentFocused(false);
+    try {
+      await api.createComment(boardId, card.id, trimmed);
+      await refreshDetail();
+    } catch (err: unknown) {
+      setCommentText(trimmed);
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function handleUpdateComment(commentId: string): Promise<void> {
+    if (!card) return;
+    const trimmed = editingCommentText.trim();
+    if (trimmed === "") return;
+
+    setEditingCommentId(null);
+    try {
+      await api.updateComment(boardId, card.id, commentId, trimmed);
+      await refreshDetail();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function handleDeleteComment(commentId: string): Promise<void> {
+    if (!card || !window.confirm("Delete this comment?")) return;
+    try {
+      await api.deleteComment(boardId, card.id, commentId);
+      await refreshDetail();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
   }
 
   function isDateRangeValid(
@@ -727,9 +868,22 @@ export function CardModal({
               </button>
             )}
           </div>
-          <button className="btn-icon modal-close-btn" onClick={onClose} title="Close">
-            &times;
-          </button>
+          <div className="card-modal-header-actions">
+            {detail && (
+              <button
+                className={`btn-watch${detail.is_watching ? " watching" : ""}`}
+                onClick={() => void handleToggleWatch()}
+                disabled={watchLoading}
+                title={detail.is_watching ? "Watching" : "Watch"}
+              >
+                <span className="watch-icon">{detail.is_watching ? "\u{1F441}\uFE0F" : "\u{1F441}"}</span>
+                <span className="watch-count">{detail.watcher_count}</span>
+              </button>
+            )}
+            <button className="btn-icon modal-close-btn" onClick={onClose} title="Close">
+              &times;
+            </button>
+          </div>
         </div>
 
         {error && <p className="modal-inline-error">{error}</p>}
@@ -1072,19 +1226,205 @@ export function CardModal({
             <section className="card-section">
               <div className="card-section-header">
                 <h3>Activity</h3>
+                <span className="section-meta">
+                  {detail.timeline.filter((item) => item.type === "comment").length} comment{detail.timeline.filter((item) => item.type === "comment").length === 1 ? "" : "s"}
+                </span>
               </div>
-              {detail.activity.length === 0 ? (
+
+              <div className="comment-input-area">
+                {commentFocused ? (
+                  <div className="comment-compose">
+                    <textarea
+                      ref={commentRef}
+                      className="comment-textarea"
+                      placeholder="Write a comment..."
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                          e.preventDefault();
+                          void handleSubmitComment();
+                        }
+                        if (e.key === "Escape") {
+                          setCommentFocused(false);
+                        }
+                      }}
+                      rows={3}
+                      autoFocus
+                    />
+                    <div className="comment-compose-actions">
+                      <button
+                        className="btn-primary btn-sm"
+                        onClick={() => void handleSubmitComment()}
+                        disabled={commentText.trim() === ""}
+                      >
+                        Save
+                      </button>
+                      <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => {
+                          setCommentFocused(false);
+                          setCommentText("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <span className="comment-hint">Ctrl+Enter to submit</span>
+                    </div>
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    className="comment-input-collapsed"
+                    placeholder="Write a comment..."
+                    onFocus={() => setCommentFocused(true)}
+                    readOnly
+                  />
+                )}
+              </div>
+
+              {detail.timeline.length === 0 ? (
                 <p className="empty-inline-state">No activity recorded</p>
               ) : (
-                <div className="activity-log">
-                  {detail.activity.map((activity) => (
-                    <div key={activity.id} className="activity-item">
-                      <p className="activity-copy">{describeActivity(activity)}</p>
-                      <p className="activity-time">
-                        {formatActivityTimestamp(activity.timestamp)}
-                      </p>
-                    </div>
-                  ))}
+                <div className="timeline">
+                  {detail.timeline.map((item) => {
+                    if (item.type === "comment") {
+                      const canEdit = item.user_id === currentUser.id;
+                      const canDelete = item.user_id === currentUser.id || isOwner;
+                      const isEditing = editingCommentId === item.id;
+
+                      return (
+                        <div key={item.id} className="timeline-item timeline-comment">
+                          <span
+                            className="timeline-avatar"
+                            style={{ backgroundColor: getAvatarColor(item.username) }}
+                          >
+                            {item.username.charAt(0).toUpperCase()}
+                          </span>
+                          <div className="timeline-content">
+                            <div className="timeline-meta">
+                              <strong className="timeline-username">{item.username}</strong>
+                              <span className="timeline-time">{relativeTime(item.created_at)}</span>
+                              {item.created_at !== item.updated_at && (
+                                <span className="timeline-edited">(edited)</span>
+                              )}
+                            </div>
+                            {isEditing ? (
+                              <div className="comment-edit-area">
+                                <textarea
+                                  className="comment-textarea"
+                                  value={editingCommentText}
+                                  onChange={(e) => setEditingCommentText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                                      e.preventDefault();
+                                      void handleUpdateComment(item.id);
+                                    }
+                                    if (e.key === "Escape") {
+                                      setEditingCommentId(null);
+                                    }
+                                  }}
+                                  rows={3}
+                                  autoFocus
+                                />
+                                <div className="comment-compose-actions">
+                                  <button
+                                    className="btn-primary btn-sm"
+                                    onClick={() => void handleUpdateComment(item.id)}
+                                    disabled={editingCommentText.trim() === ""}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="btn-secondary btn-sm"
+                                    onClick={() => setEditingCommentId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="timeline-comment-body">
+                                {renderMentions(item.content, detail.board_members)}
+                              </p>
+                            )}
+                            {!isEditing && (canEdit || canDelete) && (
+                              <div className="timeline-actions">
+                                {canEdit && (
+                                  <button
+                                    className="btn-text btn-xs"
+                                    onClick={() => {
+                                      setEditingCommentId(item.id);
+                                      setEditingCommentText(item.content);
+                                    }}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                {canDelete && (
+                                  <button
+                                    className="btn-text btn-xs btn-danger-text"
+                                    onClick={() => void handleDeleteComment(item.id)}
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {item.reactions.length > 0 && (
+                              <div className="reaction-chips">
+                                {item.reactions.map((r) => (
+                                  <span
+                                    key={r.emoji}
+                                    className={`reaction-chip${r.user_ids.includes(currentUser.id) ? " reaction-mine" : ""}`}
+                                  >
+                                    {r.emoji} {r.count}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={item.id} className="timeline-item timeline-activity">
+                        <span className="timeline-activity-icon">
+                          {"\u2022"}
+                        </span>
+                        <div className="timeline-content">
+                          <p className="timeline-activity-text">
+                            <span className="timeline-actor">
+                              {item.username ?? "System"}
+                            </span>
+                            {" "}
+                            {describeActivity({
+                              id: item.id,
+                              card_id: "",
+                              board_id: "",
+                              action: item.action,
+                              detail: item.detail,
+                              timestamp: item.timestamp,
+                            })}
+                          </p>
+                          <span className="timeline-time">{relativeTime(item.timestamp)}</span>
+                          {item.reactions.length > 0 && (
+                            <div className="reaction-chips">
+                              {item.reactions.map((r) => (
+                                <span
+                                  key={r.emoji}
+                                  className={`reaction-chip${r.user_ids.includes(currentUser.id) ? " reaction-mine" : ""}`}
+                                >
+                                  {r.emoji} {r.count}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </section>

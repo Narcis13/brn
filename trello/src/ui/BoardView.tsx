@@ -6,7 +6,7 @@ import {
   useRef,
 } from "react";
 import type { CSSProperties } from "react";
-import type { Column, BoardCard, CardDetail, Label } from "./api.ts";
+import type { Column, BoardCard, CardDetail, Label, BoardMember, User } from "./api.ts";
 import * as api from "./api.ts";
 import { renderInlineContent } from "./render-inline.tsx";
 import { getDueBadge } from "./card-utils.ts";
@@ -26,6 +26,7 @@ export type ViewMode = "board" | "calendar";
 
 interface BoardViewProps {
   boardId: string;
+  currentUser: User;
 }
 
 interface ModalState {
@@ -119,10 +120,30 @@ function clearColumnDropIndicators(): void {
     });
 }
 
-export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
+const AVATAR_COLORS = [
+  "#e74c3c", "#3498db", "#27ae60", "#f39c12", "#8e44ad",
+  "#16a085", "#c0392b", "#2980b9", "#d35400", "#2d3436",
+];
+
+function getAvatarColor(username: string): string {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) {
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length] ?? AVATAR_COLORS[0]!;
+}
+
+export function BoardView({ boardId, currentUser }: BoardViewProps): React.ReactElement {
   const [viewMode, setViewMode] = useState<ViewMode>("board");
   const [columns, setColumns] = useState<Column[]>([]);
   const [boardLabels, setBoardLabels] = useState<Label[]>([]);
+  const [members, setMembers] = useState<BoardMember[]>([]);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteUsername, setInviteUsername] = useState("");
+  const [inviteStatus, setInviteStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const inviteRef = useRef<HTMLDivElement>(null);
+  const inviteInputRef = useRef<HTMLInputElement>(null);
   const [modal, setModal] = useState<ModalState>({
     open: false,
     card: null,
@@ -146,13 +167,15 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
   const dragColumnId = useRef<string | null>(null);
 
   const loadBoard = useCallback(async (): Promise<void> => {
-    const [{ columns: nextColumns }, { labels: nextLabels }] = await Promise.all([
+    const [{ columns: nextColumns }, { labels: nextLabels }, { members: nextMembers }] = await Promise.all([
       api.fetchColumns(boardId),
       api.fetchBoardLabels(boardId),
+      api.fetchBoardMembers(boardId),
     ]);
 
     setColumns(nextColumns);
     setBoardLabels(nextLabels);
+    setMembers(nextMembers);
   }, [boardId]);
 
   useEffect(() => {
@@ -218,6 +241,58 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
       controller.abort();
     };
   }, [activeLabelId, boardId, columns, deferredSearchText]);
+
+  useEffect(() => {
+    if (!showInvite) return;
+    inviteInputRef.current?.focus();
+
+    function handleClickOutside(event: MouseEvent): void {
+      if (inviteRef.current && !inviteRef.current.contains(event.target as Node)) {
+        setShowInvite(false);
+        setInviteUsername("");
+        setInviteStatus(null);
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setShowInvite(false);
+        setInviteUsername("");
+        setInviteStatus(null);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showInvite]);
+
+  async function handleInvite(): Promise<void> {
+    const trimmed = inviteUsername.trim();
+    if (trimmed === "" || inviteLoading) return;
+
+    setInviteLoading(true);
+    setInviteStatus(null);
+    try {
+      await api.inviteMember(boardId, trimmed);
+      setInviteStatus({ type: "success", message: `Invited ${trimmed}` });
+      setInviteUsername("");
+      const { members: nextMembers } = await api.fetchBoardMembers(boardId);
+      setMembers(nextMembers);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to invite";
+      setInviteStatus({ type: "error", message });
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  const isOwner = members.some((m) => m.id === currentUser.id && m.role === "owner");
+  const displayMembers = members.slice(0, 5);
+  const overflowCount = members.length - 5;
 
   async function handleAddColumn(): Promise<void> {
     await api.createColumn(boardId, "New Column");
@@ -546,20 +621,92 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
     <>
       <div className="board-shell">
         <div className="board-controls">
-          <div className="board-view-tabs">
-            <button
-              className={`board-view-tab${viewMode === "board" ? " active" : ""}`}
-              onClick={() => setViewMode("board")}
-            >
-              Board
-            </button>
-            <span className="board-view-divider">|</span>
-            <button
-              className={`board-view-tab${viewMode === "calendar" ? " active" : ""}`}
-              onClick={() => setViewMode("calendar")}
-            >
-              Calendar
-            </button>
+          <div className="board-controls-top">
+            <div className="board-view-tabs">
+              <button
+                className={`board-view-tab${viewMode === "board" ? " active" : ""}`}
+                onClick={() => setViewMode("board")}
+              >
+                Board
+              </button>
+              <span className="board-view-divider">|</span>
+              <button
+                className={`board-view-tab${viewMode === "calendar" ? " active" : ""}`}
+                onClick={() => setViewMode("calendar")}
+              >
+                Calendar
+              </button>
+            </div>
+
+            <div className="board-members-section">
+            <div className="member-avatars">
+              {displayMembers.map((member) => (
+                <span
+                  key={member.id}
+                  className={`member-avatar${member.role === "owner" ? " member-avatar-owner" : ""}`}
+                  style={{ backgroundColor: getAvatarColor(member.username) }}
+                  title={`${member.username}${member.role === "owner" ? " (owner)" : ""}`}
+                >
+                  {member.username.charAt(0).toUpperCase()}
+                </span>
+              ))}
+              {overflowCount > 0 && (
+                <span className="member-avatar member-avatar-overflow" title={`${overflowCount} more member${overflowCount === 1 ? "" : "s"}`}>
+                  +{overflowCount}
+                </span>
+              )}
+            </div>
+
+            {isOwner && (
+              <div className="invite-wrapper" ref={inviteRef}>
+                <button
+                  className="btn-invite"
+                  onClick={() => {
+                    setShowInvite((prev) => !prev);
+                    setInviteStatus(null);
+                    setInviteUsername("");
+                  }}
+                  title="Invite member"
+                >
+                  +
+                </button>
+                {showInvite && (
+                  <div className="invite-popover">
+                    <p className="invite-popover-title">Invite to board</p>
+                    <div className="invite-input-row">
+                      <input
+                        ref={inviteInputRef}
+                        type="text"
+                        className="invite-input"
+                        placeholder="Username"
+                        value={inviteUsername}
+                        onChange={(e) => {
+                          setInviteUsername(e.target.value);
+                          if (inviteStatus) setInviteStatus(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleInvite();
+                        }}
+                        disabled={inviteLoading}
+                      />
+                      <button
+                        className="btn-primary btn-sm"
+                        onClick={() => void handleInvite()}
+                        disabled={inviteUsername.trim() === "" || inviteLoading}
+                      >
+                        {inviteLoading ? "..." : "Invite"}
+                      </button>
+                    </div>
+                    {inviteStatus && (
+                      <p className={`invite-status invite-status-${inviteStatus.type}`}>
+                        {inviteStatus.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           </div>
 
           {viewMode === "board" && (
@@ -796,6 +943,8 @@ export function BoardView({ boardId }: BoardViewProps): React.ReactElement {
           boardId={boardId}
           card={modal.card}
           columnId={modal.columnId}
+          currentUser={currentUser}
+          isOwner={isOwner}
           onCreate={handleCreateCard}
           onDelete={modal.card ? () => handleDeleteCard() : null}
           onCardUpdated={handleCardUpdated}

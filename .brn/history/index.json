@@ -42,5 +42,16 @@
     "ac_progress": "8/14",
     "vault_entries_added": 3,
     "files_changed": 4
+  },
+  {
+    "id": "run-005",
+    "timestamp": "2026-03-25T15:22:10Z",
+    "status": "success",
+    "focus": "Board members UI, watch button, unified timeline display",
+    "summary": "Added frontend API client for all social interactions, built board header member avatars with invite popover (AC9), watch button in card modal (AC13), unified comment/activity timeline with @mention rendering and comment CRUD (AC10, AC11). 25 new tests, all 308 pass.",
+    "ac_met": ["AC9", "AC10", "AC11", "AC13"],
+    "ac_progress": "12/14",
+    "vault_entries_added": 3,
+    "files_changed": 6
   }
 ]
