@@ -1146,9 +1146,10 @@ describe("activity user_id tracking", () => {
 
     const detailRes = await app.fetch(authReq("GET", `/api/boards/${board.id}/cards/${cardId}`, token));
     expect(detailRes.status).toBe(200);
-    const detail = (await detailRes.json()) as { activity: { user_id: string | null }[] };
-    expect(detail.activity.length).toBeGreaterThan(0);
-    expect(detail.activity[0]!.user_id).toBeTruthy();
+    const detail = (await detailRes.json()) as { timeline: { type: string; user_id: string | null }[] };
+    const activityItems = detail.timeline.filter(t => t.type === "activity");
+    expect(activityItems.length).toBeGreaterThan(0);
+    expect(activityItems[0]!.user_id).toBeTruthy();
   });
 });
 

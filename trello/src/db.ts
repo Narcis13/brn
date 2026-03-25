@@ -852,28 +852,160 @@ export function updateCardWithActivity(
   return updatedCard;
 }
 
+export interface ReactionGroup {
+  emoji: string;
+  count: number;
+  user_ids: string[];
+}
+
+export interface TimelineComment {
+  type: "comment";
+  id: string;
+  content: string;
+  user_id: string;
+  username: string;
+  created_at: string;
+  updated_at: string;
+  reactions: ReactionGroup[];
+}
+
+export interface TimelineActivity {
+  type: "activity";
+  id: string;
+  action: string;
+  detail: string | null;
+  user_id: string | null;
+  username: string | null;
+  timestamp: string;
+  reactions: ReactionGroup[];
+}
+
+export type TimelineItem = TimelineComment | TimelineActivity;
+
 export interface CardDetail extends CardRow {
   labels: LabelRow[];
-  activity: ActivityRow[];
+  timeline: TimelineItem[];
+  is_watching: boolean;
+  watcher_count: number;
+  board_members: { id: string; username: string }[];
   checklist_total: number;
   checklist_done: number;
 }
 
-export function getCardDetail(db: Database, cardId: string): CardDetail | null {
+export function getCardComments(db: Database, cardId: string): CommentWithUser[] {
+  return db.query(
+    `SELECT c.id, c.card_id, c.board_id, c.user_id, u.username, c.content, c.created_at, c.updated_at
+     FROM comments c
+     JOIN users u ON c.user_id = u.id
+     WHERE c.card_id = ?
+     ORDER BY c.created_at DESC`
+  ).all(cardId) as CommentWithUser[];
+}
+
+export function getReactionsGrouped(
+  db: Database,
+  targetType: "comment" | "activity",
+  targetIds: string[]
+): Map<string, ReactionGroup[]> {
+  const result = new Map<string, ReactionGroup[]>();
+  if (targetIds.length === 0) return result;
+
+  const placeholders = targetIds.map(() => "?").join(",");
+  const rows = db.query(
+    `SELECT target_id, emoji, user_id
+     FROM reactions
+     WHERE target_type = ? AND target_id IN (${placeholders})
+     ORDER BY created_at ASC`
+  ).all(targetType, ...targetIds) as { target_id: string; emoji: string; user_id: string }[];
+
+  // Group by target_id then by emoji
+  for (const row of rows) {
+    const groups = result.get(row.target_id) ?? [];
+    const existing = groups.find(g => g.emoji === row.emoji);
+    if (existing) {
+      existing.count++;
+      existing.user_ids.push(row.user_id);
+    } else {
+      groups.push({ emoji: row.emoji, count: 1, user_ids: [row.user_id] });
+    }
+    result.set(row.target_id, groups);
+  }
+
+  return result;
+}
+
+export function getCardDetail(db: Database, cardId: string, userId: string): CardDetail | null {
   const card = getCardById(db, cardId);
   if (!card) return null;
 
   const labels = getCardLabels(db, cardId);
-  const activity = getCardActivity(db, cardId, 50); // Last 50 entries
-
   const checklistStats = getChecklistStats(card.checklist);
+
+  // Get comments and activity for this card
+  const comments = getCardComments(db, cardId);
+  const activity = getCardActivity(db, cardId, 200); // Get all recent
+
+  // Get reactions for both comments and activity
+  const commentReactions = getReactionsGrouped(db, "comment", comments.map(c => c.id));
+  const activityReactions = getReactionsGrouped(db, "activity", activity.map(a => a.id));
+
+  // Build timeline items
+  const commentItems: TimelineComment[] = comments.map(c => ({
+    type: "comment" as const,
+    id: c.id,
+    content: c.content,
+    user_id: c.user_id,
+    username: c.username,
+    created_at: c.created_at,
+    updated_at: c.updated_at,
+    reactions: commentReactions.get(c.id) ?? [],
+  }));
+
+  // Get usernames for activity entries
+  const activityUserIds = [...new Set(activity.filter(a => a.user_id).map(a => a.user_id as string))];
+  const usernameMap = new Map<string, string>();
+  for (const uid of activityUserIds) {
+    const user = db.query("SELECT username FROM users WHERE id = ?").get(uid) as { username: string } | null;
+    if (user) usernameMap.set(uid, user.username);
+  }
+
+  const activityItems: TimelineActivity[] = activity.map(a => ({
+    type: "activity" as const,
+    id: a.id,
+    action: a.action,
+    detail: a.detail,
+    user_id: a.user_id,
+    username: a.user_id ? (usernameMap.get(a.user_id) ?? null) : null,
+    timestamp: a.timestamp,
+    reactions: activityReactions.get(a.id) ?? [],
+  }));
+
+  // Merge and sort newest first
+  const timeline: TimelineItem[] = [...commentItems, ...activityItems].sort((a, b) => {
+    const timeA = a.type === "comment" ? a.created_at : a.timestamp;
+    const timeB = b.type === "comment" ? b.created_at : b.timestamp;
+    return timeB.localeCompare(timeA);
+  });
+
+  // Get board_id from card's column
+  const col = getColumnById(db, card.column_id);
+  const boardId = col?.board_id ?? "";
+
+  // Get board members for @mention autocomplete
+  const members = getBoardMembers(db, boardId).map(m => ({
+    id: m.user_id,
+    username: m.username,
+  }));
 
   return {
     ...card,
     labels,
-    activity,
+    timeline,
+    is_watching: isWatching(db, cardId, userId),
+    watcher_count: getWatcherCount(db, cardId),
+    board_members: members,
     checklist_total: checklistStats.total,
-    checklist_done: checklistStats.done
+    checklist_done: checklistStats.done,
   };
 }
 
@@ -1243,4 +1375,130 @@ export function getWatcherCount(db: Database, cardId: string): number {
     "SELECT COUNT(*) as count FROM card_watchers WHERE card_id = ?"
   ).get(cardId) as { count: number };
   return row.count;
+}
+
+// --- Board-wide activity feed ---
+
+export interface BoardFeedItem {
+  type: "comment" | "activity";
+  id: string;
+  card_id: string;
+  card_title: string;
+  user_id: string | null;
+  username: string | null;
+  timestamp: string;
+  // comment-specific
+  content?: string;
+  // activity-specific
+  action?: string;
+  detail?: string | null;
+  reactions: ReactionGroup[];
+}
+
+export interface BoardFeedResult {
+  items: BoardFeedItem[];
+  has_more: boolean;
+}
+
+export function getBoardFeed(
+  db: Database,
+  boardId: string,
+  limit: number = 30,
+  before?: string
+): BoardFeedResult {
+  const effectiveLimit = Math.min(Math.max(limit, 1), 100);
+
+  // Get comments for this board
+  const commentWhere = before
+    ? "WHERE c.board_id = ? AND c.created_at < ?"
+    : "WHERE c.board_id = ?";
+  const commentParams = before ? [boardId, before] : [boardId];
+
+  const comments = db.query(
+    `SELECT c.id, c.card_id, c.user_id, u.username, c.content, c.created_at as timestamp,
+            cards.title as card_title
+     FROM comments c
+     JOIN users u ON c.user_id = u.id
+     JOIN cards ON c.card_id = cards.id
+     ${commentWhere}
+     ORDER BY c.created_at DESC`
+  ).all(...commentParams) as {
+    id: string; card_id: string; user_id: string; username: string;
+    content: string; timestamp: string; card_title: string;
+  }[];
+
+  // Get activity for this board
+  const activityWhere = before
+    ? "WHERE a.board_id = ? AND a.timestamp < ?"
+    : "WHERE a.board_id = ?";
+  const activityParams = before ? [boardId, before] : [boardId];
+
+  const activities = db.query(
+    `SELECT a.id, a.card_id, a.action, a.detail, a.user_id, a.timestamp,
+            cards.title as card_title
+     FROM activity a
+     JOIN cards ON a.card_id = cards.id
+     ${activityWhere}
+     ORDER BY a.timestamp DESC`
+  ).all(...activityParams) as {
+    id: string; card_id: string; action: string; detail: string | null;
+    user_id: string | null; timestamp: string; card_title: string;
+  }[];
+
+  // Get usernames for activity entries
+  const activityUserIds = [...new Set(activities.filter(a => a.user_id).map(a => a.user_id as string))];
+  const usernameMap = new Map<string, string>();
+  for (const uid of activityUserIds) {
+    const user = db.query("SELECT username FROM users WHERE id = ?").get(uid) as { username: string } | null;
+    if (user) usernameMap.set(uid, user.username);
+  }
+
+  // Build feed items
+  const commentItems: BoardFeedItem[] = comments.map(c => ({
+    type: "comment" as const,
+    id: c.id,
+    card_id: c.card_id,
+    card_title: c.card_title,
+    user_id: c.user_id,
+    username: c.username,
+    timestamp: c.timestamp,
+    content: c.content,
+    reactions: [],
+  }));
+
+  const activityItems: BoardFeedItem[] = activities.map(a => ({
+    type: "activity" as const,
+    id: a.id,
+    card_id: a.card_id,
+    card_title: a.card_title,
+    user_id: a.user_id,
+    username: a.user_id ? (usernameMap.get(a.user_id) ?? null) : null,
+    timestamp: a.timestamp,
+    action: a.action,
+    detail: a.detail,
+    reactions: [],
+  }));
+
+  // Merge, sort newest first, apply limit + 1 to detect has_more
+  const allItems = [...commentItems, ...activityItems]
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  const hasMore = allItems.length > effectiveLimit;
+  const items = allItems.slice(0, effectiveLimit);
+
+  // Get reactions for the items we're returning
+  const commentIds = items.filter(i => i.type === "comment").map(i => i.id);
+  const activityIds = items.filter(i => i.type === "activity").map(i => i.id);
+
+  const commentReactions = getReactionsGrouped(db, "comment", commentIds);
+  const activityReactions = getReactionsGrouped(db, "activity", activityIds);
+
+  for (const item of items) {
+    const reactions = item.type === "comment"
+      ? commentReactions.get(item.id)
+      : activityReactions.get(item.id);
+    if (reactions) item.reactions = reactions;
+  }
+
+  return { items, has_more: hasMore };
 }

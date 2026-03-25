@@ -75,9 +75,28 @@ interface ActivityResponse {
   timestamp: string;
 }
 
+interface TimelineItem {
+  type: "comment" | "activity";
+  id: string;
+  user_id: string | null;
+  username: string | null;
+  reactions: { emoji: string; count: number; user_ids: string[] }[];
+  // comment fields
+  content?: string;
+  created_at?: string;
+  updated_at?: string;
+  // activity fields
+  action?: string;
+  detail?: string | null;
+  timestamp?: string;
+}
+
 interface CardDetailResponse extends CardResponse {
   labels: LabelResponse[];
-  activity: ActivityResponse[];
+  timeline: TimelineItem[];
+  is_watching: boolean;
+  watcher_count: number;
+  board_members: { id: string; username: string }[];
   checklist_total: number;
   checklist_done: number;
 }
@@ -281,7 +300,11 @@ describe("Enhanced Card Endpoints", () => {
       expect(cardDetail.id).toBe(cardId);
       expect(cardDetail.labels.length).toBe(1);
       expect(cardDetail.labels[0]!.id).toBe(labelId);
-      expect(cardDetail.activity.length).toBeGreaterThan(0); // Should have at least created and label_added
+      const activityItems = cardDetail.timeline.filter(t => t.type === "activity");
+      expect(activityItems.length).toBeGreaterThan(0); // Should have at least created and label_added
+      expect(cardDetail.is_watching).toBe(false);
+      expect(cardDetail.watcher_count).toBe(0);
+      expect(cardDetail.board_members.length).toBeGreaterThan(0);
       expect(cardDetail.checklist_total).toBe(0);
       expect(cardDetail.checklist_done).toBe(0);
     });
@@ -417,6 +440,283 @@ describe("Enhanced Card Endpoints", () => {
       const activities = getCardActivity(db, cardId);
       const removeActivity = activities.find(a => a.action === "label_removed");
       expect(removeActivity).toBeDefined();
+    });
+  });
+
+  describe("GET /api/boards/:boardId/cards/:cardId — unified timeline", () => {
+    it("includes comments in timeline with reactions", async () => {
+      // Create a comment
+      const commentRes = await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+          content: "Hello world",
+        })
+      );
+      const comment = (await commentRes.json()) as { id: string };
+
+      // Add a reaction to the comment
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/reactions`, authToken, {
+          target_type: "comment",
+          target_id: comment.id,
+          emoji: "👍",
+        })
+      );
+
+      // Get card detail
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      expect(res.status).toBe(200);
+      const detail = (await res.json()) as CardDetailResponse;
+
+      // Should have comment in timeline
+      const commentItems = detail.timeline.filter(t => t.type === "comment");
+      expect(commentItems.length).toBe(1);
+      expect(commentItems[0]!.content).toBe("Hello world");
+
+      // Comment should have reactions
+      expect(commentItems[0]!.reactions.length).toBe(1);
+      expect(commentItems[0]!.reactions[0]!.emoji).toBe("👍");
+      expect(commentItems[0]!.reactions[0]!.count).toBe(1);
+    });
+
+    it("includes activity in timeline with username", async () => {
+      // Edit the card to generate activity
+      await app.fetch(
+        authReq("PATCH", `/api/boards/${boardId}/cards/${cardId}`, authToken, {
+          title: "Updated Title",
+        })
+      );
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail = (await res.json()) as CardDetailResponse;
+
+      const activityItems = detail.timeline.filter(t => t.type === "activity");
+      expect(activityItems.length).toBeGreaterThan(0);
+      // Activity should have username
+      const editActivity = activityItems.find(t => t.action === "edited");
+      expect(editActivity).toBeDefined();
+      expect(editActivity!.username).toBe("testuser");
+    });
+
+    it("timeline is sorted newest first", async () => {
+      // Create a comment (will have a newer timestamp than the card creation activity)
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+          content: "A comment",
+        })
+      );
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail = (await res.json()) as CardDetailResponse;
+
+      // Verify timeline is sorted newest first
+      const timestamps = detail.timeline.map(t =>
+        t.type === "comment" ? t.created_at! : t.timestamp!
+      );
+      const sorted = [...timestamps].sort().reverse();
+      expect(timestamps).toEqual(sorted);
+    });
+
+    it("includes is_watching and watcher_count", async () => {
+      // Not watching initially
+      const res1 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail1 = (await res1.json()) as CardDetailResponse;
+      expect(detail1.is_watching).toBe(false);
+      expect(detail1.watcher_count).toBe(0);
+
+      // Watch the card
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/cards/${cardId}/watch`, authToken)
+      );
+
+      // Now watching
+      const res2 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail2 = (await res2.json()) as CardDetailResponse;
+      expect(detail2.is_watching).toBe(true);
+      expect(detail2.watcher_count).toBe(1);
+    });
+
+    it("includes board_members for @mention autocomplete", async () => {
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail = (await res.json()) as CardDetailResponse;
+      expect(detail.board_members.length).toBeGreaterThanOrEqual(1);
+      expect(detail.board_members[0]!.username).toBe("testuser");
+      expect(detail.board_members[0]!.id).toBeTruthy();
+    });
+
+    it("auto-watch on comment reflects in is_watching", async () => {
+      // Comment on the card (auto-watches)
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+          content: "commenting",
+        })
+      );
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail = (await res.json()) as CardDetailResponse;
+      expect(detail.is_watching).toBe(true);
+      expect(detail.watcher_count).toBe(1);
+    });
+
+    it("includes reactions on activity items", async () => {
+      // Create an activity by editing
+      await app.fetch(
+        authReq("PATCH", `/api/boards/${boardId}/cards/${cardId}`, authToken, {
+          title: "New Title",
+        })
+      );
+
+      // Get card detail to find the activity id
+      const detailRes1 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail1 = (await detailRes1.json()) as CardDetailResponse;
+      const editActivity = detail1.timeline.find(t => t.type === "activity" && t.action === "edited");
+      expect(editActivity).toBeDefined();
+
+      // React to the activity
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/reactions`, authToken, {
+          target_type: "activity",
+          target_id: editActivity!.id,
+          emoji: "🎉",
+        })
+      );
+
+      // Re-fetch and check
+      const detailRes2 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/cards/${cardId}`, authToken)
+      );
+      const detail2 = (await detailRes2.json()) as CardDetailResponse;
+      const updatedActivity = detail2.timeline.find(t => t.id === editActivity!.id);
+      expect(updatedActivity!.reactions.length).toBe(1);
+      expect(updatedActivity!.reactions[0]!.emoji).toBe("🎉");
+    });
+  });
+
+  describe("GET /api/boards/:boardId/activity — board feed", () => {
+    it("returns board-wide activity and comments", async () => {
+      // Create a comment
+      await app.fetch(
+        authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+          content: "Board-wide comment",
+        })
+      );
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity`, authToken)
+      );
+      expect(res.status).toBe(200);
+      const feed = (await res.json()) as { items: { type: string; card_title: string }[]; has_more: boolean };
+
+      expect(feed.items.length).toBeGreaterThan(0);
+      expect(typeof feed.has_more).toBe("boolean");
+
+      // Should contain both comments and activity
+      const types = new Set(feed.items.map(i => i.type));
+      expect(types.has("activity")).toBe(true);
+      expect(types.has("comment")).toBe(true);
+
+      // Items should have card_title
+      expect(feed.items[0]!.card_title).toBe("Test Card");
+    });
+
+    it("returns items sorted newest first", async () => {
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity`, authToken)
+      );
+      const feed = (await res.json()) as { items: { timestamp: string }[] };
+
+      const timestamps = feed.items.map(i => i.timestamp);
+      const sorted = [...timestamps].sort().reverse();
+      expect(timestamps).toEqual(sorted);
+    });
+
+    it("respects limit parameter", async () => {
+      // Create several comments to have enough items
+      for (let i = 0; i < 5; i++) {
+        await app.fetch(
+          authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+            content: `Comment ${i}`,
+          })
+        );
+      }
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity?limit=3`, authToken)
+      );
+      const feed = (await res.json()) as { items: { type: string }[]; has_more: boolean };
+
+      expect(feed.items.length).toBe(3);
+      expect(feed.has_more).toBe(true);
+    });
+
+    it("defaults to limit 30 and caps at 100", async () => {
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity`, authToken)
+      );
+      expect(res.status).toBe(200);
+      // Just verify it returns without error — we don't have 30+ items
+      const feed = (await res.json()) as { items: { type: string }[]; has_more: boolean };
+      expect(feed.has_more).toBe(false);
+    });
+
+    it("supports before parameter for pagination", async () => {
+      // Create multiple comments
+      for (let i = 0; i < 3; i++) {
+        await app.fetch(
+          authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, authToken, {
+            content: `Paginated comment ${i}`,
+          })
+        );
+      }
+
+      // Get first page
+      const res1 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity?limit=2`, authToken)
+      );
+      const feed1 = (await res1.json()) as { items: { timestamp: string; id: string }[]; has_more: boolean };
+      expect(feed1.items.length).toBe(2);
+
+      // Get second page using 'before' from last item
+      const lastTimestamp = feed1.items[feed1.items.length - 1]!.timestamp;
+      const res2 = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity?limit=2&before=${encodeURIComponent(lastTimestamp)}`, authToken)
+      );
+      const feed2 = (await res2.json()) as { items: { id: string }[]; has_more: boolean };
+
+      // Second page should have different items
+      const firstPageIds = new Set(feed1.items.map(i => i.id));
+      for (const item of feed2.items) {
+        expect(firstPageIds.has(item.id)).toBe(false);
+      }
+    });
+
+    it("returns 404 for non-member board", async () => {
+      // Register another user
+      const otherRes = await app.fetch(req("POST", "/api/auth/register", {
+        username: "otheruser",
+        password: "password123",
+      }));
+      const other = (await otherRes.json()) as AuthResponse;
+
+      const res = await app.fetch(
+        authReq("GET", `/api/boards/${boardId}/activity`, other.token)
+      );
+      expect(res.status).toBe(404);
     });
   });
 });

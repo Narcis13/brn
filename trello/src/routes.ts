@@ -49,6 +49,7 @@ import {
   toggleCardWatcher,
   isWatching,
   getWatcherCount,
+  getBoardFeed,
   type BoardRow,
   type SearchDueFilter,
 } from "./db.ts";
@@ -759,19 +760,20 @@ export function createApp(db: Database): Hono<Env> {
   // --- New Card Detail routes ---
 
   app.get("/api/boards/:boardId/cards/:cardId", (c) => {
-    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, c.req.param("boardId"), userId);
     if (!board) return c.json({ error: "not found" }, 404);
-    
+
     const cardId = c.req.param("cardId");
-    const cardDetail = getCardDetail(db, cardId);
+    const cardDetail = getCardDetail(db, cardId, userId);
     if (!cardDetail) return c.json({ error: "card not found" }, 404);
-    
+
     // Verify card belongs to this board
     const cardCol = getColumnById(db, cardDetail.column_id);
     if (!cardCol || cardCol.board_id !== board.id) {
       return c.json({ error: "card not found" }, 404);
     }
-    
+
     return c.json(cardDetail);
   });
 
@@ -797,12 +799,26 @@ export function createApp(db: Database): Hono<Env> {
     return c.json({ activity });
   });
 
+  // --- Board activity feed ---
+
+  app.get("/api/boards/:boardId/activity", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const url = new URL(c.req.url);
+    const limitParam = parseInt(url.searchParams.get("limit") || "30", 10);
+    const before = url.searchParams.get("before") ?? undefined;
+
+    const feed = getBoardFeed(db, board.id, limitParam, before);
+    return c.json(feed);
+  });
+
   // --- Search route ---
 
   app.get("/api/boards/:boardId/search", (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
-    
+
     const url = new URL(c.req.url);
     const q = url.searchParams.get("q")?.trim() || undefined;
     const labelId = url.searchParams.get("label") || undefined;

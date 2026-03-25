@@ -1,0 +1,38 @@
+{
+  "id": "run-004",
+  "timestamp": "2026-03-25T14:00:45Z",
+  "duration_seconds": 262,
+  "status": "success",
+  "focus": "Enhanced card detail with unified timeline + board activity feed",
+  "summary": "Rewrote getCardDetail to return unified timeline (comments+activity with reactions), is_watching, watcher_count, board_members. Added board-wide activity feed endpoint with before-cursor pagination. 13 new tests, all 283 pass.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": [
+    "trello/src/db.ts",
+    "trello/src/routes.ts",
+    "trello/src/routes-card-detail.test.ts",
+    "trello/src/routes.test.ts"
+  ],
+  "files_deleted": [],
+  "tests": {
+    "passed": 283,
+    "failed": 0,
+    "skipped": 0,
+    "total": 283
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC7", "AC8"],
+  "acceptance_criteria_progress": "8/14",
+  "vault_updates": [
+    "patterns/unified-timeline-pattern.md",
+    "patterns/grouped-reactions-pattern.md",
+    "decisions/timeline-replaces-activity-array.md"
+  ],
+  "retry": false,
+  "challenges": "Two existing tests needed updating for new response shape — straightforward fix",
+  "next_focus": "AC9: Board header member avatars + invite popover UI"
+}
