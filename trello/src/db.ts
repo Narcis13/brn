@@ -99,9 +99,9 @@ function migrate(db: Database): void {
     db.exec("ALTER TABLE cards ADD COLUMN checklist TEXT DEFAULT '[]'");
   }
   if (!cardColumnNames.includes('updated_at')) {
-    db.exec("ALTER TABLE cards ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
-    // Set updated_at to created_at for existing cards
-    db.exec("UPDATE cards SET updated_at = created_at WHERE updated_at = datetime('now')");
+    db.exec("ALTER TABLE cards ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''");
+    // Backfill: use created_at for existing rows, then rely on app logic for new inserts
+    db.exec("UPDATE cards SET updated_at = COALESCE(created_at, datetime('now')) WHERE updated_at = ''");
   }
 
   // Create labels table
@@ -370,7 +370,7 @@ export function createCard(
   const id = nanoid();
   const position = maxPos.m + 1;
   db.query(
-    "INSERT INTO cards (id, title, description, position, column_id, due_date) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO cards (id, title, description, position, column_id, due_date, updated_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))"
   ).run(id, title, description, position, columnId, dueDate);
 
   // Create activity for card creation
