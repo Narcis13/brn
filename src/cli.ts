@@ -125,6 +125,9 @@ async function main(): Promise<void> {
     case 'auth':
       await handleAuth(subcommand, rest);
       break;
+    case 'serve':
+      await handleServe(rest);
+      break;
     default:
       console.log(`Command '${command}' is not yet implemented.`);
       process.exit(0);
@@ -212,6 +215,41 @@ async function handleAuth(subcommand: string | undefined, args: string[]): Promi
       console.error('  logout                         Remove saved session');
       process.exit(1);
   }
+}
+
+async function handleServe(args: string[]): Promise<void> {
+  let port = 3001;
+  
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--port' && args[i + 1]) {
+      const parsed = Number(args[i + 1]);
+      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+        console.error('Invalid port number. Must be between 1 and 65535.');
+        process.exit(1);
+      }
+      port = parsed;
+      break;
+    }
+  }
+  
+  // Build the UI bundle first
+  console.log('Building UI bundle...');
+  const buildResult = await Bun.$`cd ${import.meta.dir} && bun run build.ts`.quiet();
+  if (buildResult.exitCode !== 0) {
+    console.error('Build failed');
+    process.exit(1);
+  }
+  
+  // Start the server
+  const { spawn } = await import('bun');
+  const proc = spawn(['bun', 'run', `${import.meta.dir}/src/index.ts`], {
+    env: { ...process.env, PORT: port.toString() },
+    stdout: 'inherit',
+    stderr: 'inherit',
+  });
+  
+  // Wait for the process to exit
+  await proc.exited;
 }
 
 main().catch(err => {

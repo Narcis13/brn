@@ -27,4 +27,4 @@ const server = Bun.serve({
   },
 });
 
-console.log(`Mini Trello running at http://localhost:${server.port}`);
+console.log(`Takt running at http://localhost:${server.port}`);
