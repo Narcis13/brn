@@ -1476,3 +1476,294 @@ describe("DELETE /api/boards/:boardId/cards/:cardId/comments/:commentId", () => 
     expect(res.status).toBe(404);
   });
 });
+
+// ============================================================
+// Reactions
+// ============================================================
+
+interface ReactionResponse {
+  action: "added" | "removed";
+  reaction: { id: string; emoji: string; user_id: string };
+}
+
+async function createTestComment(
+  token: string,
+  boardId: string,
+  cardId: string,
+  content: string = "Test comment"
+): Promise<CommentResponse> {
+  const res = await app.fetch(
+    authReq("POST", `/api/boards/${boardId}/cards/${cardId}/comments`, token, { content })
+  );
+  return res.json() as Promise<CommentResponse>;
+}
+
+describe("POST /api/boards/:boardId/reactions", () => {
+  it("adds a reaction to a comment and returns added action", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as ReactionResponse;
+    expect(data.action).toBe("added");
+    expect(data.reaction.emoji).toBe("👍");
+    expect(data.reaction.user_id).toBe(alice.user.id);
+  });
+
+  it("toggles off an existing reaction (removes it)", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    // Add reaction
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+
+    // Toggle off
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as ReactionResponse;
+    expect(data.action).toBe("removed");
+  });
+
+  it("adds a reaction to an activity entry", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Get the "created" activity entry
+    const actRes = await app.fetch(
+      authReq("GET", `/api/boards/${board.id}/cards/${cardId}/activity`, alice.token)
+    );
+    const actData = (await actRes.json()) as { activity: { id: string }[] };
+    const activityId = actData.activity[0]!.id;
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "activity",
+        target_id: activityId,
+        emoji: "🎉",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as ReactionResponse;
+    expect(data.action).toBe("added");
+    expect(data.reaction.emoji).toBe("🎉");
+  });
+
+  it("rejects disallowed emoji", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "💩",
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects missing target_type", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_id: "some-id",
+        emoji: "👍",
+      })
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 for non-existent target", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: "nonexistent",
+        emoji: "👍",
+      })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects non-member reactions", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, bob.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("allows different users to react with same emoji", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret123");
+    const board = await createTestBoard(alice.token);
+    // Invite bob
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/members`, alice.token, { username: "bob" })
+    );
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    const res1 = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+    expect(res1.status).toBe(200);
+
+    const res2 = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, bob.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+    expect(res2.status).toBe(200);
+    const data = (await res2.json()) as ReactionResponse;
+    expect(data.action).toBe("added");
+  });
+
+  it("allows same user to react with different emoji", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+    const comment = await createTestComment(alice.token, board.id, cardId);
+
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "👍",
+      })
+    );
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/reactions`, alice.token, {
+        target_type: "comment",
+        target_id: comment.id,
+        emoji: "❤️",
+      })
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as ReactionResponse;
+    expect(data.action).toBe("added");
+    expect(data.reaction.emoji).toBe("❤️");
+  });
+});
+
+// ============================================================
+// Card Watchers
+// ============================================================
+
+describe("POST /api/boards/:boardId/cards/:cardId/watch", () => {
+  it("toggles watching on (returns watching: true)", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/watch`, alice.token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { watching: boolean };
+    expect(data.watching).toBe(true);
+  });
+
+  it("toggles watching off (returns watching: false)", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Watch
+    await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/watch`, alice.token)
+    );
+
+    // Unwatch
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/watch`, alice.token)
+    );
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { watching: boolean };
+    expect(data.watching).toBe(false);
+  });
+
+  it("auto-watch from comment persists, manual toggle unwatches", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    // Comment auto-watches
+    await createTestComment(alice.token, board.id, cardId);
+
+    // Manual toggle should unwatch (since already watching)
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/watch`, alice.token)
+    );
+    const data = (await res.json()) as { watching: boolean };
+    expect(data.watching).toBe(false);
+  });
+
+  it("rejects non-member watch request", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const bob = await registerUser("bob", "secret123");
+    const board = await createTestBoard(alice.token);
+    const { cardId } = await createTestCardInBoard(alice.token, board.id);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/${cardId}/watch`, bob.token)
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for non-existent card", async () => {
+    const alice = await registerUser("alice", "secret123");
+    const board = await createTestBoard(alice.token);
+
+    const res = await app.fetch(
+      authReq("POST", `/api/boards/${board.id}/cards/nonexistent/watch`, alice.token)
+    );
+    expect(res.status).toBe(404);
+  });
+});

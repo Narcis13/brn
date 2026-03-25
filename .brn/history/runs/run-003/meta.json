@@ -1,0 +1,29 @@
+{
+  "id": "run-003",
+  "timestamp": "2026-03-25T13:21:10Z",
+  "duration_seconds": 166,
+  "status": "success",
+  "focus": "Reactions API (AC3) + Watchers API (AC4)",
+  "summary": "Implemented POST toggle endpoints for reactions (8-emoji allowlist, comment/activity targets, board scoping) and card watchers (watch/unwatch toggle). 14 new tests, all 270 pass.",
+  "model": "opus",
+  "effort": "high",
+  "mode": "attended",
+  "files_created": [],
+  "files_modified": ["trello/src/db.ts", "trello/src/routes.ts", "trello/src/routes.test.ts"],
+  "files_deleted": [],
+  "tests": {
+    "passed": 270,
+    "failed": 0,
+    "skipped": 0,
+    "total": 270
+  },
+  "types_clean": true,
+  "build_clean": true,
+  "commit": "",
+  "acceptance_criteria_met": ["AC3", "AC4"],
+  "acceptance_criteria_progress": "6/14",
+  "vault_updates": ["patterns/toggle-endpoint-pattern.md", "decisions/reactions-scoped-to-board.md"],
+  "retry": false,
+  "challenges": "none",
+  "next_focus": "AC7: Enhanced card detail with unified timeline, reactions, is_watching, watcher_count, board_members"
+}

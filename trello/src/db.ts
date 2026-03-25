@@ -1150,10 +1150,97 @@ export function deleteComment(db: Database, commentId: string): boolean {
   return result.changes > 0;
 }
 
+// --- Reaction helpers ---
+
+const ALLOWED_EMOJI = new Set(["👍", "👎", "❤️", "🎉", "😄", "😕", "🚀", "👀"]);
+
+export function isAllowedEmoji(emoji: string): boolean {
+  return ALLOWED_EMOJI.has(emoji);
+}
+
+export interface ReactionRow {
+  id: string;
+  target_type: "comment" | "activity";
+  target_id: string;
+  user_id: string;
+  emoji: string;
+  created_at: string;
+}
+
+export function toggleReaction(
+  db: Database,
+  targetType: "comment" | "activity",
+  targetId: string,
+  userId: string,
+  emoji: string
+): { action: "added" | "removed"; reaction: { id: string; emoji: string; user_id: string } } {
+  // Check if reaction already exists
+  const existing = db.query(
+    "SELECT id, emoji, user_id FROM reactions WHERE target_type = ? AND target_id = ? AND user_id = ? AND emoji = ?"
+  ).get(targetType, targetId, userId, emoji) as { id: string; emoji: string; user_id: string } | null;
+
+  if (existing) {
+    // Remove existing reaction
+    db.query("DELETE FROM reactions WHERE id = ?").run(existing.id);
+    return { action: "removed", reaction: { id: existing.id, emoji: existing.emoji, user_id: existing.user_id } };
+  }
+
+  // Add new reaction
+  const id = nanoid();
+  db.query(
+    "INSERT INTO reactions (id, target_type, target_id, user_id, emoji) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, targetType, targetId, userId, emoji);
+  return { action: "added", reaction: { id, emoji, user_id: userId } };
+}
+
+export function targetExists(db: Database, targetType: "comment" | "activity", targetId: string): boolean {
+  const table = targetType === "comment" ? "comments" : "activity";
+  const row = db.query(`SELECT id FROM ${table} WHERE id = ?`).get(targetId);
+  return row !== null;
+}
+
+export function getTargetBoardId(db: Database, targetType: "comment" | "activity", targetId: string): string | null {
+  const table = targetType === "comment" ? "comments" : "activity";
+  const row = db.query(`SELECT board_id FROM ${table} WHERE id = ?`).get(targetId) as { board_id: string } | null;
+  return row?.board_id ?? null;
+}
+
 // --- Card watcher helpers ---
 
 export function addCardWatcher(db: Database, cardId: string, userId: string): void {
   db.query(
     "INSERT OR IGNORE INTO card_watchers (card_id, user_id) VALUES (?, ?)"
   ).run(cardId, userId);
+}
+
+export function toggleCardWatcher(
+  db: Database,
+  cardId: string,
+  userId: string
+): boolean {
+  const existing = db.query(
+    "SELECT 1 FROM card_watchers WHERE card_id = ? AND user_id = ?"
+  ).get(cardId, userId);
+
+  if (existing) {
+    db.query("DELETE FROM card_watchers WHERE card_id = ? AND user_id = ?").run(cardId, userId);
+    return false; // no longer watching
+  }
+
+  db.query("INSERT INTO card_watchers (card_id, user_id) VALUES (?, ?)").run(cardId, userId);
+  return true; // now watching
+}
+
+export function isWatching(db: Database, cardId: string, userId: string): boolean {
+  const row = db.query(
+    "SELECT 1 FROM card_watchers WHERE card_id = ? AND user_id = ?"
+  ).get(cardId, userId);
+  return row !== null;
+}
+
+export function getWatcherCount(db: Database, cardId: string): number {
+  const row = db.query(
+    "SELECT COUNT(*) as count FROM card_watchers WHERE card_id = ?"
+  ).get(cardId) as { count: number };
+  return row.count;
 }

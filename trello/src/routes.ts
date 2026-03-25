@@ -42,6 +42,13 @@ import {
   getCommentById,
   updateComment,
   deleteComment,
+  isAllowedEmoji,
+  toggleReaction,
+  targetExists,
+  getTargetBoardId,
+  toggleCardWatcher,
+  isWatching,
+  getWatcherCount,
   type BoardRow,
   type SearchDueFilter,
 } from "./db.ts";
@@ -692,6 +699,61 @@ export function createApp(db: Database): Hono<Env> {
 
     deleteComment(db, commentId);
     return c.json({ ok: true });
+  });
+
+  // --- Reactions route ---
+
+  app.post("/api/boards/:boardId/reactions", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{ target_type?: string; target_id?: string; emoji?: string }>();
+
+    if (!body.target_type || (body.target_type !== "comment" && body.target_type !== "activity")) {
+      return c.json({ error: "target_type must be 'comment' or 'activity'" }, 400);
+    }
+    if (!body.target_id) {
+      return c.json({ error: "target_id is required" }, 400);
+    }
+    if (!body.emoji || !isAllowedEmoji(body.emoji)) {
+      return c.json({ error: "emoji must be one of: 👍 👎 ❤️ 🎉 😄 😕 🚀 👀" }, 400);
+    }
+
+    // Verify target exists and belongs to this board
+    if (!targetExists(db, body.target_type, body.target_id)) {
+      return c.json({ error: "target not found" }, 404);
+    }
+    const targetBoardId = getTargetBoardId(db, body.target_type, body.target_id);
+    if (targetBoardId !== boardId) {
+      return c.json({ error: "target not found" }, 404);
+    }
+
+    const result = toggleReaction(db, body.target_type, body.target_id, userId, body.emoji);
+    return c.json(result);
+  });
+
+  // --- Watchers route ---
+
+  app.post("/api/boards/:boardId/cards/:cardId/watch", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const watching = toggleCardWatcher(db, cardId, userId);
+    return c.json({ watching });
   });
 
   // --- New Card Detail routes ---

@@ -6,8 +6,8 @@
   "acceptance_criteria": [
     {"id": "AC1", "text": "board_members table created; board creator auto-inserted as owner; GET/POST/DELETE /api/boards/:boardId/members endpoints work with proper authorization (invite=owner, remove=owner, list=member)", "met": true},
     {"id": "AC2", "text": "comments table created; POST/PATCH/DELETE comments endpoints work with auth checks (create=member, edit=author, delete=author or owner); comment creates 'commented' activity entry and auto-watches card for commenter", "met": true},
-    {"id": "AC3", "text": "reactions table created; POST /api/boards/:boardId/reactions toggles reactions (add/remove); enforces 8-emoji allow-list; unique constraint per user/emoji/target; returns action and reaction object", "met": false},
-    {"id": "AC4", "text": "card_watchers table created; POST /api/boards/:boardId/cards/:cardId/watch toggles watching; card detail response includes is_watching boolean and watcher_count number", "met": false},
+    {"id": "AC3", "text": "reactions table created; POST /api/boards/:boardId/reactions toggles reactions (add/remove); enforces 8-emoji allow-list; unique constraint per user/emoji/target; returns action and reaction object", "met": true},
+    {"id": "AC4", "text": "card_watchers table created; POST /api/boards/:boardId/cards/:cardId/watch toggles watching; card detail response includes is_watching boolean and watcher_count number", "met": true},
     {"id": "AC5", "text": "activity table gains user_id column; all new activity entries record acting user's ID; existing entries without user_id show 'System' as actor", "met": true},
     {"id": "AC6", "text": "All existing board-scoped endpoints check board_members for authorization instead of just board.user_id === userId; non-members get 403", "met": true},
     {"id": "AC7", "text": "GET /api/boards/:boardId/cards/:cardId returns unified timeline (comments + activity sorted newest first with reactions), is_watching, watcher_count, board_members list for @mention autocomplete", "met": false},
@@ -19,9 +19,9 @@
     {"id": "AC13", "text": "Watch button (eye icon) in card modal header; filled/highlighted when watching, outline when not; tooltip 'Watch'/'Watching'; watcher count shown; auto-watch on commenting", "met": false},
     {"id": "AC14", "text": "Board activity sidebar: toggle button in board header (clock icon); slides from right as overlay; unified feed newest first; card title links open modal; Load more pagination; close button and click-outside to dismiss", "met": false}
   ],
-  "run_count": 2,
-  "current_focus": "Reactions API (AC3)",
-  "last_run": "run-002",
+  "run_count": 3,
+  "current_focus": "AC7: Enhanced card detail with unified timeline, reactions, is_watching, watcher_count, board_members",
+  "last_run": "run-003",
   "retry_count": 0,
   "blocked": false
 }
