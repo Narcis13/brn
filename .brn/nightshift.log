@@ -1,36 +1,5 @@
 === BRN NIGHT SHIFT ===
 Feature: takt-cli
-Started: Wed Mar 25 17:55:01 EET 2026
+Started: Wed Mar 25 18:02:28 EET 2026
 
-[17:55:01] ━━━ Run 1 starting ━━━
-error: unknown option '--effort'
-[17:55:01] Run 1 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:55:12] ━━━ Run 2 starting ━━━
-error: unknown option '--effort'
-[17:55:12] Run 2 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:55:22] ━━━ Run 3 starting ━━━
-error: unknown option '--effort'
-[17:55:22] Run 3 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:55:32] ━━━ Run 4 starting ━━━
-error: unknown option '--effort'
-[17:55:33] Run 4 finished in 1s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:55:43] ━━━ Run 5 starting ━━━
-error: unknown option '--effort'
-[17:55:43] Run 5 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:55:53] ━━━ Run 6 starting ━━━
-error: unknown option '--effort'
-[17:55:54] Run 6 finished in 1s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:56:04] ━━━ Run 7 starting ━━━
-error: unknown option '--effort'
-[17:56:04] Run 7 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
-[17:56:14] ━━━ Run 8 starting ━━━
-error: unknown option '--effort'
-[17:56:14] Run 8 finished in 0s | AC: 0/13 | Vault: 60 entries | Status: planning
-
+[18:02:28] ━━━ Run 1 starting ━━━

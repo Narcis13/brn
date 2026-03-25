@@ -15,4 +15,4 @@ if (!result.success) {
   process.exit(1);
 }
 
-console.log(`Built ${result.outputs.length} file(s) to trello/public/dist/`);
+console.log(`Built ${result.outputs.length} file(s) to src/public/dist/`);
