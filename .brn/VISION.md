@@ -163,7 +163,6 @@ History serves three purposes: debugging, context for the Thinker, and learning 
   "phase": "implementing",
   "focus": "auth signup endpoint",
   "model": "sonnet",
-  "effort": "high",
   "duration_ms": 45000,
   "tests_passed": true,
   "types_clean": true,
@@ -218,7 +217,6 @@ while true; do
 
   claude -p \
     --model opus \
-    --effort high \
     --dangerously-skip-permissions \
     --max-turns 100 \
     "/next" 2>&1 | tee -a .brn/nightshift.log
@@ -279,20 +277,19 @@ The Thinker decides which gates apply to each run. A backend-only change skips t
 
 The Thinker selects models for the Builder based on task:
 
-| Task Type | Model | Effort | Rationale |
-|-----------|-------|--------|-----------|
-| Architecture/planning | opus | high | Needs deep reasoning |
-| Feature implementation | sonnet | high | Fast, strong at code |
-| Complex debugging | opus | high | Needs thorough analysis |
-| Simple fix/refactor | sonnet | medium | Speed matters more |
-| Test writing | sonnet | high | Structured, pattern-based |
-| Visual/UI work | opus | high | Design judgment needed |
+| Task Type | Model | Rationale |
+|-----------|-------|-----------|
+| Architecture/planning | opus | Needs deep reasoning |
+| Feature implementation | sonnet | Fast, strong at code |
+| Complex debugging | opus | Needs thorough analysis |
+| Simple fix/refactor | sonnet | Speed matters more |
+| Test writing | sonnet | Structured, pattern-based |
+| Visual/UI work | opus | Design judgment needed |
 
 In the executor's `claude -p` invocation:
 ```bash
 claude -p \
   --model "$selected_model" \
-  --effort "$selected_effort" \
   --allowedTools "Read,Edit,Write,Bash,Grep,Glob" \
   --dangerously-skip-permissions \
   --max-turns "$calculated_max_turns" \

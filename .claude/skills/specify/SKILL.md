@@ -3,7 +3,6 @@ name: specify
 description: Transform loose ideas, partial PRDs, or informal descriptions into production-ready BRN feature specs through adaptive interviewing. Produces a spec file ready for /next.
 user-invocable: true
 model: opus
-effort: high
 argument-hint: "[feature idea, paste PRD, or any description]"
 ---
 

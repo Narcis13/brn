@@ -99,11 +99,11 @@ This is where your judgment matters most. Consider:
 4. **What should happen next?** Pick the most impactful next step
 5. **How big should this step be?** Default to vertical slices — each step should deliver a coherent, demoable increment (backend + frontend + tests for one capability) rather than horizontal layers ("all endpoints" then "all UI"). A good step is one you could demo: "cards can now be created and edited" beats "added 6 API routes". That said, use your judgment — if a specific situation calls for a different strategy (e.g., a foundational schema migration before any features), go with what makes sense.
 6. **What model should the Builder use?** (for unattended mode)
-   - Architecture/planning: `opus`, effort `high`
-   - Feature implementation: `sonnet`, effort `high`
-   - Complex debugging: `opus`, effort `high`
-   - Simple fix/refactor: `sonnet`, effort `medium`
-   - UI/visual work: `opus`, effort `high`
+   - Architecture/planning: `opus`
+   - Feature implementation: `sonnet`
+   - Complex debugging: `opus`
+   - Simple fix/refactor: `sonnet`
+   - UI/visual work: `opus`
 7. **What context does the Builder need?** Cherry-pick relevant:
    - Spec sections (not the whole spec — just what's relevant to this step)
    - Vault entries that apply
@@ -141,7 +141,6 @@ Craft the Builder's prompt and save it:
 ```bash
 claude -p \
   --model <selected_model> \
-  --effort <selected_effort> \
   --allowedTools "Read,Edit,Write,Bash,Grep,Glob" \
   --dangerously-skip-permissions \
   --max-turns <calculated_turns> \
@@ -380,7 +379,6 @@ Update `.brn/history/runs/run-NNN/meta.json`:
   "focus": "<what this step focused on>",
   "summary": "<2-3 sentence summary of what was accomplished>",
   "model": "<model used>",
-  "effort": "<effort level>",
   "mode": "attended | unattended",
   "files_created": ["path/to/file.ts"],
   "files_modified": ["path/to/other.ts"],
