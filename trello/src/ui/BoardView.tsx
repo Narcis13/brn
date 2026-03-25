@@ -6,7 +6,7 @@ import {
   useRef,
 } from "react";
 import type { CSSProperties } from "react";
-import type { Column, BoardCard, CardDetail, Label, BoardMember, User } from "./api.ts";
+import type { Column, BoardCard, CardDetail, Label, BoardMember, User, BoardActivityItem } from "./api.ts";
 import * as api from "./api.ts";
 import { renderInlineContent } from "./render-inline.tsx";
 import { getDueBadge } from "./card-utils.ts";
@@ -142,6 +142,11 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
   const [inviteUsername, setInviteUsername] = useState("");
   const [inviteStatus, setInviteStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const [showActivitySidebar, setShowActivitySidebar] = useState(false);
+  const [activityItems, setActivityItems] = useState<BoardActivityItem[]>([]);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
   const inviteRef = useRef<HTMLDivElement>(null);
   const inviteInputRef = useRef<HTMLInputElement>(null);
   const [modal, setModal] = useState<ModalState>({
@@ -288,6 +293,79 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
     } finally {
       setInviteLoading(false);
     }
+  }
+
+  async function loadActivity(before?: string): Promise<void> {
+    setActivityLoading(true);
+    try {
+      const { items, has_more } = await api.fetchBoardActivity(boardId, { limit: 30, before });
+      if (before) {
+        setActivityItems((prev) => [...prev, ...items]);
+      } else {
+        setActivityItems(items);
+      }
+      setActivityHasMore(has_more);
+    } catch {
+      // Silently fail
+    } finally {
+      setActivityLoading(false);
+    }
+  }
+
+  function openActivitySidebar(): void {
+    setShowActivitySidebar(true);
+    void loadActivity();
+  }
+
+  function closeActivitySidebar(): void {
+    setShowActivitySidebar(false);
+    setActivityItems([]);
+    setActivityHasMore(false);
+  }
+
+  function handleLoadMore(): void {
+    if (activityItems.length === 0 || activityLoading) return;
+    const lastItem = activityItems[activityItems.length - 1]!;
+    void loadActivity(lastItem.timestamp);
+  }
+
+  useEffect(() => {
+    if (!showActivitySidebar) return;
+
+    function handleClickOutside(event: MouseEvent): void {
+      if (sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
+        closeActivitySidebar();
+      }
+    }
+
+    function handleEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        closeActivitySidebar();
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showActivitySidebar]);
+
+  function relativeTime(timestamp: string): string {
+    const now = Date.now();
+    const then = new Date(timestamp).getTime();
+    if (Number.isNaN(then)) return timestamp;
+    const diff = now - then;
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return new Date(timestamp).toLocaleDateString();
   }
 
   const isOwner = members.some((m) => m.id === currentUser.id && m.role === "owner");
@@ -657,6 +735,20 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
               )}
             </div>
 
+            <button
+              className={`btn-activity-toggle${showActivitySidebar ? " active" : ""}`}
+              onClick={() => {
+                if (showActivitySidebar) {
+                  closeActivitySidebar();
+                } else {
+                  openActivitySidebar();
+                }
+              }}
+              title="Board activity"
+            >
+              {"\u{1F552}"}
+            </button>
+
             {isOwner && (
               <div className="invite-wrapper" ref={inviteRef}>
                 <button
@@ -950,6 +1042,77 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
           onCardUpdated={handleCardUpdated}
           onClose={() => setModal({ open: false, card: null, columnId: "" })}
         />
+      )}
+
+      {showActivitySidebar && (
+        <div className="activity-sidebar-overlay">
+          <div className="activity-sidebar" ref={sidebarRef}>
+            <div className="activity-sidebar-header">
+              <h3>Board Activity</h3>
+              <button
+                className="btn-icon modal-close-btn"
+                onClick={closeActivitySidebar}
+                title="Close"
+              >
+                &times;
+              </button>
+            </div>
+            <div className="activity-sidebar-body">
+              {activityItems.length === 0 && !activityLoading && (
+                <p className="activity-sidebar-empty">No activity yet</p>
+              )}
+              {activityItems.map((item) => (
+                <div key={`${item.type}-${item.id}`} className="activity-sidebar-item">
+                  <span
+                    className="sidebar-item-avatar"
+                    style={{ backgroundColor: getAvatarColor(item.username ?? "System") }}
+                  >
+                    {(item.username ?? "S").charAt(0).toUpperCase()}
+                  </span>
+                  <div className="sidebar-item-content">
+                    <p className="sidebar-item-text">
+                      <strong>{item.username ?? "System"}</strong>
+                      {" "}
+                      {item.type === "comment" ? "commented" : item.action ?? "updated"}
+                      {item.detail ? `: ${item.detail}` : ""}
+                    </p>
+                    {item.card_title && (
+                      <button
+                        type="button"
+                        className="sidebar-card-link"
+                        onClick={() => {
+                          if (item.card_id) {
+                            const matchCard = columns.flatMap((c) => c.cards).find((c) => c.id === item.card_id);
+                            if (matchCard) {
+                              openEditCard(matchCard);
+                            }
+                          }
+                        }}
+                      >
+                        {item.card_title}
+                      </button>
+                    )}
+                    {item.type === "comment" && item.content && (
+                      <p className="sidebar-comment-preview">{item.content.slice(0, 120)}{item.content.length > 120 ? "..." : ""}</p>
+                    )}
+                    <span className="sidebar-item-time">{relativeTime(item.timestamp)}</span>
+                  </div>
+                </div>
+              ))}
+              {activityLoading && (
+                <p className="activity-sidebar-loading">Loading...</p>
+              )}
+              {activityHasMore && !activityLoading && (
+                <button
+                  className="btn-secondary btn-load-more"
+                  onClick={handleLoadMore}
+                >
+                  Load more
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

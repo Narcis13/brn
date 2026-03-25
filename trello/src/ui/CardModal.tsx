@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardCard, CardDetail, ChecklistItem, Label, User, TimelineItem } from "./api.ts";
+import type { BoardCard, CardDetail, ChecklistItem, Label, User, TimelineItem, ReactionGroup } from "./api.ts";
 import * as api from "./api.ts";
 import {
   describeActivity,
@@ -101,6 +101,96 @@ function renderMentions(
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Request failed";
+}
+
+const ALLOWED_EMOJI = ["\u{1F44D}", "\u{1F44E}", "\u2764\uFE0F", "\u{1F389}", "\u{1F604}", "\u{1F615}", "\u{1F680}", "\u{1F440}"];
+
+interface ReactionBarProps {
+  boardId: string;
+  targetType: "comment" | "activity";
+  targetId: string;
+  reactions: ReactionGroup[];
+  currentUserId: string;
+  onReactionToggled: () => void;
+}
+
+function ReactionBar({
+  boardId,
+  targetType,
+  targetId,
+  reactions,
+  currentUserId,
+  onReactionToggled,
+}: ReactionBarProps): React.ReactElement {
+  const [showPicker, setShowPicker] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showPicker) return;
+
+    function handleClickOutside(event: MouseEvent): void {
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setShowPicker(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showPicker]);
+
+  async function handleToggleReaction(emoji: string): Promise<void> {
+    setShowPicker(false);
+    try {
+      await api.toggleReaction(boardId, targetType, targetId, emoji);
+      onReactionToggled();
+    } catch {
+      // Silently fail — next refresh will sync
+    }
+  }
+
+  return (
+    <div className="reaction-bar-wrapper" ref={pickerRef}>
+      <div className="reaction-bar-row">
+        {reactions.length > 0 && (
+          <div className="reaction-chips">
+            {reactions.map((r) => (
+              <button
+                key={r.emoji}
+                type="button"
+                className={`reaction-chip reaction-chip-interactive${r.user_ids.includes(currentUserId) ? " reaction-mine" : ""}`}
+                onClick={() => void handleToggleReaction(r.emoji)}
+                title={`${r.count} reaction${r.count === 1 ? "" : "s"}`}
+              >
+                {r.emoji} {r.count}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="btn-add-reaction"
+          onClick={() => setShowPicker((p) => !p)}
+          title="Add reaction"
+        >
+          {"\u{1F642}"}
+        </button>
+      </div>
+      {showPicker && (
+        <div className="reaction-picker">
+          {ALLOWED_EMOJI.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className="reaction-picker-emoji"
+              onClick={() => void handleToggleReaction(emoji)}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function createChecklistItem(text: string): ChecklistItem {
@@ -246,6 +336,8 @@ export function CardModal({
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState("");
   const [watchLoading, setWatchLoading] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
@@ -774,6 +866,31 @@ export function CardModal({
     });
   }
 
+  const filteredMentionMembers = detail && mentionQuery !== null
+    ? detail.board_members.filter((m) => m.username.toLowerCase().startsWith(mentionQuery))
+    : [];
+
+  function insertMention(username: string): void {
+    const textarea = commentRef.current;
+    if (!textarea) return;
+
+    const cursorPos = textarea.selectionStart;
+    const textBefore = commentText.slice(0, cursorPos);
+    const textAfter = commentText.slice(cursorPos);
+    const atIndex = textBefore.lastIndexOf("@");
+    if (atIndex === -1) return;
+
+    const newText = `${textBefore.slice(0, atIndex)}@${username} ${textAfter}`;
+    setCommentText(newText);
+    setMentionQuery(null);
+
+    const newCursorPos = atIndex + username.length + 2;
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    });
+  }
+
   const checklistItems = detail ? parseChecklist(detail.checklist) : [];
   const checklistProgress = getChecklistProgress(checklistItems);
 
@@ -1234,24 +1351,78 @@ export function CardModal({
               <div className="comment-input-area">
                 {commentFocused ? (
                   <div className="comment-compose">
-                    <textarea
-                      ref={commentRef}
-                      className="comment-textarea"
-                      placeholder="Write a comment..."
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-                          e.preventDefault();
-                          void handleSubmitComment();
-                        }
-                        if (e.key === "Escape") {
-                          setCommentFocused(false);
-                        }
-                      }}
-                      rows={3}
-                      autoFocus
-                    />
+                    <div className="comment-textarea-wrapper">
+                      <textarea
+                        ref={commentRef}
+                        className="comment-textarea"
+                        placeholder="Write a comment..."
+                        value={commentText}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCommentText(val);
+
+                          const cursorPos = e.target.selectionStart;
+                          const textBefore = val.slice(0, cursorPos);
+                          const mentionMatch = /@(\w*)$/.exec(textBefore);
+                          if (mentionMatch) {
+                            setMentionQuery(mentionMatch[1]!.toLowerCase());
+                            setMentionIndex(0);
+                          } else {
+                            setMentionQuery(null);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (mentionQuery !== null && filteredMentionMembers.length > 0) {
+                            if (e.key === "ArrowDown") {
+                              e.preventDefault();
+                              setMentionIndex((i) => Math.min(i + 1, filteredMentionMembers.length - 1));
+                              return;
+                            }
+                            if (e.key === "ArrowUp") {
+                              e.preventDefault();
+                              setMentionIndex((i) => Math.max(i - 1, 0));
+                              return;
+                            }
+                            if (e.key === "Enter" || e.key === "Tab") {
+                              e.preventDefault();
+                              insertMention(filteredMentionMembers[mentionIndex]!.username);
+                              return;
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setMentionQuery(null);
+                              return;
+                            }
+                          }
+                          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                            e.preventDefault();
+                            void handleSubmitComment();
+                          }
+                          if (e.key === "Escape") {
+                            setCommentFocused(false);
+                          }
+                        }}
+                        rows={3}
+                        autoFocus
+                      />
+                      {mentionQuery !== null && filteredMentionMembers.length > 0 && (
+                        <div className="mention-dropdown">
+                          {filteredMentionMembers.map((member, idx) => (
+                            <button
+                              key={member.id}
+                              type="button"
+                              className={`mention-option${idx === mentionIndex ? " mention-option-active" : ""}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                insertMention(member.username);
+                              }}
+                            >
+                              @{member.username}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <div className="comment-compose-actions">
                       <button
                         className="btn-primary btn-sm"
@@ -1265,6 +1436,7 @@ export function CardModal({
                         onClick={() => {
                           setCommentFocused(false);
                           setCommentText("");
+                          setMentionQuery(null);
                         }}
                       >
                         Cancel
@@ -1371,17 +1543,15 @@ export function CardModal({
                                 )}
                               </div>
                             )}
-                            {item.reactions.length > 0 && (
-                              <div className="reaction-chips">
-                                {item.reactions.map((r) => (
-                                  <span
-                                    key={r.emoji}
-                                    className={`reaction-chip${r.user_ids.includes(currentUser.id) ? " reaction-mine" : ""}`}
-                                  >
-                                    {r.emoji} {r.count}
-                                  </span>
-                                ))}
-                              </div>
+                            {!isEditing && (
+                              <ReactionBar
+                                boardId={boardId}
+                                targetType="comment"
+                                targetId={item.id}
+                                reactions={item.reactions}
+                                currentUserId={currentUser.id}
+                                onReactionToggled={() => void refreshDetail()}
+                              />
                             )}
                           </div>
                         </div>
@@ -1409,18 +1579,14 @@ export function CardModal({
                             })}
                           </p>
                           <span className="timeline-time">{relativeTime(item.timestamp)}</span>
-                          {item.reactions.length > 0 && (
-                            <div className="reaction-chips">
-                              {item.reactions.map((r) => (
-                                <span
-                                  key={r.emoji}
-                                  className={`reaction-chip${r.user_ids.includes(currentUser.id) ? " reaction-mine" : ""}`}
-                                >
-                                  {r.emoji} {r.count}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                          <ReactionBar
+                            boardId={boardId}
+                            targetType="activity"
+                            targetId={item.id}
+                            reactions={item.reactions}
+                            currentUserId={currentUser.id}
+                            onReactionToggled={() => void refreshDetail()}
+                          />
                         </div>
                       </div>
                     );

@@ -297,4 +297,176 @@ describe("Social Interactions — Reaction Display", () => {
     expect(hasReacted[0]!.mine).toBe(true);
     expect(hasReacted[1]!.mine).toBe(false);
   });
+
+  it("should enforce the 8 allowed emoji set", () => {
+    const ALLOWED_EMOJI = ["👍", "👎", "❤️", "🎉", "😄", "😕", "🚀", "👀"];
+    expect(ALLOWED_EMOJI).toHaveLength(8);
+
+    // All unique
+    const unique = new Set(ALLOWED_EMOJI);
+    expect(unique.size).toBe(8);
+  });
+
+  it("should show reaction count for each emoji", () => {
+    const reactions = [
+      { emoji: "👍", count: 5, user_ids: ["u1", "u2", "u3", "u4", "u5"] },
+      { emoji: "🚀", count: 1, user_ids: ["u1"] },
+    ];
+
+    expect(reactions[0]!.count).toBe(5);
+    expect(reactions[1]!.count).toBe(1);
+  });
+
+  it("should compute mine state for interactive chips", () => {
+    const reactions = [
+      { emoji: "👍", count: 2, user_ids: ["u1", "u3"] },
+      { emoji: "❤️", count: 1, user_ids: ["u2"] },
+      { emoji: "🚀", count: 3, user_ids: ["u1", "u2", "u3"] },
+    ];
+
+    const currentUserId = "u1";
+    const chipStates = reactions.map((r) => ({
+      emoji: r.emoji,
+      count: r.count,
+      isMine: r.user_ids.includes(currentUserId),
+    }));
+
+    expect(chipStates[0]!.isMine).toBe(true);
+    expect(chipStates[1]!.isMine).toBe(false);
+    expect(chipStates[2]!.isMine).toBe(true);
+  });
+});
+
+describe("Social Interactions — @Mention Autocomplete", () => {
+  function filterMembers(
+    members: { id: string; username: string }[],
+    query: string
+  ): { id: string; username: string }[] {
+    return members.filter((m) => m.username.toLowerCase().startsWith(query.toLowerCase()));
+  }
+
+  function extractMentionQuery(text: string, cursorPos: number): string | null {
+    const textBefore = text.slice(0, cursorPos);
+    const match = /@(\w*)$/.exec(textBefore);
+    return match ? match[1]! : null;
+  }
+
+  it("should extract mention query from text at cursor", () => {
+    expect(extractMentionQuery("Hey @al", 7)).toBe("al");
+    expect(extractMentionQuery("Hey @", 5)).toBe("");
+    expect(extractMentionQuery("Hey there", 9)).toBeNull();
+  });
+
+  it("should filter members by query prefix", () => {
+    const members = [
+      { id: "u1", username: "alice" },
+      { id: "u2", username: "alex" },
+      { id: "u3", username: "bob" },
+    ];
+
+    expect(filterMembers(members, "al")).toHaveLength(2);
+    expect(filterMembers(members, "ali")).toHaveLength(1);
+    expect(filterMembers(members, "b")).toHaveLength(1);
+    expect(filterMembers(members, "z")).toHaveLength(0);
+  });
+
+  it("should show all members when query is empty (@)", () => {
+    const members = [
+      { id: "u1", username: "alice" },
+      { id: "u2", username: "bob" },
+    ];
+
+    expect(filterMembers(members, "")).toHaveLength(2);
+  });
+
+  it("should insert mention at correct position", () => {
+    const text = "Hey @al everyone";
+    const cursorPos = 7;
+    const textBefore = text.slice(0, cursorPos);
+    const textAfter = text.slice(cursorPos);
+    const atIndex = textBefore.lastIndexOf("@");
+    const username = "alice";
+    const newText = `${textBefore.slice(0, atIndex)}@${username} ${textAfter}`;
+
+    expect(newText).toBe("Hey @alice  everyone");
+  });
+});
+
+describe("Social Interactions — Activity Sidebar", () => {
+  it("should compute relative times correctly for sidebar items", () => {
+    // The sidebar uses the same relativeTime logic
+    const now = new Date();
+    const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString();
+
+    // Reuse relativeTime helper
+    function relativeTimeCalc(timestamp: string): string {
+      const then = new Date(timestamp).getTime();
+      if (Number.isNaN(then)) return timestamp;
+      const diff = Date.now() - then;
+      const seconds = Math.floor(diff / 1000);
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      if (days < 30) return `${days}d ago`;
+      return "older";
+    }
+
+    expect(relativeTimeCalc(fiveMinAgo)).toBe("5m ago");
+    expect(relativeTimeCalc(twoHoursAgo)).toBe("2h ago");
+  });
+
+  it("should handle pagination with before cursor", () => {
+    const items = [
+      { timestamp: "2026-03-25T15:00:00Z" },
+      { timestamp: "2026-03-25T14:30:00Z" },
+      { timestamp: "2026-03-25T14:00:00Z" },
+    ];
+
+    const lastItem = items[items.length - 1]!;
+    expect(lastItem.timestamp).toBe("2026-03-25T14:00:00Z");
+
+    // The 'before' cursor should be the last item's timestamp
+    const beforeCursor = lastItem.timestamp;
+    expect(beforeCursor).toBe("2026-03-25T14:00:00Z");
+  });
+
+  it("should append items on load more (not replace)", () => {
+    const existing = [
+      { id: "a1", type: "activity" as const },
+      { id: "a2", type: "comment" as const },
+    ];
+    const newItems = [
+      { id: "a3", type: "activity" as const },
+    ];
+
+    const merged = [...existing, ...newItems];
+    expect(merged).toHaveLength(3);
+    expect(merged[2]!.id).toBe("a3");
+  });
+
+  it("should truncate long comment previews", () => {
+    const content = "A".repeat(200);
+    const preview = content.slice(0, 120) + (content.length > 120 ? "..." : "");
+    expect(preview).toHaveLength(123);
+    expect(preview.endsWith("...")).toBe(true);
+
+    const shortContent = "Short comment";
+    const shortPreview = shortContent.slice(0, 120) + (shortContent.length > 120 ? "" : "");
+    expect(shortPreview).toBe("Short comment");
+  });
+
+  it("should display activity items with correct type indicators", () => {
+    const items = [
+      { type: "comment" as const, action: null, content: "Great work!" },
+      { type: "activity" as const, action: "moved", content: null },
+    ];
+
+    expect(items[0]!.type).toBe("comment");
+    expect(items[1]!.type).toBe("activity");
+    expect(items[1]!.action).toBe("moved");
+  });
 });

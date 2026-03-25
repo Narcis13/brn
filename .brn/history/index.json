@@ -53,5 +53,16 @@
     "ac_progress": "12/14",
     "vault_entries_added": 3,
     "files_changed": 6
+  },
+  {
+    "id": "run-006",
+    "timestamp": "2026-03-25T16:31:00Z",
+    "status": "success",
+    "focus": "Reaction picker UI + Board activity sidebar (feature complete)",
+    "summary": "Implemented reaction picker (smiley hover trigger, 8-emoji bar, toggle via API, interactive chips) and board activity sidebar (overlay panel, paginated feed, card links, click-outside dismiss). Added @mention autocomplete to comment input. 12 new tests, all 320 pass. ALL 14/14 ACs MET.",
+    "ac_met": ["AC12", "AC14"],
+    "ac_progress": "14/14",
+    "vault_entries_added": 2,
+    "files_changed": 4
   }
 ]

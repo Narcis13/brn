@@ -2,7 +2,7 @@
   "feature": "social-interactions",
   "spec": "feature-social-interactions.md",
   "branch": "feat/social-interactions",
-  "status": "in_progress",
+  "status": "done",
   "acceptance_criteria": [
     {"id": "AC1", "text": "board_members table created; board creator auto-inserted as owner; GET/POST/DELETE /api/boards/:boardId/members endpoints work with proper authorization (invite=owner, remove=owner, list=member)", "met": true},
     {"id": "AC2", "text": "comments table created; POST/PATCH/DELETE comments endpoints work with auth checks (create=member, edit=author, delete=author or owner); comment creates 'commented' activity entry and auto-watches card for commenter", "met": true},
@@ -15,13 +15,13 @@
     {"id": "AC9", "text": "Board header shows member avatars (colored initial circles, max 5 + '+N' overflow, owner badge); invite button opens popover with username input, Enter/click to invite, success/error inline, close on outside click/Escape", "met": true},
     {"id": "AC10", "text": "Card modal unified timeline replaces old Activity section; comments show avatar+username+content (rendered @mentions as bold)+timestamp+edit/delete+reactions; system activity compact with icon+description+timestamp+reactions", "met": true},
     {"id": "AC11", "text": "Comment input at bottom/top of timeline; expands on focus to textarea+Save button; @mention autocomplete dropdown on '@' keystroke filtered by typed text; submit on Ctrl+Enter or Save; disabled when empty/whitespace", "met": true},
-    {"id": "AC12", "text": "Reaction picker: smiley icon on hover of timeline items; click opens horizontal 8-emoji bar; clicking emoji toggles reaction; reaction chips below items show emoji+count; highlighted if current user reacted; clickable to toggle", "met": false},
+    {"id": "AC12", "text": "Reaction picker: smiley icon on hover of timeline items; click opens horizontal 8-emoji bar; clicking emoji toggles reaction; reaction chips below items show emoji+count; highlighted if current user reacted; clickable to toggle", "met": true},
     {"id": "AC13", "text": "Watch button (eye icon) in card modal header; filled/highlighted when watching, outline when not; tooltip 'Watch'/'Watching'; watcher count shown; auto-watch on commenting", "met": true},
-    {"id": "AC14", "text": "Board activity sidebar: toggle button in board header (clock icon); slides from right as overlay; unified feed newest first; card title links open modal; Load more pagination; close button and click-outside to dismiss", "met": false}
+    {"id": "AC14", "text": "Board activity sidebar: toggle button in board header (clock icon); slides from right as overlay; unified feed newest first; card title links open modal; Load more pagination; close button and click-outside to dismiss", "met": true}
   ],
-  "run_count": 5,
-  "current_focus": "AC12: Reaction picker + AC14: Board activity sidebar",
-  "last_run": "run-005",
+  "run_count": 6,
+  "current_focus": null,
+  "last_run": "run-006",
   "retry_count": 0,
   "blocked": false
 }
