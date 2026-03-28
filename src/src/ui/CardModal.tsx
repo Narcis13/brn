@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { BoardCard, CardDetail, ChecklistItem, Label, User, TimelineItem, ReactionGroup } from "./api.ts";
+import type { BoardCard, CardDetail, ChecklistItem, Label, User, TimelineItem, ReactionGroup, Artifact } from "./api.ts";
 import * as api from "./api.ts";
 import {
   describeActivity,
@@ -338,6 +338,14 @@ export function CardModal({
   const [watchLoading, setWatchLoading] = useState(false);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [showArtifactForm, setShowArtifactForm] = useState(false);
+  const [artifactFilename, setArtifactFilename] = useState("");
+  const [artifactFiletype, setArtifactFiletype] = useState<Artifact["filetype"]>("md");
+  const [artifactContent, setArtifactContent] = useState("");
+  const [expandedArtifact, setExpandedArtifact] = useState<string | null>(null);
+  const [expandedArtifactContent, setExpandedArtifactContent] = useState<string>("");
+  const [editingArtifact, setEditingArtifact] = useState<Artifact | null>(null);
+  const [editingArtifactContent, setEditingArtifactContent] = useState("");
   const titleRef = useRef<HTMLInputElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const commentRef = useRef<HTMLTextAreaElement>(null);
@@ -891,6 +899,112 @@ export function CardModal({
     });
   }
 
+  async function loadArtifactContent(artifactId: string): Promise<void> {
+    if (!card) return;
+    try {
+      const artifact = await api.fetchArtifact(boardId, artifactId);
+      setExpandedArtifactContent(artifact.content || "");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function createArtifact(): Promise<void> {
+    if (!card || !detail) return;
+    if (!artifactFilename.trim() || !artifactContent.trim()) return;
+
+    try {
+      const created = await api.createCardArtifact(
+        boardId,
+        card.id,
+        artifactFilename.trim(),
+        artifactFiletype,
+        artifactContent.trim()
+      );
+      
+      // Update local state
+      const updatedDetail = {
+        ...detail,
+        artifacts: [...(detail.artifacts || []), created].sort((a, b) => a.position - b.position),
+      };
+      setDetail(updatedDetail);
+      onCardUpdatedRef.current(updatedDetail);
+      
+      // Reset form
+      setShowArtifactForm(false);
+      setArtifactFilename("");
+      setArtifactContent("");
+      setArtifactFiletype("md");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function updateArtifact(artifactId: string, content: string): Promise<void> {
+    if (!card || !detail) return;
+    
+    try {
+      const updated = await api.updateArtifact(boardId, artifactId, { content });
+      
+      // Update local state
+      const updatedDetail = {
+        ...detail,
+        artifacts: detail.artifacts?.map(a => 
+          a.id === artifactId ? { ...a, ...updated } : a
+        ) || [],
+      };
+      setDetail(updatedDetail);
+      onCardUpdatedRef.current(updatedDetail);
+      
+      // Reset editing state
+      setEditingArtifact(null);
+      setEditingArtifactContent("");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function deleteArtifact(artifactId: string): Promise<void> {
+    if (!card || !detail || !confirm("Delete this artifact?")) return;
+    
+    try {
+      await api.deleteArtifact(boardId, artifactId);
+      
+      // Update local state
+      const updatedDetail = {
+        ...detail,
+        artifacts: detail.artifacts?.filter(a => a.id !== artifactId) || [],
+      };
+      setDetail(updatedDetail);
+      onCardUpdatedRef.current(updatedDetail);
+      
+      // Reset expanded state if this was the expanded artifact
+      if (expandedArtifact === artifactId) {
+        setExpandedArtifact(null);
+        setExpandedArtifactContent("");
+      }
+    } catch (err: unknown) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  function formatFileSize(bytes: number): string {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  }
+
+  function getFiletypeIcon(filetype: Artifact["filetype"]): string {
+    switch (filetype) {
+      case "md": return "📝";
+      case "html": return "🌐";
+      case "js": return "📜";
+      case "ts": return "📘";
+      case "sh": return "⚡";
+      default: return "📄";
+    }
+  }
+
   const checklistItems = detail ? parseChecklist(detail.checklist) : [];
   const checklistProgress = getChecklistProgress(checklistItems);
 
@@ -1338,6 +1452,185 @@ export function CardModal({
                   Add
                 </button>
               </div>
+            </section>
+
+            <section className="card-section">
+              <div className="card-section-header">
+                <h3>Artifacts</h3>
+                <span className="section-meta">
+                  {detail.artifacts?.length || 0} file{(detail.artifacts?.length || 0) === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              {!detail.artifacts?.length && !showArtifactForm ? (
+                <div className="artifact-empty-state">
+                  <p className="empty-inline-state">No artifacts</p>
+                  <button
+                    type="button"
+                    className="btn-primary btn-sm"
+                    onClick={() => setShowArtifactForm(true)}
+                  >
+                    Add Artifact
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {showArtifactForm ? (
+                    <div className="artifact-form">
+                      <div className="artifact-form-row">
+                        <input
+                          type="text"
+                          placeholder="filename.md"
+                          value={artifactFilename}
+                          onChange={(e) => setArtifactFilename(e.target.value)}
+                          className="artifact-filename-input"
+                        />
+                        <select
+                          value={artifactFiletype}
+                          onChange={(e) => setArtifactFiletype(e.target.value as Artifact["filetype"])}
+                          className="artifact-type-select"
+                        >
+                          <option value="md">Markdown (.md)</option>
+                          <option value="html">HTML (.html)</option>
+                          <option value="js">JavaScript (.js)</option>
+                          <option value="ts">TypeScript (.ts)</option>
+                          <option value="sh">Shell (.sh)</option>
+                        </select>
+                      </div>
+                      <textarea
+                        className="artifact-content-textarea"
+                        placeholder="Enter content..."
+                        value={artifactContent}
+                        onChange={(e) => setArtifactContent(e.target.value)}
+                        rows={10}
+                      />
+                      <div className="artifact-form-actions">
+                        <button
+                          type="button"
+                          className="btn-primary btn-sm"
+                          onClick={() => void createArtifact()}
+                          disabled={!artifactFilename.trim() || !artifactContent.trim()}
+                        >
+                          Save Artifact
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary btn-sm"
+                          onClick={() => {
+                            setShowArtifactForm(false);
+                            setArtifactFilename("");
+                            setArtifactContent("");
+                            setArtifactFiletype("md");
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="artifact-list">
+                        {detail.artifacts?.map((artifact) => (
+                          <div key={artifact.id} className="artifact-item">
+                            <div
+                              className="artifact-header"
+                              onClick={() => {
+                                if (expandedArtifact === artifact.id) {
+                                  setExpandedArtifact(null);
+                                  setExpandedArtifactContent("");
+                                } else {
+                                  setExpandedArtifact(artifact.id);
+                                  void loadArtifactContent(artifact.id);
+                                }
+                              }}
+                            >
+                              <span className="artifact-icon">{getFiletypeIcon(artifact.filetype)}</span>
+                              <span className="artifact-filename">{artifact.filename}</span>
+                              <span className="artifact-meta">
+                                {artifact.filetype.toUpperCase()} • {formatActivityTimestamp(artifact.created_at)}
+                              </span>
+                              <div className="artifact-actions">
+                                <button
+                                  type="button"
+                                  className="btn-icon btn-sm"
+                                  title="Edit"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    setEditingArtifact(artifact);
+                                    // Load content first if not already loaded
+                                    if (expandedArtifact !== artifact.id) {
+                                      const fullArtifact = await api.fetchArtifact(boardId, artifact.id);
+                                      setEditingArtifactContent(fullArtifact.content || "");
+                                    } else {
+                                      setEditingArtifactContent(expandedArtifactContent);
+                                    }
+                                  }}
+                                >
+                                  ✏️
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-icon btn-sm"
+                                  title="Delete"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void deleteArtifact(artifact.id);
+                                  }}
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                            {expandedArtifact === artifact.id && (
+                              <div className="artifact-content">
+                                {editingArtifact?.id === artifact.id ? (
+                                  <>
+                                    <textarea
+                                      className="artifact-content-textarea"
+                                      value={editingArtifactContent}
+                                      onChange={(e) => setEditingArtifactContent(e.target.value)}
+                                      rows={15}
+                                    />
+                                    <div className="artifact-edit-actions">
+                                      <button
+                                        type="button"
+                                        className="btn-primary btn-sm"
+                                        onClick={() => void updateArtifact(artifact.id, editingArtifactContent)}
+                                        disabled={!editingArtifactContent.trim()}
+                                      >
+                                        Save Changes
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="btn-secondary btn-sm"
+                                        onClick={() => {
+                                          setEditingArtifact(null);
+                                          setEditingArtifactContent("");
+                                        }}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <pre className="artifact-content-display">{expandedArtifactContent}</pre>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-primary btn-sm artifact-add-btn"
+                        onClick={() => setShowArtifactForm(true)}
+                      >
+                        Add Artifact
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
             </section>
 
             <section className="card-section">

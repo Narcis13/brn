@@ -2910,3 +2910,197 @@ body.modal-open {
   margin-top: 8px;
   text-align: center;
 }
+
+/* Artifacts styles */
+.artifact-empty-state {
+  text-align: center;
+  padding: 16px;
+}
+
+.artifact-form {
+  background: #f5f5f5;
+  padding: 16px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.artifact-form-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.artifact-filename-input {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.artifact-type-select {
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  background: white;
+}
+
+.artifact-content-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.artifact-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.artifact-list {
+  margin-bottom: 12px;
+}
+
+.artifact-item {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.artifact-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  cursor: pointer;
+  background: #fafafa;
+  transition: background 0.2s;
+}
+
+.artifact-header:hover {
+  background: #f0f0f0;
+}
+
+.artifact-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.artifact-filename {
+  font-weight: 500;
+  color: #2c3e50;
+  flex: 1;
+}
+
+.artifact-meta {
+  color: #7f8c8d;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.artifact-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.artifact-content {
+  border-top: 1px solid #ddd;
+  padding: 16px;
+  background: white;
+}
+
+.artifact-content-display {
+  margin: 0;
+  padding: 12px;
+  background: #f5f5f5;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.artifact-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.artifact-add-btn {
+  width: 100%;
+}
+
+/* === Board Artifacts Modal === */
+.board-artifacts-modal {
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.board-artifacts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.board-artifacts-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #172b4d;
+  margin: 0;
+}
+
+.board-artifacts-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.board-artifacts-loading {
+  text-align: center;
+  color: #5e6c84;
+  padding: 40px;
+  font-size: 14px;
+}
+
+.btn-board-docs {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-board-docs:hover {
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.btn-board-docs:active {
+  transform: scale(0.98);
+}
+
+.board-docs-icon {
+  font-size: 16px;
+}

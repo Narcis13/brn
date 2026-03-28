@@ -195,6 +195,30 @@ function migrate(db: Database): void {
     INSERT OR IGNORE INTO board_members (board_id, user_id, role)
     SELECT id, user_id, 'owner' FROM boards
   `);
+
+  // Create artifacts table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      filetype TEXT NOT NULL CHECK(filetype IN ('md', 'html', 'js', 'ts', 'sh')),
+      content TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(card_id, filename)
+    )
+  `);
+
+  // Create unique index for board-level artifacts
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_board_artifacts_unique 
+    ON artifacts(board_id, filename) 
+    WHERE card_id IS NULL
+  `);
 }
 
 // --- Types ---
@@ -279,6 +303,19 @@ export interface CommentRow {
   board_id: string;
   user_id: string;
   content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArtifactRow {
+  id: string;
+  board_id: string;
+  card_id: string | null;
+  filename: string;
+  filetype: "md" | "html" | "js" | "ts" | "sh";
+  content: string;
+  position: number;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1520,4 +1557,141 @@ export function getBoardFeed(
   }
 
   return { items, has_more: hasMore };
+}
+
+// --- Artifact helpers ---
+
+export function createArtifact(
+  db: Database,
+  boardId: string,
+  cardId: string | null,
+  filename: string,
+  filetype: ArtifactRow["filetype"],
+  content: string,
+  userId: string | null
+): ArtifactRow {
+  // Validate content size (100KB limit)
+  if (content.length > 100 * 1024) {
+    throw new Error(`Content exceeds 100KB limit (got ${Math.round(content.length / 1024)}KB)`);
+  }
+
+  // Validate filetype
+  const validFiletypes: ArtifactRow["filetype"][] = ["md", "html", "js", "ts", "sh"];
+  if (!validFiletypes.includes(filetype)) {
+    throw new Error(`Invalid filetype: ${filetype}. Must be one of: ${validFiletypes.join(", ")}`);
+  }
+
+  // Get next position
+  const maxPos = cardId
+    ? db.query<{ max_pos: number | null }, [string]>(
+        "SELECT MAX(position) as max_pos FROM artifacts WHERE card_id = ?"
+      ).get(cardId)
+    : db.query<{ max_pos: number | null }, [string]>(
+        "SELECT MAX(position) as max_pos FROM artifacts WHERE board_id = ? AND card_id IS NULL"
+      ).get(boardId);
+
+  const position = (maxPos?.max_pos ?? -1) + 1;
+  const id = nanoid();
+  const now = new Date().toISOString();
+
+  db.query(
+    `INSERT INTO artifacts (id, board_id, card_id, filename, filetype, content, position, user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, boardId, cardId, filename, filetype, content, position, userId, now, now);
+
+  return getArtifact(db, id)!;
+}
+
+export function getArtifact(db: Database, id: string): ArtifactRow | null {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE id = ?"
+  ).get(id) ?? null;
+}
+
+export function getCardArtifacts(db: Database, cardId: string): ArtifactRow[] {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE card_id = ? ORDER BY position ASC"
+  ).all(cardId);
+}
+
+export function getBoardArtifacts(db: Database, boardId: string): ArtifactRow[] {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE board_id = ? AND card_id IS NULL ORDER BY position ASC"
+  ).all(boardId);
+}
+
+export function updateArtifact(
+  db: Database,
+  id: string,
+  updates: { filename?: string; content?: string }
+): ArtifactRow | null {
+  const artifact = getArtifact(db, id);
+  if (!artifact) return null;
+
+  if (updates.content && updates.content.length > 100 * 1024) {
+    throw new Error(`Content exceeds 100KB limit (got ${Math.round(updates.content.length / 1024)}KB)`);
+  }
+
+  const fields: string[] = ["updated_at = ?"];
+  const values: unknown[] = [new Date().toISOString()];
+
+  if (updates.filename !== undefined) {
+    fields.push("filename = ?");
+    values.push(updates.filename);
+  }
+  if (updates.content !== undefined) {
+    fields.push("content = ?");
+    values.push(updates.content);
+  }
+
+  values.push(id);
+
+  db.query(
+    `UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`
+  ).run(...values);
+
+  return getArtifact(db, id);
+}
+
+export function deleteArtifact(db: Database, id: string): void {
+  const artifact = getArtifact(db, id);
+  if (!artifact) return;
+
+  // Delete the artifact
+  db.query("DELETE FROM artifacts WHERE id = ?").run(id);
+
+  // Adjust positions of remaining siblings
+  if (artifact.card_id) {
+    db.query(
+      `UPDATE artifacts 
+       SET position = position - 1 
+       WHERE card_id = ? AND position > ?`
+    ).run(artifact.card_id, artifact.position);
+  } else {
+    db.query(
+      `UPDATE artifacts 
+       SET position = position - 1 
+       WHERE board_id = ? AND card_id IS NULL AND position > ?`
+    ).run(artifact.board_id, artifact.position);
+  }
+}
+
+export function getArtifactByCardAndFilename(
+  db: Database,
+  cardId: string,
+  filename: string
+): ArtifactRow | null {
+  return db.query<ArtifactRow, [string, string]>(
+    "SELECT * FROM artifacts WHERE card_id = ? AND filename = ?"
+  ).get(cardId, filename) ?? null;
+}
+
+export function getArtifactByBoardAndFilename(
+  db: Database,
+  boardId: string,
+  filename: string
+): ArtifactRow | null {
+  return db.query<ArtifactRow, [string, string]>(
+    "SELECT * FROM artifacts WHERE board_id = ? AND card_id IS NULL AND filename = ?"
+  ).get(boardId, filename) ?? null;
 }

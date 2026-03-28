@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Board Artifacts Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #172b4d;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            padding: 10px;
+            margin: 5px 0;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #e1e4e8;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status.pass {
+            background: #28a745;
+            color: white;
+        }
+        .status.pending {
+            background: #ffc107;
+            color: #333;
+        }
+        .code {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        .note {
+            color: #6c757d;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Board Artifacts (AC12) - Test Plan</h1>
+        
+        <div class="section">
+            <h2>✅ Implementation Summary</h2>
+            <p>AC12 has been successfully implemented with the following components:</p>
+            <ul>
+                <li>✅ <code>BoardArtifacts.tsx</code> - New component for managing board-level artifacts</li>
+                <li>✅ <code>BoardView.tsx</code> - Added Board Docs button in header</li>
+                <li>✅ <code>styles.css</code> - Added styles for board artifacts modal and button</li>
+                <li>✅ <code>api.ts</code> - Board artifact endpoints already existed</li>
+                <li>✅ Unit tests for BoardArtifacts component</li>
+                <li>✅ Unit tests for BoardView integration</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>📋 Test Checklist</h2>
+            <ol class="checklist">
+                <li>
+                    <strong>Board Docs Button Visibility</strong>
+                    <ul>
+                        <li>✓ Button appears for board members</li>
+                        <li>✓ Button appears for board owner</li>
+                        <li>✓ Button does NOT appear for non-members</li>
+                        <li>✓ Button shows folder icon 📁 and text "Board Docs"</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>Modal Open/Close</strong>
+                    <ul>
+                        <li>✓ Clicking Board Docs button opens modal</li>
+                        <li>✓ Modal has title "Board Documents"</li>
+                        <li>✓ Modal can be closed with X button</li>
+                        <li>✓ Modal can be closed with Escape key</li>
+                        <li>✓ Modal can be closed by clicking backdrop</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>Empty State</strong>
+                    <ul>
+                        <li>✓ Shows "No board documents" when empty</li>
+                        <li>✓ Shows "Add Document" button for members/owners</li>
+                        <li>✓ Does NOT show "Add Document" for non-members</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>Add Document</strong>
+                    <ul>
+                        <li>✓ Form has filename input</li>
+                        <li>✓ Form has file type dropdown (md, html, js, ts, sh)</li>
+                        <li>✓ Form has content textarea</li>
+                        <li>✓ Save button is disabled when fields are empty</li>
+                        <li>✓ Can cancel to hide form</li>
+                        <li>✓ Successfully creates artifact on save</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>View Documents</strong>
+                    <ul>
+                        <li>✓ Lists all board-level artifacts</li>
+                        <li>✓ Shows filename with correct icon</li>
+                        <li>✓ Shows file type and creation date</li>
+                        <li>✓ Click to expand and view content</li>
+                        <li>✓ Click again to collapse</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>Edit Documents</strong>
+                    <ul>
+                        <li>✓ Edit button appears for members/owners</li>
+                        <li>✓ Edit button does NOT appear for non-members</li>
+                        <li>✓ Clicking edit loads content in textarea</li>
+                        <li>✓ Can save changes</li>
+                        <li>✓ Can cancel editing</li>
+                    </ul>
+                </li>
+                
+                <li>
+                    <strong>Delete Documents</strong>
+                    <ul>
+                        <li>✓ Delete button appears for members/owners</li>
+                        <li>✓ Delete button does NOT appear for non-members</li>
+                        <li>✓ Shows confirmation dialog</li>
+                        <li>✓ Deletes on confirmation</li>
+                        <li>✓ Cancels on dialog cancel</li>
+                    </ul>
+                </li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>🔍 Manual Test Steps</h2>
+            <ol>
+                <li><strong>As a board member:</strong>
+                    <ol>
+                        <li>Navigate to a board where you are a member</li>
+                        <li>Look for "Board Docs" button in the header (near activity button)</li>
+                        <li>Click the button to open the modal</li>
+                        <li>Add a new document</li>
+                        <li>Edit the document</li>
+                        <li>Delete the document</li>
+                    </ol>
+                </li>
+                
+                <li><strong>As a non-member:</strong>
+                    <ol>
+                        <li>Navigate to a board where you are NOT a member</li>
+                        <li>Verify "Board Docs" button is NOT visible</li>
+                    </ol>
+                </li>
+            </ol>
+        </div>
+
+        <div class="section">
+            <h2>📝 Notes</h2>
+            <ul>
+                <li>Board artifacts have <code>card_id: null</code> to distinguish them from card artifacts</li>
+                <li>Uses the same API endpoints as card artifacts: <code>fetchBoardArtifacts</code>, <code>createBoardArtifact</code></li>
+                <li>Consistent UI/UX with card artifacts implementation</li>
+                <li>All file types have unique icons: 📝 (md), 🌐 (html), 📜 (js), 📘 (ts), ⚡ (sh)</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>

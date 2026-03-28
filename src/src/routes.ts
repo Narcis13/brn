@@ -50,8 +50,15 @@ import {
   isWatching,
   getWatcherCount,
   getBoardFeed,
+  createArtifact,
+  getArtifact,
+  getCardArtifacts,
+  getBoardArtifacts,
+  updateArtifact,
+  deleteArtifact,
   type BoardRow,
   type SearchDueFilter,
+  type ArtifactRow,
 } from "./db.ts";
 
 type Env = { Variables: { userId: string; username: string } };
@@ -774,7 +781,10 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "card not found" }, 404);
     }
 
-    return c.json(cardDetail);
+    // Get artifacts for this card (without content to keep response light)
+    const artifacts = getCardArtifacts(db, cardId).map(({ content, ...artifact }) => artifact);
+
+    return c.json({ ...cardDetail, artifacts });
   });
 
   app.get("/api/boards/:boardId/cards/:cardId/activity", (c) => {
@@ -871,6 +881,255 @@ export function createApp(db: Database): Hono<Env> {
     const cards = getCalendarCards(db, board.id, start, end);
     
     return c.json({ cards });
+  });
+
+  // --- Artifact routes ---
+
+  app.get("/api/boards/:boardId/cards/:cardId/artifacts", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const artifacts = getCardArtifacts(db, cardId);
+    return c.json({ artifacts });
+  });
+
+  app.post("/api/boards/:boardId/cards/:cardId/artifacts", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const cardId = c.req.param("cardId");
+    const card = getCardById(db, cardId);
+    if (!card) return c.json({ error: "card not found" }, 404);
+
+    // Verify card belongs to this board
+    const cardCol = getColumnById(db, card.column_id);
+    if (!cardCol || cardCol.board_id !== board.id) {
+      return c.json({ error: "card not found" }, 404);
+    }
+
+    const body = await c.req.json<{ filename?: string; filetype?: string; content?: string }>();
+    if (!body.filename || !body.filetype || !body.content) {
+      return c.json({ error: "filename, filetype, and content are required" }, 400);
+    }
+
+    // Validate filetype
+    const validFiletypes: ArtifactRow["filetype"][] = ["md", "html", "js", "ts", "sh"];
+    if (!validFiletypes.includes(body.filetype as ArtifactRow["filetype"])) {
+      return c.json({ error: "filetype must be one of: md, html, js, ts, sh" }, 400);
+    }
+
+    // Validate content size (100KB limit)
+    if (body.content.length > 100 * 1024) {
+      return c.json({ error: `Content exceeds 100KB limit (got ${Math.round(body.content.length / 1024)}KB)` }, 413);
+    }
+
+    try {
+      const artifact = createArtifact(
+        db,
+        board.id,
+        cardId,
+        body.filename,
+        body.filetype as ArtifactRow["filetype"],
+        body.content,
+        userId
+      );
+
+      // Create activity entry
+      createActivity(
+        db,
+        cardId,
+        board.id,
+        "artifact_added",
+        JSON.stringify({ filename: body.filename, filetype: body.filetype }),
+        userId
+      );
+
+      return c.json(artifact, 201);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (message.includes("UNIQUE constraint failed")) {
+        return c.json({ error: `Artifact '${body.filename}' already exists on this card` }, 400);
+      }
+      return c.json({ error: message }, 400);
+    }
+  });
+
+  app.get("/api/boards/:boardId/artifacts", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const url = new URL(c.req.url);
+    const scope = url.searchParams.get("scope");
+
+    if (scope === "board") {
+      // Board-level artifacts
+      const artifacts = getBoardArtifacts(db, board.id);
+      return c.json({ artifacts });
+    } else {
+      return c.json({ error: "scope=board is required for board-level artifacts" }, 400);
+    }
+  });
+
+  app.post("/api/boards/:boardId/artifacts", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{ filename?: string; filetype?: string; content?: string }>();
+    if (!body.filename || !body.filetype || !body.content) {
+      return c.json({ error: "filename, filetype, and content are required" }, 400);
+    }
+
+    // Validate filetype
+    const validFiletypes: ArtifactRow["filetype"][] = ["md", "html", "js", "ts", "sh"];
+    if (!validFiletypes.includes(body.filetype as ArtifactRow["filetype"])) {
+      return c.json({ error: "filetype must be one of: md, html, js, ts, sh" }, 400);
+    }
+
+    // Validate content size (100KB limit)
+    if (body.content.length > 100 * 1024) {
+      return c.json({ error: `Content exceeds 100KB limit (got ${Math.round(body.content.length / 1024)}KB)` }, 413);
+    }
+
+    try {
+      const artifact = createArtifact(
+        db,
+        board.id,
+        null, // board-level artifact
+        body.filename,
+        body.filetype as ArtifactRow["filetype"],
+        body.content,
+        userId
+      );
+
+      // Create activity entry
+      createActivity(
+        db,
+        board.id,
+        board.id,
+        "artifact_added",
+        JSON.stringify({ filename: body.filename, filetype: body.filetype }),
+        userId
+      );
+
+      return c.json(artifact, 201);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (message.includes("UNIQUE constraint failed")) {
+        return c.json({ error: `Artifact '${body.filename}' already exists on this board` }, 400);
+      }
+      return c.json({ error: message }, 400);
+    }
+  });
+
+  app.get("/api/boards/:boardId/artifacts/:id", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const artifactId = c.req.param("id");
+    const artifact = getArtifact(db, artifactId);
+    if (!artifact || artifact.board_id !== board.id) {
+      return c.json({ error: "artifact not found" }, 404);
+    }
+
+    return c.json(artifact);
+  });
+
+  app.patch("/api/boards/:boardId/artifacts/:id", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const artifactId = c.req.param("id");
+    const artifact = getArtifact(db, artifactId);
+    if (!artifact || artifact.board_id !== board.id) {
+      return c.json({ error: "artifact not found" }, 404);
+    }
+
+    const body = await c.req.json<{ content?: string; filename?: string }>();
+    if (!body.content && !body.filename) {
+      return c.json({ error: "content or filename is required" }, 400);
+    }
+
+    // Validate content size if provided
+    if (body.content && body.content.length > 100 * 1024) {
+      return c.json({ error: `Content exceeds 100KB limit (got ${Math.round(body.content.length / 1024)}KB)` }, 413);
+    }
+
+    try {
+      const updated = updateArtifact(db, artifactId, {
+        content: body.content,
+        filename: body.filename,
+      });
+
+      if (!updated) {
+        return c.json({ error: "Failed to update artifact" }, 500);
+      }
+
+      // Create activity entry
+      createActivity(
+        db,
+        artifact.card_id || board.id,
+        board.id,
+        "artifact_edited",
+        JSON.stringify({ filename: artifact.filename }),
+        userId
+      );
+
+      return c.json(updated);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      if (message.includes("UNIQUE constraint failed")) {
+        return c.json({ error: `Artifact with filename '${body.filename}' already exists` }, 400);
+      }
+      return c.json({ error: message }, 400);
+    }
+  });
+
+  app.delete("/api/boards/:boardId/artifacts/:id", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const artifactId = c.req.param("id");
+    const artifact = getArtifact(db, artifactId);
+    if (!artifact || artifact.board_id !== board.id) {
+      return c.json({ error: "artifact not found" }, 404);
+    }
+
+    // Create activity entry before deletion
+    createActivity(
+      db,
+      artifact.card_id || board.id,
+      board.id,
+      "artifact_deleted",
+      JSON.stringify({ filename: artifact.filename, filetype: artifact.filetype }),
+      userId
+    );
+
+    deleteArtifact(db, artifactId);
+    return c.json({ ok: true });
   });
 
   return app;
