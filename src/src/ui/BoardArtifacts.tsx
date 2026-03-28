@@ -44,6 +44,8 @@ export function BoardArtifacts({
   const [expandedArtifactContent, setExpandedArtifactContent] = useState<string>("");
   const [editingArtifact, setEditingArtifact] = useState<Artifact | null>(null);
   const [editingArtifactContent, setEditingArtifactContent] = useState("");
+  const [runningArtifact, setRunningArtifact] = useState<string | null>(null);
+  const [artifactRunOutput, setArtifactRunOutput] = useState<{ output: string; exitCode: number } | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -264,6 +266,30 @@ export function BoardArtifacts({
                               </span>
                               {canEdit && (
                                 <div className="artifact-actions">
+                                  {["sh", "js", "ts"].includes(artifact.filetype) && (
+                                    <button
+                                      type="button"
+                                      className="btn-icon btn-sm"
+                                      title="Run"
+                                      disabled={runningArtifact === artifact.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setRunningArtifact(artifact.id);
+                                        setArtifactRunOutput(null);
+                                        setExpandedArtifact(artifact.id);
+                                        try {
+                                          const result = await api.runArtifact(boardId, artifact.id);
+                                          setArtifactRunOutput(result);
+                                        } catch (err) {
+                                          setArtifactRunOutput({ output: err instanceof Error ? err.message : "Run failed", exitCode: 1 });
+                                        } finally {
+                                          setRunningArtifact(null);
+                                        }
+                                      }}
+                                    >
+                                      {runningArtifact === artifact.id ? "..." : "▶️"}
+                                    </button>
+                                  )}
                                   <button
                                     type="button"
                                     className="btn-icon btn-sm"
@@ -271,9 +297,10 @@ export function BoardArtifacts({
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       setEditingArtifact(artifact);
-                                      // Load content first if not already loaded
                                       if (expandedArtifact !== artifact.id) {
                                         const fullArtifact = await api.fetchArtifact(boardId, artifact.id);
+                                        setExpandedArtifact(artifact.id);
+                                        setExpandedArtifactContent(fullArtifact.content || "");
                                         setEditingArtifactContent(fullArtifact.content || "");
                                       } else {
                                         setEditingArtifactContent(expandedArtifactContent);
@@ -329,6 +356,21 @@ export function BoardArtifacts({
                                   </>
                                 ) : (
                                   <pre className="artifact-content-display">{expandedArtifactContent}</pre>
+                                )}
+                                {artifactRunOutput && expandedArtifact === artifact.id && (
+                                  <div className={`artifact-run-output ${artifactRunOutput.exitCode === 0 ? "run-success" : "run-error"}`}>
+                                    <div className="run-output-header">
+                                      <span>{artifactRunOutput.exitCode === 0 ? "Output" : `Error (exit code ${artifactRunOutput.exitCode})`}</span>
+                                      <button
+                                        type="button"
+                                        className="btn-icon btn-sm"
+                                        onClick={() => setArtifactRunOutput(null)}
+                                      >
+                                        x
+                                      </button>
+                                    </div>
+                                    <pre className="run-output-content">{artifactRunOutput.output || "(no output)"}</pre>
+                                  </div>
                                 )}
                               </div>
                             )}
