@@ -1,11 +1,19 @@
 import { getDb } from "./db.ts";
 import { createApp } from "./routes.ts";
+import { initializeActivitySubscriber } from "./activity-subscriber.ts";
+import { initializeTriggerEngine } from "./trigger-engine.ts";
+import { initializeNotificationSubscriber } from "./notification-subscriber.ts";
+import { SSEManager } from "./sse-manager.ts";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
 const PUBLIC_DIR = import.meta.dir + "/../public";
 
 const db = getDb();
-const app = createApp(db);
+const sseManager = new SSEManager();
+initializeActivitySubscriber(db);
+initializeTriggerEngine(db, sseManager);
+initializeNotificationSubscriber(db, sseManager);
+const app = createApp(db, sseManager);
 
 const server = Bun.serve({
   port: PORT,

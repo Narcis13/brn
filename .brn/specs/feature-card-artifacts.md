@@ -1,6 +1,6 @@
 ---
 title: Card & Board Artifacts — File-like content objects attached to cards and boards
-status: active
+status: done
 priority: high
 ---
 

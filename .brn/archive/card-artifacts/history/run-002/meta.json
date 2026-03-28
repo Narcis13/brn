@@ -1,0 +1,24 @@
+{
+  "run_number": 2,
+  "timestamp": "2026-03-28T00:00:00Z",
+  "duration_ms": 45000,
+  "acceptance_criteria": {
+    "total": 15,
+    "met": 13,
+    "completed_this_run": ["AC12"]
+  },
+  "files_changed": [
+    "src/src/ui/BoardView.tsx",
+    "src/src/ui/BoardArtifacts.tsx",
+    "src/src/ui/BoardArtifacts.test.tsx",
+    "src/src/ui/BoardView.boarddocs.test.tsx",
+    "src/public/styles.css"
+  ],
+  "tests": {
+    "total": 395,
+    "passed": 395,
+    "failed": 0
+  },
+  "builder_mode": "claude-code",
+  "success": true
+}

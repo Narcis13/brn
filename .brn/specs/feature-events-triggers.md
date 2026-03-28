@@ -1,6 +1,6 @@
 ---
 title: Events System & Triggers — Real-time event bus with user-configurable automations
-status: ready
+status: active
 priority: high
 ---
 

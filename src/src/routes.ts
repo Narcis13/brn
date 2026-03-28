@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { sign, verify } from "hono/jwt";
 import { isValidDateFormat } from "./date-utils";
+import { eventBus, type TaktEvent } from "./event-bus";
+import { EventTypes } from "./event-types";
 import {
   createUser,
   getUserByUsername,
@@ -57,10 +59,25 @@ import {
   getBoardArtifacts,
   updateArtifact,
   deleteArtifact,
+  // Trigger & notification imports
+  createTrigger,
+  getTriggerById,
+  getBoardTriggers,
+  updateTrigger,
+  deleteTrigger,
+  getTriggerLogs,
+  getBoardTriggerLogs,
+  getUserNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteOldReadNotifications,
+  getNotificationById,
   type BoardRow,
   type SearchDueFilter,
   type ArtifactRow,
 } from "./db.ts";
+import type { SSEManager } from "./sse-manager.ts";
 
 type Env = { Variables: { userId: string; username: string } };
 
@@ -81,7 +98,7 @@ function isSearchDueFilter(value: string): value is SearchDueFilter {
   return value === "overdue" || value === "today" || value === "week" || value === "none";
 }
 
-export function createApp(db: Database): Hono<Env> {
+export function createApp(db: Database, sseManager?: SSEManager): Hono<Env> {
   const app = new Hono<Env>();
 
   // --- Auth middleware (protects all /api/* except register/login) ---
@@ -89,6 +106,21 @@ export function createApp(db: Database): Hono<Env> {
     const path = new URL(c.req.url).pathname;
     if (path === "/api/auth/register" || path === "/api/auth/login") {
       return next();
+    }
+
+    // SSE endpoints handle auth via query param — let them through
+    if (path.endsWith("/events")) {
+      const tokenParam = c.req.query("token");
+      if (tokenParam) {
+        try {
+          const payload = await verify(tokenParam, JWT_SECRET, "HS256");
+          c.set("userId", payload["userId"] as string);
+          c.set("username", payload["username"] as string);
+          return next();
+        } catch {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+      }
     }
 
     const authHeader = c.req.header("Authorization");
@@ -192,13 +224,27 @@ export function createApp(db: Database): Hono<Env> {
     }
     const userId = c.get("userId");
     const board = createBoard(db, body.title.trim(), userId);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.BOARD_CREATED,
+      boardId: board.id,
+      cardId: null,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        name: board.title
+      }
+    });
+
     return c.json(
       { id: board.id, title: board.title, userId: board.user_id, createdAt: board.created_at },
       201
     );
   });
 
-  app.delete("/api/boards/:id", (c) => {
+  app.delete("/api/boards/:id", async (c) => {
     const boardId = c.req.param("id");
     const userId = c.get("userId");
     const board = getBoardById(db, boardId);
@@ -208,6 +254,19 @@ export function createApp(db: Database): Hono<Env> {
     if (!isBoardOwner(db, boardId, userId)) {
       return c.json({ error: "forbidden" }, 403);
     }
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.BOARD_DELETED,
+      boardId: boardId,
+      cardId: null,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: boardId,
+        name: board.title
+      }
+    });
+
     deleteBoard(db, boardId);
     return c.json({ ok: true });
   });
@@ -252,13 +311,28 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     const member = addBoardMember(db, boardId, targetUser.id);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.BOARD_MEMBER_INVITED,
+      boardId: boardId,
+      cardId: null,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: boardId,
+        invitedUserId: targetUser.id,
+        invitedUserEmail: targetUser.username // username acts as email in this system
+      }
+    });
+
     return c.json(
       { id: member.user_id, username: member.username, role: member.role, invited_at: member.invited_at },
       201
     );
   });
 
-  app.delete("/api/boards/:boardId/members/:userId", (c) => {
+  app.delete("/api/boards/:boardId/members/:userId", async (c) => {
     const boardId = c.req.param("boardId");
     const currentUserId = c.get("userId");
     const targetUserId = c.req.param("userId");
@@ -273,10 +347,27 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "Cannot remove the board owner" }, 400);
     }
 
+    // Get user info before removal for the event
+    const targetUser = db.query("SELECT username FROM users WHERE id = ?").get(targetUserId) as { username: string } | null;
+    
     const removed = removeBoardMember(db, boardId, targetUserId);
     if (!removed) {
       return c.json({ error: "member not found" }, 404);
     }
+
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.BOARD_MEMBER_REMOVED,
+      boardId: boardId,
+      cardId: null,
+      userId: currentUserId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: boardId,
+        removedUserId: targetUserId,
+        removedUserEmail: targetUser?.username || "" // username acts as email in this system
+      }
+    });
 
     return c.json({ ok: true });
   });
@@ -298,6 +389,22 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "title is required" }, 400);
     }
     const col = createColumn(db, board.id, body.title.trim());
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.COLUMN_CREATED,
+      boardId: board.id,
+      cardId: null,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        columnId: col.id,
+        name: col.title,
+        position: col.position
+      }
+    });
+
     return c.json(col, 201);
   });
 
@@ -319,6 +426,22 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "column_ids must match all existing columns for this board" }, 400);
     }
 
+    // Get all columns with their new positions for the event
+    const columns = getAllColumns(db, board.id);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.COLUMN_REORDERED,
+      boardId: board.id,
+      cardId: null,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        columns: columns.map((col, idx) => ({ id: col.id, name: col.title, position: idx }))
+      }
+    });
+
     return c.json({ ok: true });
   });
 
@@ -334,11 +457,31 @@ export function createApp(db: Database): Hono<Env> {
     if (!body.title || body.title.trim() === "") {
       return c.json({ error: "title is required" }, 400);
     }
+    const oldName = existing.title;
     const col = updateColumn(db, colId, body.title.trim());
+    if (!col) {
+      return c.json({ error: "Failed to update column" }, 500);
+    }
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.COLUMN_UPDATED,
+      boardId: board.id,
+      cardId: null,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        columnId: colId,
+        name: col.title,
+        oldName: oldName
+      }
+    });
+
     return c.json(col);
   });
 
-  app.delete("/api/boards/:boardId/columns/:id", (c) => {
+  app.delete("/api/boards/:boardId/columns/:id", async (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
     const colId = c.req.param("id");
@@ -346,6 +489,20 @@ export function createApp(db: Database): Hono<Env> {
     if (!existing || existing.board_id !== board.id) {
       return c.json({ error: "column not found" }, 404);
     }
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.COLUMN_DELETED,
+      boardId: board.id,
+      cardId: null,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        columnId: colId,
+        name: existing.title
+      }
+    });
+
     deleteColumn(db, colId);
     return c.json({ ok: true });
   });
@@ -375,6 +532,23 @@ export function createApp(db: Database): Hono<Env> {
     
     const card = createCard(db, body.title.trim(), body.columnId, body.description?.trim() ?? "", body.due_date || null, c.get("userId"));
     if (!card) return c.json({ error: "column not found" }, 404);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.CARD_CREATED,
+      boardId: board.id,
+      cardId: card.id,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        cardId: card.id,
+        boardId: board.id,
+        columnId: card.column_id,
+        title: card.title,
+        position: card.position
+      }
+    });
+
     return c.json(card, 201);
   });
 
@@ -441,7 +615,30 @@ export function createApp(db: Database): Hono<Env> {
       }
     }
 
-    const card = updateCardWithActivity(db, cardId, board.id, {
+    // Get the existing card first
+    const existing = getCardById(db, cardId);
+    if (!existing) return c.json({ error: "card not found" }, 404);
+
+    // Track what changed for event emission
+    const changes: string[] = [];
+    const columnChanged = body.columnId && body.columnId !== existing.column_id;
+
+    if (body.title !== undefined && body.title?.trim() !== existing.title) {
+      changes.push("title");
+    }
+    if (body.description !== undefined && body.description?.trim() !== existing.description) {
+      changes.push("description");
+    }
+    if ((body.due_date !== undefined && body.due_date !== existing.due_date) ||
+        (body.start_date !== undefined && body.start_date !== existing.start_date)) {
+      changes.push("dates");
+    }
+    if (body.checklist !== undefined && body.checklist !== existing.checklist) {
+      changes.push("checklist");
+    }
+
+    // Perform the update
+    const card = updateCard(db, cardId, {
       title: body.title?.trim(),
       description: body.description?.trim(),
       columnId: body.columnId,
@@ -449,12 +646,148 @@ export function createApp(db: Database): Hono<Env> {
       dueDate: body.due_date,
       startDate: body.start_date,
       checklist: body.checklist,
-    }, c.get("userId"));
+    });
     if (!card) return c.json({ error: "card not found or invalid date range" }, 404);
+
+    // Emit appropriate events
+    const userId = c.get("userId") || "";
+    
+    // Handle checklist changes first to emit granular events
+    if (changes.includes("checklist")) {
+      try {
+        const oldChecklist = existing.checklist ? JSON.parse(existing.checklist) : [];
+        const newChecklist = body.checklist ? JSON.parse(body.checklist) : [];
+        
+        // Create maps for easier comparison
+        const oldItems = new Map(oldChecklist.map((item: any) => [item.id, item]));
+        const newItems = new Map(newChecklist.map((item: any) => [item.id, item]));
+        
+        // Find added items
+        for (const [id, newItem] of newItems) {
+          if (!oldItems.has(id)) {
+            await eventBus.emit({
+              eventType: EventTypes.CHECKLIST_ITEM_ADDED,
+              boardId: board.id,
+              cardId: cardId,
+              userId: userId,
+              timestamp: new Date().toISOString(),
+              payload: {
+                boardId: board.id,
+                cardId: cardId,
+                itemIndex: newChecklist.findIndex((item: any) => item.id === id),
+                text: (newItem as any).text
+              }
+            });
+          }
+        }
+        
+        // Find removed items
+        for (const [id, oldItem] of oldItems) {
+          if (!newItems.has(id)) {
+            await eventBus.emit({
+              eventType: EventTypes.CHECKLIST_ITEM_REMOVED,
+              boardId: board.id,
+              cardId: cardId,
+              userId: userId,
+              timestamp: new Date().toISOString(),
+              payload: {
+                boardId: board.id,
+                cardId: cardId,
+                itemIndex: oldChecklist.findIndex((item: any) => item.id === id),
+                text: (oldItem as any).text
+              }
+            });
+          }
+        }
+        
+        // Find checked/unchecked changes
+        for (const [id, newItem] of newItems) {
+          const oldItem = oldItems.get(id);
+          if (oldItem && (oldItem as any).checked !== (newItem as any).checked) {
+            await eventBus.emit({
+              eventType: (newItem as any).checked ? EventTypes.CHECKLIST_ITEM_CHECKED : EventTypes.CHECKLIST_ITEM_UNCHECKED,
+              boardId: board.id,
+              cardId: cardId,
+              userId: userId,
+              timestamp: new Date().toISOString(),
+              payload: {
+                boardId: board.id,
+                cardId: cardId,
+                itemIndex: newChecklist.findIndex((item: any) => item.id === id),
+                text: (newItem as any).text
+              }
+            });
+          }
+        }
+      } catch (err) {
+        // If parsing fails, just emit a generic card update
+        console.error("Failed to parse checklist for event emission:", err);
+      }
+    }
+    
+    if (columnChanged) {
+      // Get column names for the event
+      const oldCol = getColumnById(db, existing.column_id);
+      const newCol = getColumnById(db, body.columnId!);
+      if (oldCol && newCol) {
+        await eventBus.emit({
+          eventType: EventTypes.CARD_MOVED,
+          boardId: board.id,
+          cardId: cardId,
+          userId: userId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            cardId: cardId,
+            cardTitle: card.title,
+            boardId: board.id,
+            fromColumn: oldCol.title,
+            toColumn: newCol.title,
+            fromPosition: existing.position,
+            toPosition: card.position
+          }
+        });
+      }
+    } else if (changes.length > 0) {
+      // Emit appropriate event based on changes (excluding checklist which was already handled)
+      if (changes.includes("dates")) {
+        await eventBus.emit({
+          eventType: EventTypes.CARD_DATES_CHANGED,
+          boardId: board.id,
+          cardId: cardId,
+          userId: userId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            cardId: cardId,
+            boardId: board.id,
+            startDate: card.start_date,
+            dueDate: card.due_date,
+            oldStartDate: existing.start_date,
+            oldDueDate: existing.due_date
+          }
+        });
+      } else if (!changes.every(c => c === "checklist")) {
+        // Only emit general update if there are non-checklist changes
+        await eventBus.emit({
+          eventType: EventTypes.CARD_UPDATED,
+          boardId: board.id,
+          cardId: cardId,
+          userId: userId,
+          timestamp: new Date().toISOString(),
+          payload: {
+            cardId: cardId,
+            boardId: board.id,
+            columnId: card.column_id,
+            title: card.title,
+            description: card.description,
+            changes: changes.filter(c => c !== "checklist") // Exclude checklist as it's handled separately
+          }
+        });
+      }
+    }
     return c.json(card);
   });
 
-  app.delete("/api/boards/:boardId/cards/:id", (c) => {
+  app.delete("/api/boards/:boardId/cards/:id", async (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
     const cardId = c.req.param("id");
@@ -466,6 +799,21 @@ export function createApp(db: Database): Hono<Env> {
     if (!cardCol || cardCol.board_id !== board.id) {
       return c.json({ error: "card not found" }, 404);
     }
+
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.CARD_DELETED,
+      boardId: board.id,
+      cardId: cardId,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        cardId: cardId,
+        boardId: board.id,
+        columnId: existingCard.column_id,
+        title: existingCard.title
+      }
+    });
 
     deleteCard(db, cardId);
     return c.json({ ok: true });
@@ -494,6 +842,22 @@ export function createApp(db: Database): Hono<Env> {
     
     try {
       const label = createLabel(db, board.id, body.name.trim(), body.color);
+      
+      // Emit event
+      await eventBus.emit({
+        eventType: EventTypes.LABEL_CREATED,
+        boardId: board.id,
+        cardId: null,
+        userId: c.get("userId") || "",
+        timestamp: new Date().toISOString(),
+        payload: {
+          boardId: board.id,
+          labelId: label.id,
+          name: label.name,
+          color: label.color
+        }
+      });
+
       return c.json(label, 201);
     } catch (err) {
       // UNIQUE constraint violation
@@ -526,6 +890,28 @@ export function createApp(db: Database): Hono<Env> {
         color: body.color,
         position: body.position,
       });
+
+      if (!label) {
+        return c.json({ error: "Failed to update label" }, 500);
+      }
+
+      // Emit event
+      await eventBus.emit({
+        eventType: EventTypes.LABEL_UPDATED,
+        boardId: board.id,
+        cardId: null,
+        userId: c.get("userId") || "",
+        timestamp: new Date().toISOString(),
+        payload: {
+          boardId: board.id,
+          labelId: labelId,
+          name: label.name,
+          color: label.color,
+          oldName: existing.name,
+          oldColor: existing.color
+        }
+      });
+
       return c.json(label);
     } catch (err) {
       // UNIQUE constraint violation
@@ -533,7 +919,7 @@ export function createApp(db: Database): Hono<Env> {
     }
   });
 
-  app.delete("/api/boards/:boardId/labels/:labelId", (c) => {
+  app.delete("/api/boards/:boardId/labels/:labelId", async (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
     
@@ -543,6 +929,20 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "label not found" }, 404);
     }
     
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.LABEL_DELETED,
+      boardId: board.id,
+      cardId: null,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        labelId: labelId,
+        name: existing.name
+      }
+    });
+
     deleteLabel(db, labelId);
     return c.json({ ok: true });
   });
@@ -579,13 +979,25 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "label already assigned to card" }, 409);
     }
     
-    // Create activity entry
-    createActivity(db, cardId, board.id, "label_added", { name: label.name, color: label.color }, c.get("userId"));
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.CARD_LABEL_ASSIGNED,
+      boardId: board.id,
+      cardId: cardId,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        cardId: cardId,
+        boardId: board.id,
+        labelId: body.labelId,
+        labelName: label?.name || "unknown"
+      }
+    });
 
     return c.json({ ok: true }, 201);
   });
 
-  app.delete("/api/boards/:boardId/cards/:cardId/labels/:labelId", (c) => {
+  app.delete("/api/boards/:boardId/cards/:cardId/labels/:labelId", async (c) => {
     const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
     if (!board) return c.json({ error: "not found" }, 404);
     
@@ -606,8 +1018,20 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "label not assigned to card" }, 404);
     }
 
-    // Create activity entry
-    createActivity(db, cardId, board.id, "label_removed", { name: label?.name ?? "unknown", color: label?.color ?? "" }, c.get("userId"));
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.CARD_LABEL_REMOVED,
+      boardId: board.id,
+      cardId: cardId,
+      userId: c.get("userId") || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        cardId: cardId,
+        boardId: board.id,
+        labelId: labelId,
+        labelName: label?.name ?? "unknown"
+      }
+    });
     
     return c.json({ ok: true });
   });
@@ -639,6 +1063,22 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     const comment = createComment(db, cardId, board.id, userId, body.content.trim());
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.COMMENT_CREATED,
+      boardId: board.id,
+      cardId: cardId,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        cardId: cardId,
+        commentId: comment.id,
+        content: comment.content
+      }
+    });
+
     return c.json({
       id: comment.id,
       content: comment.content,
@@ -675,8 +1115,25 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "content must be 5000 characters or less" }, 400);
     }
 
+    const oldContent = existing.content;
     const updated = updateComment(db, commentId, body.content.trim());
     if (!updated) return c.json({ error: "comment not found" }, 404);
+
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.COMMENT_UPDATED,
+      boardId: board.id,
+      cardId: c.req.param("cardId"),
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        cardId: c.req.param("cardId"),
+        commentId: commentId,
+        content: updated.content,
+        oldContent: oldContent
+      }
+    });
 
     return c.json({
       id: updated.id,
@@ -689,7 +1146,7 @@ export function createApp(db: Database): Hono<Env> {
     });
   });
 
-  app.delete("/api/boards/:boardId/cards/:cardId/comments/:commentId", (c) => {
+  app.delete("/api/boards/:boardId/cards/:cardId/comments/:commentId", async (c) => {
     const boardId = c.req.param("boardId");
     const userId = c.get("userId");
     const board = getVerifiedBoard(db, boardId, userId);
@@ -705,6 +1162,20 @@ export function createApp(db: Database): Hono<Env> {
     if (existing.user_id !== userId && !isBoardOwner(db, boardId, userId)) {
       return c.json({ error: "forbidden" }, 403);
     }
+
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.COMMENT_DELETED,
+      boardId: board.id,
+      cardId: c.req.param("cardId"),
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        cardId: c.req.param("cardId"),
+        commentId: commentId
+      }
+    });
 
     deleteComment(db, commentId);
     return c.json({ ok: true });
@@ -740,12 +1211,28 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     const result = toggleReaction(db, body.target_type, body.target_id, userId, body.emoji);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.REACTION_TOGGLED,
+      boardId: boardId,
+      cardId: null, // reactions can be on comments or activities, not directly on cards
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: boardId,
+        commentId: body.target_id, // assuming it's a comment for now
+        emoji: body.emoji,
+        added: (result as any).added
+      }
+    });
+
     return c.json(result);
   });
 
   // --- Watchers route ---
 
-  app.post("/api/boards/:boardId/cards/:cardId/watch", (c) => {
+  app.post("/api/boards/:boardId/cards/:cardId/watch", async (c) => {
     const boardId = c.req.param("boardId");
     const userId = c.get("userId");
     const board = getVerifiedBoard(db, boardId, userId);
@@ -762,6 +1249,22 @@ export function createApp(db: Database): Hono<Env> {
     }
 
     const watching = toggleCardWatcher(db, cardId, userId);
+    
+    // Emit event
+    await eventBus.emit({
+      eventType: watching ? EventTypes.CARD_WATCHED : EventTypes.CARD_UNWATCHED,
+      boardId: board.id,
+      cardId: cardId,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        cardId: cardId,
+        boardId: board.id,
+        watcherId: userId,
+        unwatcherId: userId
+      }
+    });
+    
     return c.json({ watching });
   });
 
@@ -953,15 +1456,21 @@ export function createApp(db: Database): Hono<Env> {
         userId
       );
 
-      // Create activity entry
-      createActivity(
-        db,
-        cardId,
-        board.id,
-        "artifact_added",
-        JSON.stringify({ filename: body.filename, filetype: body.filetype }),
-        userId
-      );
+      // Emit event
+      await eventBus.emit({
+        eventType: EventTypes.ARTIFACT_CREATED,
+        boardId: board.id,
+        cardId: cardId,
+        userId: userId || "",
+        timestamp: new Date().toISOString(),
+        payload: {
+          boardId: board.id,
+          artifactId: artifact.id,
+          cardId: cardId,
+          name: body.filename,
+          type: body.filetype
+        }
+      });
 
       return c.json(artifact, 201);
     } catch (err) {
@@ -1024,15 +1533,21 @@ export function createApp(db: Database): Hono<Env> {
         userId
       );
 
-      // Create activity entry (null card_id for board-level artifacts)
-      createActivity(
-        db,
-        null,
-        board.id,
-        "artifact_added",
-        JSON.stringify({ filename: body.filename, filetype: body.filetype }),
-        userId
-      );
+      // Emit event
+      await eventBus.emit({
+        eventType: EventTypes.ARTIFACT_CREATED,
+        boardId: board.id,
+        cardId: null,
+        userId: userId || "",
+        timestamp: new Date().toISOString(),
+        payload: {
+          boardId: board.id,
+          artifactId: artifact.id,
+          cardId: null,
+          name: body.filename,
+          type: body.filetype
+        }
+      });
 
       return c.json(artifact, 201);
     } catch (err) {
@@ -1091,15 +1606,21 @@ export function createApp(db: Database): Hono<Env> {
         return c.json({ error: "Failed to update artifact" }, 500);
       }
 
-      // Create activity entry (card_id is null for board-level artifacts)
-      createActivity(
-        db,
-        artifact.card_id,
-        board.id,
-        "artifact_edited",
-        JSON.stringify({ filename: artifact.filename }),
-        userId
-      );
+      // Emit event
+      await eventBus.emit({
+        eventType: EventTypes.ARTIFACT_UPDATED,
+        boardId: board.id,
+        cardId: artifact.card_id,
+        userId: userId || "",
+        timestamp: new Date().toISOString(),
+        payload: {
+          boardId: board.id,
+          artifactId: artifactId,
+          cardId: artifact.card_id,
+          name: updated.filename,
+          content: body.content
+        }
+      });
 
       return c.json(updated);
     } catch (err) {
@@ -1111,7 +1632,7 @@ export function createApp(db: Database): Hono<Env> {
     }
   });
 
-  app.delete("/api/boards/:boardId/artifacts/:id", (c) => {
+  app.delete("/api/boards/:boardId/artifacts/:id", async (c) => {
     const boardId = c.req.param("boardId");
     const userId = c.get("userId");
     const board = getVerifiedBoard(db, boardId, userId);
@@ -1123,15 +1644,20 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "artifact not found" }, 404);
     }
 
-    // Create activity entry before deletion (card_id is null for board-level artifacts)
-    createActivity(
-      db,
-      artifact.card_id,
-      board.id,
-      "artifact_deleted",
-      JSON.stringify({ filename: artifact.filename, filetype: artifact.filetype }),
-      userId
-    );
+    // Emit event before deletion
+    await eventBus.emit({
+      eventType: EventTypes.ARTIFACT_DELETED,
+      boardId: board.id,
+      cardId: artifact.card_id,
+      userId: userId || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        artifactId: artifactId,
+        cardId: artifact.card_id,
+        name: artifact.filename
+      }
+    });
 
     deleteArtifact(db, artifactId);
     return c.json({ ok: true });
@@ -1189,16 +1715,319 @@ export function createApp(db: Database): Hono<Env> {
       try { await Bun.$`rm ${tempFile}`; } catch { /* ignore */ }
     }
 
-    createActivity(
-      db,
-      artifact.card_id,
-      board.id,
-      "artifact_run",
-      JSON.stringify({ filename: artifact.filename, exit_code: exitCode }),
-      userId
-    );
+    // Emit event
+    await eventBus.emit({
+      eventType: EventTypes.ARTIFACT_EXECUTED,
+      boardId: board.id,
+      cardId: artifact.card_id,
+      userId: userId || "",
+      timestamp: new Date().toISOString(),
+      payload: {
+        boardId: board.id,
+        artifactId: artifactId,
+        cardId: artifact.card_id,
+        exitCode: exitCode,
+        duration: 0 // TODO: track actual duration if needed
+      }
+    });
 
     return c.json({ output, exitCode });
+  });
+
+  // --- Trigger routes ---
+
+  app.get("/api/boards/:boardId/triggers", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggers = getBoardTriggers(db, board.id);
+    return c.json({ triggers });
+  });
+
+  app.post("/api/boards/:boardId/triggers", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{
+      name?: string;
+      event_types?: string[];
+      conditions?: { column?: string; label?: string } | null;
+      action_type?: string;
+      action_config?: Record<string, unknown>;
+      enabled?: boolean;
+    }>();
+
+    if (!body.name || body.name.trim() === "") {
+      return c.json({ error: "name is required" }, 400);
+    }
+    if (body.name.length > 100) {
+      return c.json({ error: "name must be 100 characters or less" }, 400);
+    }
+    if (!body.event_types || !Array.isArray(body.event_types) || body.event_types.length === 0) {
+      return c.json({ error: "event_types must be a non-empty array" }, 400);
+    }
+    if (!body.action_type) {
+      return c.json({ error: "action_type is required" }, 400);
+    }
+    const validActionTypes = ["webhook", "run_artifact", "notify", "auto_action"];
+    if (!validActionTypes.includes(body.action_type)) {
+      return c.json({ error: `action_type must be one of: ${validActionTypes.join(", ")}` }, 400);
+    }
+    if (!body.action_config || typeof body.action_config !== "object") {
+      return c.json({ error: "action_config is required" }, 400);
+    }
+
+    const trigger = createTrigger(
+      db,
+      board.id,
+      body.name.trim(),
+      body.event_types,
+      body.conditions ?? null,
+      body.action_type as "webhook" | "run_artifact" | "notify" | "auto_action",
+      body.action_config,
+      userId,
+      body.enabled ?? true
+    );
+
+    return c.json(trigger, 201);
+  });
+
+  app.patch("/api/boards/:boardId/triggers/:id", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const existing = getTriggerById(db, triggerId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const body = await c.req.json<{
+      name?: string;
+      event_types?: string[];
+      conditions?: { column?: string; label?: string } | null;
+      action_type?: string;
+      action_config?: Record<string, unknown>;
+      enabled?: boolean;
+    }>();
+
+    if (body.name !== undefined && body.name.length > 100) {
+      return c.json({ error: "name must be 100 characters or less" }, 400);
+    }
+
+    const updated = updateTrigger(db, triggerId, {
+      name: body.name,
+      event_types: body.event_types,
+      conditions: body.conditions,
+      action_type: body.action_type as "webhook" | "run_artifact" | "notify" | "auto_action" | undefined,
+      action_config: body.action_config,
+      enabled: body.enabled,
+    });
+
+    if (!updated) return c.json({ error: "trigger not found" }, 404);
+    return c.json(updated);
+  });
+
+  app.delete("/api/boards/:boardId/triggers/:id", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const existing = getTriggerById(db, triggerId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    deleteTrigger(db, triggerId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/boards/:boardId/triggers/:id/test", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const trigger = getTriggerById(db, triggerId);
+    if (!trigger || trigger.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const eventTypes: string[] = JSON.parse(trigger.event_types);
+    const firstEvent = eventTypes[0] ?? "board.created";
+
+    // Fire a synthetic event
+    const syntheticEvent = {
+      eventType: firstEvent,
+      boardId: board.id,
+      cardId: null,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        _test: true,
+        boardId: board.id,
+      },
+    };
+
+    await eventBus.emit(syntheticEvent);
+
+    return c.json({ ok: true, event: syntheticEvent });
+  });
+
+  app.get("/api/boards/:boardId/triggers/:id/log", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const trigger = getTriggerById(db, triggerId);
+    if (!trigger || trigger.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const logs = getTriggerLogs(db, triggerId, limit, offset);
+    return c.json({ logs });
+  });
+
+  app.get("/api/boards/:boardId/triggers/log", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const logs = getBoardTriggerLogs(db, board.id, limit, offset);
+    return c.json({ logs });
+  });
+
+  // --- Notification routes ---
+
+  app.get("/api/notifications", (c) => {
+    const userId = c.get("userId");
+    const boardId = c.req.query("board_id");
+    const unread = c.req.query("unread") === "true";
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+
+    const notifications = getUserNotifications(db, userId, {
+      boardId,
+      unread,
+      limit,
+      offset,
+    });
+
+    return c.json({ notifications });
+  });
+
+  app.get("/api/notifications/count", (c) => {
+    const userId = c.get("userId");
+    const unread = getUnreadNotificationCount(db, userId);
+    return c.json({ unread });
+  });
+
+  app.patch("/api/notifications/:id/read", (c) => {
+    const userId = c.get("userId");
+    const notificationId = c.req.param("id");
+
+    const notification = getNotificationById(db, notificationId);
+    if (!notification || notification.user_id !== userId) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    markNotificationRead(db, notificationId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/notifications/read-all", async (c) => {
+    const userId = c.get("userId");
+    const body = await c.req.json<{ boardId?: string }>().catch((): { boardId?: string } => ({}));
+    markAllNotificationsRead(db, userId, body.boardId);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/notifications", (c) => {
+    const userId = c.get("userId");
+    const deleted = deleteOldReadNotifications(db, userId);
+    return c.json({ deleted });
+  });
+
+  // --- SSE route ---
+  // Note: EventSource doesn't support Authorization header, so also accept token via query param
+
+  app.get("/api/boards/:boardId/events", async (c) => {
+    const boardId = c.req.param("boardId");
+    let userId = c.get("userId");
+
+    // Fallback: check token query param (EventSource can't set headers)
+    if (!userId) {
+      const tokenParam = c.req.query("token");
+      if (tokenParam) {
+        try {
+          const payload = await verify(tokenParam, JWT_SECRET, "HS256");
+          userId = payload["userId"] as string;
+        } catch {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+      }
+    }
+
+    if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    if (!sseManager) {
+      return c.json({ error: "SSE not available" }, 503);
+    }
+
+    let streamController: ReadableStreamDefaultController | null = null;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+        const added = sseManager.addConnection(boardId, userId, controller);
+        if (!added) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `event: error\ndata: ${JSON.stringify({ error: "Too many connections" })}\n\n`
+            )
+          );
+          controller.close();
+          return;
+        }
+
+        // Send initial connection event
+        controller.enqueue(
+          new TextEncoder().encode(
+            `event: connected\ndata: ${JSON.stringify({ boardId, userId })}\n\n`
+          )
+        );
+      },
+      cancel() {
+        if (streamController) {
+          sseManager.removeConnection(boardId, streamController);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   return app;

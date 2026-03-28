@@ -235,9 +235,55 @@ function migrate(db: Database): void {
 
   // Create unique index for board-level artifacts
   db.exec(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_board_artifacts_unique 
-    ON artifacts(board_id, filename) 
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_board_artifacts_unique
+    ON artifacts(board_id, filename)
     WHERE card_id IS NULL
+  `);
+
+  // Create triggers table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS triggers (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      name TEXT NOT NULL CHECK(length(name) <= 100),
+      event_types TEXT NOT NULL,
+      conditions TEXT DEFAULT NULL,
+      action_type TEXT NOT NULL CHECK(action_type IN ('webhook', 'run_artifact', 'notify', 'auto_action')),
+      action_config TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Create trigger_log table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trigger_log (
+      id TEXT PRIMARY KEY,
+      trigger_id TEXT NOT NULL REFERENCES triggers(id) ON DELETE CASCADE,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      event_payload TEXT NOT NULL,
+      result TEXT NOT NULL CHECK(result IN ('success', 'error')),
+      error_message TEXT DEFAULT NULL,
+      duration_ms INTEGER NOT NULL,
+      executed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Create notifications table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      card_id TEXT DEFAULT NULL,
+      title TEXT NOT NULL CHECK(length(title) <= 200),
+      body TEXT NOT NULL CHECK(length(body) <= 500),
+      read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
   `);
 }
 
@@ -1848,4 +1894,321 @@ export function getArtifactByBoardAndFilename(
   return db.query<ArtifactRow, [string, string]>(
     "SELECT * FROM artifacts WHERE board_id = ? AND card_id IS NULL AND filename = ?"
   ).get(boardId, filename) ?? null;
+}
+
+// --- Trigger types ---
+
+export interface TriggerRow {
+  id: string;
+  board_id: string;
+  name: string;
+  event_types: string; // JSON array
+  conditions: string | null; // JSON
+  action_type: "webhook" | "run_artifact" | "notify" | "auto_action";
+  action_config: string; // JSON
+  enabled: number; // 0 or 1
+  created_at: string;
+  user_id: string;
+}
+
+export interface TriggerLogRow {
+  id: string;
+  trigger_id: string;
+  board_id: string;
+  event_type: string;
+  event_payload: string; // JSON
+  result: "success" | "error";
+  error_message: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+export interface NotificationRow {
+  id: string;
+  board_id: string;
+  user_id: string;
+  event_type: string;
+  card_id: string | null;
+  title: string;
+  body: string;
+  read: number; // 0 or 1
+  created_at: string;
+}
+
+// --- Trigger helpers ---
+
+export function createTrigger(
+  db: Database,
+  boardId: string,
+  name: string,
+  eventTypes: string[],
+  conditions: { column?: string; label?: string } | null,
+  actionType: TriggerRow["action_type"],
+  actionConfig: Record<string, unknown>,
+  userId: string,
+  enabled: boolean = true
+): TriggerRow {
+  const id = nanoid();
+  db.query(
+    `INSERT INTO triggers (id, board_id, name, event_types, conditions, action_type, action_config, enabled, user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id, boardId, name,
+    JSON.stringify(eventTypes),
+    conditions ? JSON.stringify(conditions) : null,
+    actionType,
+    JSON.stringify(actionConfig),
+    enabled ? 1 : 0,
+    userId
+  );
+  return db.query("SELECT * FROM triggers WHERE id = ?").get(id) as TriggerRow;
+}
+
+export function getTriggerById(db: Database, id: string): TriggerRow | null {
+  return db.query("SELECT * FROM triggers WHERE id = ?").get(id) as TriggerRow | null;
+}
+
+export function getBoardTriggers(db: Database, boardId: string): TriggerRow[] {
+  return db.query(
+    "SELECT * FROM triggers WHERE board_id = ? ORDER BY created_at DESC"
+  ).all(boardId) as TriggerRow[];
+}
+
+export function updateTrigger(
+  db: Database,
+  id: string,
+  updates: {
+    name?: string;
+    event_types?: string[];
+    conditions?: { column?: string; label?: string } | null;
+    action_type?: TriggerRow["action_type"];
+    action_config?: Record<string, unknown>;
+    enabled?: boolean;
+  }
+): TriggerRow | null {
+  const existing = getTriggerById(db, id);
+  if (!existing) return null;
+
+  const fields: string[] = [];
+  const values: (string | number)[] = [];
+
+  if (updates.name !== undefined) {
+    fields.push("name = ?");
+    values.push(updates.name);
+  }
+  if (updates.event_types !== undefined) {
+    fields.push("event_types = ?");
+    values.push(JSON.stringify(updates.event_types));
+  }
+  if (updates.conditions !== undefined) {
+    fields.push("conditions = ?");
+    values.push(updates.conditions ? JSON.stringify(updates.conditions) : "null");
+  }
+  if (updates.action_type !== undefined) {
+    fields.push("action_type = ?");
+    values.push(updates.action_type);
+  }
+  if (updates.action_config !== undefined) {
+    fields.push("action_config = ?");
+    values.push(JSON.stringify(updates.action_config));
+  }
+  if (updates.enabled !== undefined) {
+    fields.push("enabled = ?");
+    values.push(updates.enabled ? 1 : 0);
+  }
+
+  if (fields.length === 0) return existing;
+
+  values.push(id);
+  db.query(`UPDATE triggers SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  return getTriggerById(db, id);
+}
+
+export function deleteTrigger(db: Database, id: string): boolean {
+  const result = db.query("DELETE FROM triggers WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+export function getEnabledTriggersForBoard(db: Database, boardId: string): TriggerRow[] {
+  return db.query(
+    "SELECT * FROM triggers WHERE board_id = ? AND enabled = 1"
+  ).all(boardId) as TriggerRow[];
+}
+
+// --- Trigger log helpers ---
+
+export function createTriggerLog(
+  db: Database,
+  triggerId: string,
+  boardId: string,
+  eventType: string,
+  eventPayload: string,
+  result: "success" | "error",
+  errorMessage: string | null,
+  durationMs: number
+): TriggerLogRow {
+  const id = nanoid();
+  // Cap payload at 10KB
+  const cappedPayload = eventPayload.length > 10240 ? eventPayload.slice(0, 10240) : eventPayload;
+  db.query(
+    `INSERT INTO trigger_log (id, trigger_id, board_id, event_type, event_payload, result, error_message, duration_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, triggerId, boardId, eventType, cappedPayload, result, errorMessage, durationMs);
+
+  // Auto-prune: keep last 500 per board
+  db.query(
+    `DELETE FROM trigger_log WHERE board_id = ? AND id NOT IN (
+       SELECT id FROM trigger_log WHERE board_id = ? ORDER BY executed_at DESC LIMIT 500
+     )`
+  ).run(boardId, boardId);
+
+  return db.query("SELECT * FROM trigger_log WHERE id = ?").get(id) as TriggerLogRow;
+}
+
+export function getTriggerLogs(
+  db: Database,
+  triggerId: string,
+  limit: number = 50,
+  offset: number = 0
+): TriggerLogRow[] {
+  return db.query(
+    "SELECT * FROM trigger_log WHERE trigger_id = ? ORDER BY executed_at DESC LIMIT ? OFFSET ?"
+  ).all(triggerId, limit, offset) as TriggerLogRow[];
+}
+
+export function getBoardTriggerLogs(
+  db: Database,
+  boardId: string,
+  limit: number = 50,
+  offset: number = 0
+): TriggerLogRow[] {
+  return db.query(
+    "SELECT * FROM trigger_log WHERE board_id = ? ORDER BY executed_at DESC LIMIT ? OFFSET ?"
+  ).all(boardId, limit, offset) as TriggerLogRow[];
+}
+
+// --- Notification helpers ---
+
+export function createNotification(
+  db: Database,
+  boardId: string,
+  userId: string,
+  eventType: string,
+  cardId: string | null,
+  title: string,
+  body: string
+): NotificationRow {
+  const id = nanoid();
+  // Truncate title and body to fit constraints
+  const truncTitle = title.length > 200 ? title.slice(0, 197) + "..." : title;
+  const truncBody = body.length > 500 ? body.slice(0, 497) + "..." : body;
+  db.query(
+    `INSERT INTO notifications (id, board_id, user_id, event_type, card_id, title, body)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, boardId, userId, eventType, cardId, truncTitle, truncBody);
+  return db.query("SELECT * FROM notifications WHERE id = ?").get(id) as NotificationRow;
+}
+
+export function getUserNotifications(
+  db: Database,
+  userId: string,
+  options: { boardId?: string; unread?: boolean; limit?: number; offset?: number } = {}
+): NotificationRow[] {
+  const { boardId, unread, limit = 50, offset = 0 } = options;
+  let sql = "SELECT * FROM notifications WHERE user_id = ?";
+  const params: (string | number)[] = [userId];
+
+  if (boardId) {
+    sql += " AND board_id = ?";
+    params.push(boardId);
+  }
+  if (unread) {
+    sql += " AND read = 0";
+  }
+
+  sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?";
+  params.push(limit, offset);
+
+  return db.query(sql).all(...params) as NotificationRow[];
+}
+
+export function getUnreadNotificationCount(db: Database, userId: string): number {
+  const row = db.query(
+    "SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND read = 0"
+  ).get(userId) as { count: number };
+  return row.count;
+}
+
+export function markNotificationRead(db: Database, notificationId: string): boolean {
+  const result = db.query(
+    "UPDATE notifications SET read = 1 WHERE id = ?"
+  ).run(notificationId);
+  return result.changes > 0;
+}
+
+export function markAllNotificationsRead(db: Database, userId: string, boardId?: string): void {
+  if (boardId) {
+    db.query(
+      "UPDATE notifications SET read = 1 WHERE user_id = ? AND board_id = ? AND read = 0"
+    ).run(userId, boardId);
+  } else {
+    db.query(
+      "UPDATE notifications SET read = 1 WHERE user_id = ? AND read = 0"
+    ).run(userId);
+  }
+}
+
+export function deleteOldReadNotifications(db: Database, userId: string): number {
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const result = db.query(
+    "DELETE FROM notifications WHERE user_id = ? AND read = 1 AND created_at < ?"
+  ).run(userId, thirtyDaysAgo.toISOString());
+  return result.changes;
+}
+
+export function getNotificationById(db: Database, id: string): NotificationRow | null {
+  return db.query("SELECT * FROM notifications WHERE id = ?").get(id) as NotificationRow | null;
+}
+
+// --- Card watcher list helper (for notification targeting) ---
+
+export function getCardWatchers(db: Database, cardId: string): string[] {
+  const rows = db.query(
+    "SELECT user_id FROM card_watchers WHERE card_id = ?"
+  ).all(cardId) as { user_id: string }[];
+  return rows.map(r => r.user_id);
+}
+
+export function getBoardMemberIds(db: Database, boardId: string): string[] {
+  const rows = db.query(
+    "SELECT user_id FROM board_members WHERE board_id = ?"
+  ).all(boardId) as { user_id: string }[];
+  return rows.map(r => r.user_id);
+}
+
+export function getBoardOwnerId(db: Database, boardId: string): string | null {
+  const row = db.query(
+    "SELECT user_id FROM board_members WHERE board_id = ? AND role = 'owner'"
+  ).get(boardId) as { user_id: string } | null;
+  return row?.user_id ?? null;
+}
+
+export function getColumnByTitle(db: Database, boardId: string, title: string): ColumnRow | null {
+  return db.query(
+    "SELECT id, title, position, board_id FROM columns WHERE board_id = ? AND title = ?"
+  ).get(boardId, title) as ColumnRow | null;
+}
+
+export function getLabelByName(db: Database, boardId: string, name: string): LabelRow | null {
+  return db.query(
+    "SELECT id, board_id, name, color, position FROM labels WHERE board_id = ? AND name = ?"
+  ).get(boardId, name) as LabelRow | null;
+}
+
+export function cardHasLabel(db: Database, cardId: string, labelId: string): boolean {
+  const row = db.query(
+    "SELECT 1 FROM card_labels WHERE card_id = ? AND label_id = ?"
+  ).get(cardId, labelId);
+  return row !== null;
 }
