@@ -144,6 +144,26 @@ function migrate(db: Database): void {
     db.exec("ALTER TABLE activity ADD COLUMN user_id TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL");
   }
 
+  // Migrate activity table: make card_id nullable (needed for board-level artifact activity)
+  const activityCardCol = (db.prepare("PRAGMA table_info(activity)").all() as { name: string; notnull: number }[])
+    .find(c => c.name === "card_id");
+  if (activityCardCol && activityCardCol.notnull === 1) {
+    db.exec(`
+      CREATE TABLE activity_new (
+        id TEXT PRIMARY KEY,
+        card_id TEXT DEFAULT NULL REFERENCES cards(id) ON DELETE CASCADE,
+        board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        detail TEXT DEFAULT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        user_id TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+    db.exec("INSERT INTO activity_new SELECT id, card_id, board_id, action, detail, timestamp, user_id FROM activity");
+    db.exec("DROP TABLE activity");
+    db.exec("ALTER TABLE activity_new RENAME TO activity");
+  }
+
   // Create board_members table
   db.exec(`
     CREATE TABLE IF NOT EXISTS board_members (
@@ -194,6 +214,30 @@ function migrate(db: Database): void {
   db.exec(`
     INSERT OR IGNORE INTO board_members (board_id, user_id, role)
     SELECT id, user_id, 'owner' FROM boards
+  `);
+
+  // Create artifacts table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS artifacts (
+      id TEXT PRIMARY KEY,
+      board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+      card_id TEXT REFERENCES cards(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      filetype TEXT NOT NULL CHECK(filetype IN ('md', 'html', 'js', 'ts', 'sh')),
+      content TEXT NOT NULL,
+      position INTEGER NOT NULL,
+      user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(card_id, filename)
+    )
+  `);
+
+  // Create unique index for board-level artifacts
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_board_artifacts_unique 
+    ON artifacts(board_id, filename) 
+    WHERE card_id IS NULL
   `);
 }
 
@@ -258,7 +302,7 @@ export interface CardLabelRow {
 
 export interface ActivityRow {
   id: string;
-  card_id: string;
+  card_id: string | null;
   board_id: string;
   action: string;
   detail: string | null;
@@ -279,6 +323,19 @@ export interface CommentRow {
   board_id: string;
   user_id: string;
   content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArtifactRow {
+  id: string;
+  board_id: string;
+  card_id: string | null;
+  filename: string;
+  filetype: "md" | "html" | "js" | "ts" | "sh";
+  content: string;
+  position: number;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -704,7 +761,7 @@ export function removeLabelFromCard(db: Database, cardId: string, labelId: strin
 
 export function createActivity(
   db: Database,
-  cardId: string,
+  cardId: string | null,
   boardId: string,
   action: string,
   detail: unknown = null,
@@ -1034,6 +1091,11 @@ export type SearchDueFilter = "overdue" | "today" | "week" | "none";
 export interface CardSearchResult extends CardRow {
   column_title: string;
   labels: LabelRow[];
+  // Optional artifact match information
+  artifact_match?: {
+    filename: string;
+    match_context: string;
+  };
 }
 
 export interface CalendarCardResult extends CardRow {
@@ -1077,10 +1139,19 @@ export function searchCards(
           WHERE cl.card_id = c.id
             AND LOWER(l.name) LIKE LOWER(?) ESCAPE '\\'
         )
+        OR EXISTS (
+          SELECT 1
+          FROM artifacts a
+          WHERE a.card_id = c.id
+            AND (
+              LOWER(a.filename) LIKE LOWER(?) ESCAPE '\\'
+              OR LOWER(a.content) LIKE LOWER(?) ESCAPE '\\'
+            )
+        )
       )
     `;
     const searchPattern = `%${escapeLikePattern(query)}%`;
-    sqlParams.push(searchPattern, searchPattern, searchPattern);
+    sqlParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
   }
 
   // Label filter
@@ -1127,10 +1198,130 @@ export function searchCards(
   const labelsByCard = getLabelsByCardId(db, cardIds);
 
   // Combine cards with their labels
-  return cards.map(card => ({
+  const results: CardSearchResult[] = cards.map(card => ({
     ...card,
     labels: labelsByCard.get(card.id) ?? []
   }));
+
+  // If searching, check for artifact matches to add context
+  if (query && cardIds.length > 0) {
+    const searchPattern = `%${escapeLikePattern(query)}%`;
+    
+    // Get artifact matches for cards
+    const artifactMatches = db.query(`
+      SELECT a.card_id, a.filename, a.content
+      FROM artifacts a
+      WHERE a.card_id IN (${cardIds.map(() => '?').join(',')})
+        AND (
+          LOWER(a.filename) LIKE LOWER(?) ESCAPE '\\'
+          OR LOWER(a.content) LIKE LOWER(?) ESCAPE '\\'
+        )
+    `).all(...cardIds, searchPattern, searchPattern) as {
+      card_id: string;
+      filename: string;
+      content: string;
+    }[];
+
+    // Create a map of card ID to first artifact match
+    const artifactMatchByCard = new Map<string, { filename: string; match_context: string }>();
+    
+    for (const match of artifactMatches) {
+      if (!artifactMatchByCard.has(match.card_id)) {
+        // Extract context around the match
+        const lowerContent = match.content.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        const matchIndex = lowerContent.indexOf(lowerQuery);
+        
+        let context = '';
+        if (matchIndex >= 0) {
+          // Get up to 50 chars before and after the match
+          const contextStart = Math.max(0, matchIndex - 50);
+          const contextEnd = Math.min(match.content.length, matchIndex + lowerQuery.length + 50);
+          context = match.content.substring(contextStart, contextEnd);
+          if (contextStart > 0) context = '...' + context;
+          if (contextEnd < match.content.length) context = context + '...';
+        } else if (match.filename.toLowerCase().includes(lowerQuery)) {
+          context = `Filename: ${match.filename}`;
+        }
+        
+        artifactMatchByCard.set(match.card_id, {
+          filename: match.filename,
+          match_context: context
+        });
+      }
+    }
+
+    // Add artifact match info to results
+    for (const result of results) {
+      const artifactMatch = artifactMatchByCard.get(result.id);
+      if (artifactMatch) {
+        result.artifact_match = artifactMatch;
+      }
+    }
+  }
+
+  return results;
+}
+
+// Search for board-level artifacts
+export interface BoardArtifactSearchResult {
+  board_id: string;
+  filename: string;
+  filetype: string;
+  match_context: string;
+}
+
+export function searchBoardArtifacts(
+  db: Database,
+  boardId: string,
+  query: string
+): BoardArtifactSearchResult[] {
+  if (!query?.trim()) return [];
+  
+  const searchPattern = `%${escapeLikePattern(query.trim())}%`;
+  
+  const matches = db.query(`
+    SELECT board_id, filename, filetype, content
+    FROM artifacts
+    WHERE board_id = ? 
+      AND card_id IS NULL
+      AND (
+        LOWER(filename) LIKE LOWER(?) ESCAPE '\\'
+        OR LOWER(content) LIKE LOWER(?) ESCAPE '\\'
+      )
+    ORDER BY position
+  `).all(boardId, searchPattern, searchPattern) as {
+    board_id: string;
+    filename: string;
+    filetype: string;
+    content: string;
+  }[];
+  
+  return matches.map(match => {
+    // Extract context around the match
+    const lowerContent = match.content.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const matchIndex = lowerContent.indexOf(lowerQuery);
+    
+    let context = '';
+    if (matchIndex >= 0) {
+      // Get up to 50 chars before and after the match
+      const contextStart = Math.max(0, matchIndex - 50);
+      const contextEnd = Math.min(match.content.length, matchIndex + lowerQuery.length + 50);
+      context = match.content.substring(contextStart, contextEnd);
+      if (contextStart > 0) context = '...' + context;
+      if (contextEnd < match.content.length) context = context + '...';
+    } else if (match.filename.toLowerCase().includes(lowerQuery)) {
+      context = `Filename: ${match.filename}`;
+    }
+    
+    return {
+      board_id: match.board_id,
+      filename: match.filename,
+      filetype: match.filetype,
+      match_context: context
+    };
+  });
 }
 
 // --- Calendar view helpers ---
@@ -1520,4 +1711,141 @@ export function getBoardFeed(
   }
 
   return { items, has_more: hasMore };
+}
+
+// --- Artifact helpers ---
+
+export function createArtifact(
+  db: Database,
+  boardId: string,
+  cardId: string | null,
+  filename: string,
+  filetype: ArtifactRow["filetype"],
+  content: string,
+  userId: string | null
+): ArtifactRow {
+  // Validate content size (100KB limit)
+  if (content.length > 100 * 1024) {
+    throw new Error(`Content exceeds 100KB limit (got ${Math.round(content.length / 1024)}KB)`);
+  }
+
+  // Validate filetype
+  const validFiletypes: ArtifactRow["filetype"][] = ["md", "html", "js", "ts", "sh"];
+  if (!validFiletypes.includes(filetype)) {
+    throw new Error(`Invalid filetype: ${filetype}. Must be one of: ${validFiletypes.join(", ")}`);
+  }
+
+  // Get next position
+  const maxPos = cardId
+    ? db.query<{ max_pos: number | null }, [string]>(
+        "SELECT MAX(position) as max_pos FROM artifacts WHERE card_id = ?"
+      ).get(cardId)
+    : db.query<{ max_pos: number | null }, [string]>(
+        "SELECT MAX(position) as max_pos FROM artifacts WHERE board_id = ? AND card_id IS NULL"
+      ).get(boardId);
+
+  const position = (maxPos?.max_pos ?? -1) + 1;
+  const id = nanoid();
+  const now = new Date().toISOString();
+
+  db.query(
+    `INSERT INTO artifacts (id, board_id, card_id, filename, filetype, content, position, user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(id, boardId, cardId, filename, filetype, content, position, userId, now, now);
+
+  return getArtifact(db, id)!;
+}
+
+export function getArtifact(db: Database, id: string): ArtifactRow | null {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE id = ?"
+  ).get(id) ?? null;
+}
+
+export function getCardArtifacts(db: Database, cardId: string): ArtifactRow[] {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE card_id = ? ORDER BY position ASC"
+  ).all(cardId);
+}
+
+export function getBoardArtifacts(db: Database, boardId: string): ArtifactRow[] {
+  return db.query<ArtifactRow, [string]>(
+    "SELECT * FROM artifacts WHERE board_id = ? AND card_id IS NULL ORDER BY position ASC"
+  ).all(boardId);
+}
+
+export function updateArtifact(
+  db: Database,
+  id: string,
+  updates: { filename?: string; content?: string }
+): ArtifactRow | null {
+  const artifact = getArtifact(db, id);
+  if (!artifact) return null;
+
+  if (updates.content && updates.content.length > 100 * 1024) {
+    throw new Error(`Content exceeds 100KB limit (got ${Math.round(updates.content.length / 1024)}KB)`);
+  }
+
+  const fields: string[] = ["updated_at = ?"];
+  const values: string[] = [new Date().toISOString()];
+
+  if (updates.filename !== undefined) {
+    fields.push("filename = ?");
+    values.push(updates.filename);
+  }
+  if (updates.content !== undefined) {
+    fields.push("content = ?");
+    values.push(updates.content);
+  }
+
+  values.push(id);
+
+  // Use apply to spread the values array
+  const stmt = db.query(`UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`);
+  stmt.run.apply(stmt, values);
+
+  return getArtifact(db, id);
+}
+
+export function deleteArtifact(db: Database, id: string): void {
+  const artifact = getArtifact(db, id);
+  if (!artifact) return;
+
+  // Delete the artifact
+  db.query("DELETE FROM artifacts WHERE id = ?").run(id);
+
+  // Adjust positions of remaining siblings
+  if (artifact.card_id) {
+    db.query(
+      `UPDATE artifacts 
+       SET position = position - 1 
+       WHERE card_id = ? AND position > ?`
+    ).run(artifact.card_id, artifact.position);
+  } else {
+    db.query(
+      `UPDATE artifacts 
+       SET position = position - 1 
+       WHERE board_id = ? AND card_id IS NULL AND position > ?`
+    ).run(artifact.board_id, artifact.position);
+  }
+}
+
+export function getArtifactByCardAndFilename(
+  db: Database,
+  cardId: string,
+  filename: string
+): ArtifactRow | null {
+  return db.query<ArtifactRow, [string, string]>(
+    "SELECT * FROM artifacts WHERE card_id = ? AND filename = ?"
+  ).get(cardId, filename) ?? null;
+}
+
+export function getArtifactByBoardAndFilename(
+  db: Database,
+  boardId: string,
+  filename: string
+): ArtifactRow | null {
+  return db.query<ArtifactRow, [string, string]>(
+    "SELECT * FROM artifacts WHERE board_id = ? AND card_id IS NULL AND filename = ?"
+  ).get(boardId, filename) ?? null;
 }

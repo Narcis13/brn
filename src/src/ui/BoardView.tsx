@@ -21,6 +21,7 @@ import {
 } from "./board-utils.ts";
 import { CardModal } from "./CardModal.tsx";
 import { CalendarView } from "./CalendarView.tsx";
+import { BoardArtifacts } from "./BoardArtifacts.tsx";
 
 export type ViewMode = "board" | "calendar";
 
@@ -164,6 +165,7 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
   );
   const [isSearchPending, setIsSearchPending] = useState(false);
   const [searchError, setSearchError] = useState("");
+  const [showBoardArtifacts, setShowBoardArtifacts] = useState(false);
   const columnInputRef = useRef<HTMLInputElement>(null);
   const dragCard = useRef<{
     cardId: string;
@@ -369,6 +371,7 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
   }
 
   const isOwner = members.some((m) => m.id === currentUser.id && m.role === "owner");
+  const isMember = members.some((m) => m.id === currentUser.id);
   const displayMembers = members.slice(0, 5);
   const overflowCount = members.length - 5;
 
@@ -734,6 +737,17 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
                 </span>
               )}
             </div>
+
+            {isMember && (
+              <button
+                className="btn-board-docs"
+                onClick={() => setShowBoardArtifacts(true)}
+                title="Board documents"
+              >
+                <span className="board-docs-icon">📁</span>
+                <span>Board Docs</span>
+              </button>
+            )}
 
             <button
               className={`btn-activity-toggle${showActivitySidebar ? " active" : ""}`}
@@ -1121,6 +1135,16 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
             </div>
           </div>
         </div>
+      )}
+
+      {showBoardArtifacts && (
+        <BoardArtifacts
+          boardId={boardId}
+          currentUser={currentUser}
+          isOwner={isOwner}
+          isMember={isMember}
+          onClose={() => setShowBoardArtifacts(false)}
+        />
       )}
     </>
   );

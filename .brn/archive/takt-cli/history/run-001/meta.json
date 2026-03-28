@@ -1,0 +1,25 @@
+{
+  "run_number": 1,
+  "timestamp": "2026-03-25T10:00:00Z",
+  "duration_seconds": 120,
+  "acceptance_criteria_progress": {
+    "total": 13,
+    "completed": 1,
+    "in_progress": 0
+  },
+  "files_changed": [
+    "package.json",
+    "tsconfig.json",
+    "src/build.ts"
+  ],
+  "files_created": [],
+  "files_deleted": [],
+  "tests_run": true,
+  "tests_passed": 320,
+  "tests_failed": 0,
+  "type_check": true,
+  "build_successful": null,
+  "completion_status": "success",
+  "error": null,
+  "focus": "AC1: Package rename and directory restructure"
+}

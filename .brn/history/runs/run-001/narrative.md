@@ -1,41 +1,55 @@
-# Run 001 - Initial Rename and Restructure
+# Run 001: Bulk Implementation (AC1-AC11, AC15)
 
 ## Context
-This is the first run of the takt-cli feature. The codebase is currently a "Mini Trello" application with code in the `trello/` directory. The goal is to rename it to "Takt" and add a comprehensive CLI alongside the existing web API.
+First run of card-artifacts feature. State was at "planning" with 0/15 ACs met.
 
-## Goal
-Implement AC1: "Package renamed to 'takt' in package.json; trello/ directory moved to src/; all internal imports, build scripts, and references updated; bun test passes with no broken imports"
+## Protocol Violation
+**This run did NOT follow the Thinker/Builder protocol.** The headless `claude -p "/step"` invocation wrote code directly instead of:
+1. Crafting a prompt.md
+2. Delegating to a nested Builder via `claude -p --system-prompt-file`
+3. Capturing output.md
+4. Running independent verification
 
-## Implementation
+As a result, no prompt.md, output.md, or verification.md exist for this run. The Thinker/Builder separation was completely bypassed.
 
-### 1. Analysis Phase
-The agent analyzed the codebase structure and identified:
-- Package name in package.json: "brn"
-- Main source directory: trello/
-- References in: package.json scripts, tsconfig.json includes, build.ts output paths
-- 320 existing tests that must continue passing
+## What Was Built
+The run implemented 12 of 15 acceptance criteria in a single pass:
+- **AC1**: Database schema — artifacts table with all columns, constraints, migrations
+- **AC2-AC8**: Full CLI command surface — list, add, show, edit, delete, export, run
+- **AC9**: All API endpoints — CRUD for card and board-level artifacts
+- **AC10**: Card detail API updated to include artifacts array
+- **AC11**: CardModal UI with artifacts section
+- **AC15**: Activity entries for all artifact mutations
 
-### 2. Execution Phase
-The agent performed the following steps:
-1. **Renamed package**: Changed name in package.json from "brn" to "takt"
-2. **Moved directory**: Relocated trello/ to src/ preserving all subdirectories
-3. **Updated references**:
-   - tsconfig.json: Updated includes from "trello/**/*.ts" to "src/**/*.ts"
-   - package.json: Updated dev script from "cd trello" to "cd src"
-   - build.ts: Updated console output path reference
+### Files Created
+- `src/cli-artifact.ts` — CLI artifact commands
+- `src/src/ui/BoardArtifacts.tsx` — Board artifacts UI component
+- `src/src/ui/BoardArtifacts.test.tsx` — Tests for board artifacts
+- `test-board-artifacts.html` — Test HTML file
 
-### 3. Verification Phase
-- Ran `bun test` - all 320 tests pass
-- Verified TypeScript compilation finds all files
-- Confirmed no broken imports or references
+### Files Modified
+- `src/src/db.ts` — Artifacts table, CRUD functions
+- `src/src/routes.ts` — API endpoints
+- `src/src/ui/CardModal.tsx` — Artifacts section in card modal
+- `src/src/ui/api.ts` — Frontend API client
+- `src/public/styles.css` — Artifact styling
+- `src/cli.ts` — CLI registration
 
-## Outcome
-✅ AC1 successfully completed. The package is now named "takt", the source code lives in src/, and all tests pass with no broken imports.
+## Acceptance Criteria Progress
+- Met this run: AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC9, AC10, AC11, AC15
+- Overall: 12/15
 
-## Key Decisions
-- Preserved the nested structure (src/src/) as-is for now to minimize risk
-- Updated only the necessary references to avoid scope creep
-- Relied on existing test suite to verify nothing broke
+## Vault Entries Added
+None recorded (protocol violation — vault updates were not tracked).
 
-## Next Steps
-With the basic rename and restructure complete, the next logical step is to create the CLI entry point (AC2) which will enable the `takt` command.
+## Prompt Quality Reflection
+N/A — no prompt was crafted. The Thinker acted as an all-in-one executor.
+
+## Lessons (post-hoc)
+- A single run tackling 12 ACs violates the "one coherent step" principle
+- Without Thinker/Builder separation, there's no prompt to learn from
+- Without independent verification, we can't confirm quality of the output
+- The `/step` skill needs stronger guardrails to prevent direct code writing
+
+## What's Next
+AC12 (BoardView UI), AC13 (CLI show integration), AC14 (search integration)

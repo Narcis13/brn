@@ -5,11 +5,13 @@ import {
   deleteCard,
   getAllColumns,
   getBoardById,
+  getCardArtifacts,
   getCardById,
   getCardDetail,
   getColumnById,
   isBoardMember,
   updateCardWithActivity,
+  type ArtifactRow,
 } from "./src/db";
 import type { TaktConfig } from "./cli-auth";
 import {
@@ -50,6 +52,12 @@ export interface CardUpdateInput {
   addCheck?: string;
   toggleCheck?: number;
   removeCheck?: number;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function parseChecklistLenient(value: string): ChecklistItem[] {
@@ -334,11 +342,14 @@ export async function showCard(
     exitWithError("Card not found");
   }
 
+  const artifacts: ArtifactRow[] = getCardArtifacts(db, cardId);
+
   const jsonPayload = {
     ...detail,
     board_id: column.board_id,
     board_title: board.title,
     column_title: column.title,
+    artifacts,
   };
 
   if (options.json) {
@@ -375,6 +386,20 @@ export async function showCard(
     checklist.forEach((item, index) => {
       console.log(`  ${index}. [${item.checked ? "x" : " "}] ${item.text}`);
     });
+  }
+
+  if (artifacts.length > 0) {
+    console.log("");
+    console.log("Artifacts:");
+    printTable(
+      ["ID", "Filename", "Type", "Size"],
+      artifacts.map((artifact) => [
+        formatId(artifact.id, options),
+        artifact.filename,
+        artifact.filetype.toUpperCase(),
+        formatFileSize(artifact.content.length),
+      ])
+    );
   }
 
   if (detail.labels.length > 0) {

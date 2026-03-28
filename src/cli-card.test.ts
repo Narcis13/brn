@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { mkdirSync, rmSync } from "node:fs";
 import {
+  createArtifact,
   createBoard,
   createCard,
   createTestDb,
@@ -190,5 +191,88 @@ describe("CLI Card Commands", () => {
     const parsed = JSON.parse(logs[0]!);
     expect(parsed.board_title).toBe("Cards Board");
     expect(parsed.column_title).toBe("To Do");
+  });
+
+  test("showCard json includes empty artifacts array when no artifacts exist", async () => {
+    const card = createCard(db, "No Artifacts", todoColumnId, "", null, session.userId)!;
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    await showCard(db, session, card.id, { json: true });
+
+    console.log = originalLog;
+    const parsed = JSON.parse(logs[0]!);
+    expect(parsed.artifacts).toEqual([]);
+  });
+
+  test("showCard json includes artifacts array with artifact data", async () => {
+    const card = createCard(db, "With Artifacts", todoColumnId, "", null, session.userId)!;
+    createArtifact(db, boardId, card.id, "notes.md", "md", "# Hello", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    await showCard(db, session, card.id, { json: true });
+
+    console.log = originalLog;
+    const parsed = JSON.parse(logs[0]!);
+    expect(parsed.artifacts).toHaveLength(1);
+    expect(parsed.artifacts[0].filename).toBe("notes.md");
+    expect(parsed.artifacts[0].filetype).toBe("md");
+  });
+
+  test("showCard omits Artifacts section when card has no artifacts", async () => {
+    const card = createCard(db, "No Artifacts Card", todoColumnId, "", null, session.userId)!;
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    await showCard(db, session, card.id, {});
+
+    console.log = originalLog;
+    const output = logs.join("\n");
+    expect(output).not.toContain("Artifacts:");
+  });
+
+  test("showCard displays Artifacts section in table format when artifacts exist", async () => {
+    const card = createCard(db, "Has Artifacts", todoColumnId, "", null, session.userId)!;
+    createArtifact(db, boardId, card.id, "script.sh", "sh", "#!/bin/sh\necho hi", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    await showCard(db, session, card.id, {});
+
+    console.log = originalLog;
+    const output = logs.join("\n");
+    expect(output).toContain("Artifacts:");
+    expect(output).toContain("script.sh");
+    expect(output).toContain("SH");
+  });
+
+  test("showCard Artifacts section appears between checklist and timeline", async () => {
+    const card = createCard(db, "Order Check", todoColumnId, "", null, session.userId)!;
+    createArtifact(db, boardId, card.id, "readme.md", "md", "# Doc", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => logs.push(args.join(" "));
+
+    await showCard(db, session, card.id, {});
+
+    console.log = originalLog;
+    const output = logs.join("\n");
+    const checklistPos = output.indexOf("Checklist:");
+    const artifactsPos = output.indexOf("Artifacts:");
+    const timelinePos = output.indexOf("Recent timeline:");
+    expect(checklistPos).toBeGreaterThan(-1);
+    expect(artifactsPos).toBeGreaterThan(checklistPos);
+    // timeline may not exist if no activity, so just verify artifacts come after checklist
+    if (timelinePos > -1) {
+      expect(artifactsPos).toBeLessThan(timelinePos);
+    }
   });
 });

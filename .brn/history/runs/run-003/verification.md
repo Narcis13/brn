@@ -1,15 +1,21 @@
-# Verification Results
+# Verification — Run 003
 
 ## Tests
-- `bun test`: 320 tests pass ✓
+- Result: PASS
+- Passed: 406, Failed: 0, Skipped: 0
+- Notable: All new tests for artifact display in card/board show commands pass
 
-## Manual Testing
-All auth commands tested successfully:
-- `takt auth register` - validation and user creation working
-- `takt auth login` - credential verification and session storage working
-- `takt auth whoami` - displays current user correctly
-- `takt auth logout` - clears session properly
-- Session requirement enforced for non-auth commands
+## Type Check
+- Result: FAIL (pre-existing errors)
+- Errors: 5 total, but none from our changes
+- Our implementation introduced no new type errors
 
-## Type Checking
-No TypeScript errors in the implementation.
+## Build
+- Result: N/A (no build command in this project)
+
+## Acceptance Criteria
+| AC | Status | Notes |
+|----|--------|-------|
+| AC13 | MET | CLI card/board show commands display artifact sections |
+
+## Overall: PASS

@@ -1,44 +1,26 @@
-# Run 002: Created CLI Entry Point
+# Run 002: Board-Level Artifacts UI Implementation
 
 ## Context
-Feature: takt-cli
-Focus: AC2 - CLI entry point and basic commands
+Starting from a state where 11/15 acceptance criteria were met, I focused on implementing AC12: BoardView UI for board-level artifacts.
 
 ## What Happened
-Successfully created the CLI entry point for takt with the following implementation:
-
-1. **Created `src/cli.ts`** with:
-   - `#!/usr/bin/env bun` shebang for direct execution
-   - Basic command parsing using `process.argv`
-   - Command structure supporting all specified commands and subcommands
-   - Comprehensive help text showing all available commands with examples
-   - Version display functionality
-   - Error handling for unknown commands
-
-2. **Updated `package.json`** with:
-   - Added `version: "0.1.0"` field
-   - Added `bin: { "takt": "./src/cli.ts" }` entry for global installation
-
-3. **Testing and Verification**:
-   - Tested `--help` flag: Shows comprehensive usage information ✓
-   - Tested `--version` flag: Displays version 0.1.0 ✓
-   - Tested unknown command: Shows error message and help text ✓
-   - Ran `bun link`: Successfully registered "takt" globally ✓
-   - Tested global `takt` command: Works from any directory ✓
-   - All 320 tests still pass ✓
-   - Fixed TypeScript error with undefined command check
+1. Analyzed the existing card artifacts implementation in CardModal.tsx to understand the pattern
+2. Created a new BoardArtifacts component following the same structure and interactions
+3. Added a "Board Docs" button to the BoardView header, visible only to board members
+4. Implemented full CRUD functionality for board-level artifacts in the UI
+5. Added comprehensive tests for both the new component and the button integration
+6. Ensured consistent styling with the existing UI
 
 ## Key Decisions
-- Used manual `process.argv` parsing instead of external CLI framework (as specified)
-- Structured commands dictionary to validate command/subcommand combinations
-- Made help text comprehensive but concise, with clear examples
-- Placeholder message for unimplemented commands to avoid confusion
+- Reused the same UI patterns from card artifacts for consistency
+- Made the Board Docs button conditionally visible based on board membership
+- Used a modal approach similar to CardModal for the artifacts panel
+- Maintained separate artifact management for board vs card level (card_id: null for board)
 
-## Files Modified
-- `src/cli.ts` (new file)
-- `package.json` (added version and bin fields)
+## Outcome
+AC12 is now complete. The BoardView has a functional Board Docs button that opens a panel for managing board-level artifacts with all required interactions. All tests pass (395 total).
 
 ## Next Steps
-- AC3: Implement auth commands (register/login/whoami/logout)
-- AC4: Add session requirement checks
-- AC5: Implement serve command
+Two acceptance criteria remain:
+- AC13: CLI integration for showing artifacts in card/board show commands
+- AC14: Search integration to include artifact content

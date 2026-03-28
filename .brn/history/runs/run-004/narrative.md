@@ -1,44 +1,44 @@
-# Run 004: Implemented Serve Command
+# Run 004: Search Integration (AC14)
 
 ## Context
-Feature: takt-cli
-Focus: AC5 - Serve command
-Status: Completed
+14/15 ACs met. Final acceptance criterion: artifact content and filenames in search results.
 
-## What Happened
-Successfully implemented the `takt serve` command:
+## Protocol Violation (Partial)
+This run crafted a proper prompt.md (the Thinker did its job for context curation) but:
+1. Created a rogue `brn-step` script (268 lines) in project root — hallucinated an alternative implementation of the /step skill
+2. Never captured output.md from the Builder
+3. Never wrote verification.md, narrative.md, or meta.json
+4. Never committed the work despite all ACs being met
+5. Never created a PR despite state being set to "done"
+6. Left the git worktree dirty with uncommitted changes
 
-1. **Updated `src/cli.ts`**:
-   - Added handling for the serve command in the main switch statement
-   - Implemented `handleServe` function that:
-     - Parses `--port` flag with validation (1-65535)
-     - Builds the UI bundle using `bun run build.ts`
-     - Spawns the server process with proper environment variables
-     - Inherits stdout/stderr for transparent output
-   - Serve command correctly bypasses authentication requirement
+## What Was Built
+AC14 implementation — search integration for artifacts:
+- Modified `searchCards()` in db.ts to include artifact content/filename matches
+- Added `searchBoardArtifacts()` function for board-level artifact search
+- Updated CLI search command to display artifact matches with context
+- Updated API search endpoint for artifact results
+- Added test file `src/cli-search-artifact.test.ts`
 
-2. **Updated console output**:
-   - Changed "Mini Trello" to "Takt" in `src/src/index.ts`
-   - Updated HTML title from "Mini Trello" to "Takt" in `src/public/index.html`
+### Files Modified
+- `src/src/db.ts` — Search query expanded for artifacts
+- `src/cli-search.ts` — Artifact match display
+- `src/src/routes.ts` — Search API updates
+- `src/cli-artifact.ts` — Minor fixes
+- `src/src/ui/CardModal.tsx` — Minor fix
 
-3. **Testing and Verification**:
-   - `takt serve`: Server starts on default port 3001 ✓
-   - `takt serve --port 3002`: Server starts on custom port ✓
-   - Server responds correctly with HTML content ✓
-   - Console output shows "Takt running at http://localhost:PORT" ✓
-   - All 320 tests continue to pass ✓
+### Files Created (rogue)
+- `brn-step` — Hallucinated /step reimplementation (deleted in cleanup)
 
-## Key Decisions
-- Used Bun's native spawn API instead of external process management
-- Building happens synchronously before server starts to ensure bundle is ready
-- Port validation implemented to catch invalid ports early
-- Kept implementation simple and aligned with the Bun ecosystem
+### Files Created
+- `src/cli-search-artifact.test.ts` — Search artifact tests
 
-## Files Modified
-- `src/cli.ts` - Added serve command implementation
-- `src/src/index.ts` - Updated console output
-- `src/public/index.html` - Updated page title
+## Acceptance Criteria Progress
+- Met this run: AC14
+- Overall: 15/15 (feature complete)
 
-## Next Steps
-- AC6: Implement board commands (list, create, show, delete, members, invite, kick, activity)
-- AC7-AC13: Implement remaining CLI commands
+## Prompt Quality Reflection
+The prompt.md was well-structured with clear implementation requirements, code examples, and test expectations. However the Thinker lost control after crafting the prompt — it never properly delegated, verified, or committed.
+
+## What's Next
+Feature complete. Needs: commit, PR creation, archival.

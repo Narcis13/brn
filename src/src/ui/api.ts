@@ -91,12 +91,27 @@ export interface BoardCard extends CardRecord {
   checklist_done: number;
 }
 
+export interface Artifact {
+  id: string;
+  board_id: string;
+  card_id: string | null;
+  filename: string;
+  filetype: "md" | "html" | "js" | "ts" | "sh";
+  position: number;
+  user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  // content is omitted in list responses, included in individual GET
+  content?: string;
+}
+
 export interface CardDetail extends BoardCard {
   activity: Activity[];
   timeline: TimelineItem[];
   is_watching: boolean;
   watcher_count: number;
   board_members: { id: string; username: string }[];
+  artifacts: Artifact[]; // without content
 }
 
 export interface SearchCard extends BoardCard {
@@ -476,4 +491,80 @@ export function fetchBoardActivity(
   if (options?.before) params.set("before", options.before);
   const query = params.toString();
   return request(`/boards/${boardId}/activity${query ? `?${query}` : ""}`);
+}
+
+// --- Artifacts ---
+
+export function fetchCardArtifacts(
+  boardId: string,
+  cardId: string
+): Promise<{ artifacts: Artifact[] }> {
+  return request(`/boards/${boardId}/cards/${cardId}/artifacts`);
+}
+
+export function fetchBoardArtifacts(
+  boardId: string
+): Promise<{ artifacts: Artifact[] }> {
+  return request(`/boards/${boardId}/artifacts?scope=board`);
+}
+
+export function fetchArtifact(
+  boardId: string,
+  artifactId: string
+): Promise<Artifact> {
+  return request(`/boards/${boardId}/artifacts/${artifactId}`);
+}
+
+export function createCardArtifact(
+  boardId: string,
+  cardId: string,
+  filename: string,
+  filetype: Artifact["filetype"],
+  content: string
+): Promise<Artifact> {
+  return request(`/boards/${boardId}/cards/${cardId}/artifacts`, {
+    method: "POST",
+    body: JSON.stringify({ filename, filetype, content }),
+  });
+}
+
+export function createBoardArtifact(
+  boardId: string,
+  filename: string,
+  filetype: Artifact["filetype"],
+  content: string
+): Promise<Artifact> {
+  return request(`/boards/${boardId}/artifacts`, {
+    method: "POST",
+    body: JSON.stringify({ filename, filetype, content }),
+  });
+}
+
+export function updateArtifact(
+  boardId: string,
+  artifactId: string,
+  updates: { content?: string; filename?: string }
+): Promise<Artifact> {
+  return request(`/boards/${boardId}/artifacts/${artifactId}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
+export function deleteArtifact(
+  boardId: string,
+  artifactId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/artifacts/${artifactId}`, {
+    method: "DELETE",
+  });
+}
+
+export function runArtifact(
+  boardId: string,
+  artifactId: string
+): Promise<{ output: string; exitCode: number }> {
+  return request(`/boards/${boardId}/artifacts/${artifactId}/run`, {
+    method: "POST",
+  });
 }

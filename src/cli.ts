@@ -43,6 +43,15 @@ import {
 } from "./cli-label";
 import { searchCardsCommand } from "./cli-search";
 import {
+  listArtifacts,
+  addArtifact,
+  showArtifact,
+  editArtifact,
+  deleteArtifactCommand,
+  exportArtifact,
+  runArtifact,
+} from "./cli-artifact";
+import {
   exitWithError,
   getCommandContext,
   getPositionals,
@@ -64,6 +73,7 @@ const COMMANDS = {
   card: ["list", "create", "show", "update", "delete", "move"],
   label: ["list", "create", "update", "delete", "assign", "unassign"],
   comment: ["add", "edit", "delete"],
+  artifact: ["list", "add", "show", "edit", "delete", "export", "run"],
   search: [],
   serve: [],
 } as const;
@@ -118,6 +128,15 @@ Commands:
     edit <id> <content>
     delete <id>
 
+  artifact
+    list <cardId|boardId> [--board]
+    add <cardId|boardId> [--board] [--file <path>] [--filename <name> --content <text>]
+    show <id>
+    edit <id> [--content <text>]
+    delete <id> [--yes]
+    export <id> [--output <path>]
+    run <id> [--yes] [-- args...]
+
   search <boardId> <query>
   serve [--port <number>]
 
@@ -171,6 +190,9 @@ async function main(): Promise<void> {
       return;
     case "comment":
       await handleComment(subcommand, rest);
+      return;
+    case "artifact":
+      await handleArtifact(subcommand, rest);
       return;
     case "search":
       await handleSearch(rest);
@@ -625,6 +647,96 @@ async function handleComment(subcommand: string | undefined, commandArgs: string
     }
     default:
       exitWithError("Unknown comment subcommand");
+  }
+}
+
+async function handleArtifact(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "list": {
+      const positionals = getPositionals(commandArgs, ["--board"]);
+      const [targetId] = positionals;
+      if (!targetId) {
+        exitWithError("Usage: takt artifact list <cardId|boardId> [--board]");
+      }
+      const board = commandArgs.includes("--board");
+      await listArtifacts(db, session, targetId, { ...options, board });
+      return;
+    }
+    case "add": {
+      const positionals = getPositionals(commandArgs, ["--board", "--file", "--filename", "--content"]);
+      const [targetId] = positionals;
+      if (!targetId) {
+        exitWithError("Usage: takt artifact add <cardId|boardId> [--board] [--file <path>] [--filename <name> --content <text>]");
+      }
+      const board = commandArgs.includes("--board");
+      const file = readOptionValue(commandArgs, "--file");
+      const filename = readOptionValue(commandArgs, "--filename");
+      const content = readOptionValue(commandArgs, "--content");
+      
+      await addArtifact(db, session, targetId, { ...options, board, file, filename, content });
+      return;
+    }
+    case "show": {
+      const [artifactId] = getPositionals(commandArgs);
+      if (!artifactId) {
+        exitWithError("Usage: takt artifact show <id>");
+      }
+      await showArtifact(db, session, artifactId, options);
+      return;
+    }
+    case "edit": {
+      const positionals = getPositionals(commandArgs, ["--content"]);
+      const [artifactId] = positionals;
+      if (!artifactId) {
+        exitWithError("Usage: takt artifact edit <id> [--content <text>]");
+      }
+      const content = readOptionValue(commandArgs, "--content");
+      await editArtifact(db, session, artifactId, { ...options, content });
+      return;
+    }
+    case "delete": {
+      const [artifactId] = getPositionals(commandArgs);
+      if (!artifactId) {
+        exitWithError("Usage: takt artifact delete <id> [--yes]");
+      }
+      await deleteArtifactCommand(db, session, artifactId, options);
+      return;
+    }
+    case "export": {
+      const positionals = getPositionals(commandArgs, ["--output"]);
+      const [artifactId] = positionals;
+      if (!artifactId) {
+        exitWithError("Usage: takt artifact export <id> [--output <path>]");
+      }
+      const output = readOptionValue(commandArgs, "--output");
+      await exportArtifact(db, session, artifactId, { ...options, output });
+      return;
+    }
+    case "run": {
+      // Special handling for run to capture args after --
+      const dashDashIndex = commandArgs.indexOf("--");
+      let artifactArgs: string[] = [];
+      let filteredArgs = commandArgs;
+      
+      if (dashDashIndex !== -1) {
+        artifactArgs = commandArgs.slice(dashDashIndex + 1);
+        filteredArgs = commandArgs.slice(0, dashDashIndex);
+      }
+      
+      const [artifactId] = getPositionals(filteredArgs);
+      if (!artifactId) {
+        exitWithError("Usage: takt artifact run <id> [--yes] [-- args...]");
+      }
+      
+      const runOptions = parseGlobalOptions(filteredArgs);
+      await runArtifact(db, session, artifactId, artifactArgs, runOptions);
+      return;
+    }
+    default:
+      exitWithError("Unknown artifact subcommand");
   }
 }
 
