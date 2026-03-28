@@ -2,9 +2,9 @@
   "feature": "events-triggers",
   "spec": "feature-events-triggers.md",
   "branch": "feat/events-triggers",
-  "status": "planning",
+  "status": "in_progress",
   "acceptance_criteria": [
-    {"id": "AC1", "text": "Event bus module: typed TaktEvent with entity.action naming, eventBus.on() with wildcard support, eventBus.emit() called after every mutation in routes.ts. Activity logging refactored into first event subscriber.", "met": false},
+    {"id": "AC1", "text": "Event bus module: typed TaktEvent with entity.action naming, eventBus.on() with wildcard support, eventBus.emit() called after every mutation in routes.ts. Activity logging refactored into first event subscriber.", "met": true, "progress": "Completed. Event bus integrated into all mutation routes. Activity subscriber handles logging."},
     {"id": "AC2", "text": "triggers table with schema: id, board_id, name, event_types (JSON array), conditions (JSON), action_type (enum), action_config (JSON), enabled, created_at, user_id. trigger_log table with id, trigger_id, board_id, event_type, event_payload, result, error_message, duration_ms, executed_at. Auto-prune to 500 per board.", "met": false},
     {"id": "AC3", "text": "Webhook action: POST to configured URL with event+trigger payload, 10s timeout, 1 retry on 5xx/timeout, success/failure logged to trigger_log.", "met": false},
     {"id": "AC4", "text": "Run Artifact action: executes board-level sh/js/ts artifact with TAKT_EVENT env var, captures output in trigger_log (truncated 5000 chars), errors if artifact missing.", "met": false},
@@ -18,9 +18,9 @@
     {"id": "AC12", "text": "UI Triggers Management: gear icon in board header, triggers tab with list/create/edit/delete. Trigger builder with 4-step wizard (name+events, conditions, action config, review). Trigger detail with execution log.", "met": false},
     {"id": "AC13", "text": "UI Real-Time Board Updates: SSE connection on board load, live card/column changes from other users, 'Live' indicator, reconnection handling with fallback.", "met": false}
   ],
-  "run_count": 0,
-  "current_focus": null,
-  "last_run": null,
+  "run_count": 2,
+  "current_focus": "AC2",
+  "last_run": "2026-03-28T22:30:00Z",
   "retry_count": 0,
   "blocked": false
 }
