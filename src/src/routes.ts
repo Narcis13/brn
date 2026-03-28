@@ -31,6 +31,7 @@ import {
   getCardActivity,
   getCardDetail,
   searchCards,
+  searchBoardArtifacts,
   getCalendarCards,
   reorderColumns,
   isBoardMember,
@@ -851,7 +852,11 @@ export function createApp(db: Database): Hono<Env> {
     }
     
     const cards = searchCards(db, board.id, { q, labelId, due });
-    return c.json({ cards });
+    
+    // Also search board artifacts if there's a query
+    const boardArtifacts = q ? searchBoardArtifacts(db, board.id, q) : [];
+    
+    return c.json({ cards, board_artifacts: boardArtifacts });
   });
 
   // --- Calendar route ---

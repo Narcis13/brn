@@ -101,15 +101,16 @@ export async function listArtifacts(
     return;
   }
 
-  const rows = artifacts.map((artifact) => ({
-    ID: formatId(artifact.id, options),
-    Filename: artifact.filename,
-    Type: artifact.filetype.toUpperCase(),
-    Size: formatFileSize(artifact.content.length),
-    Created: formatDateTime(artifact.created_at),
-  }));
+  const headers = ["ID", "Filename", "Type", "Size", "Created"];
+  const rows = artifacts.map((artifact) => [
+    formatId(artifact.id, options),
+    artifact.filename,
+    artifact.filetype.toUpperCase(),
+    formatFileSize(artifact.content.length),
+    formatDateTime(artifact.created_at),
+  ]);
 
-  printTable(rows, ["ID", "Filename", "Type", "Size", "Created"]);
+  printTable(headers, rows);
 }
 
 export async function addArtifact(
@@ -421,7 +422,7 @@ export async function deleteArtifactCommand(
   }
 
   if (!options.yes) {
-    await confirmOrExit(`Delete artifact '${artifact.filename}'?`);
+    await confirmOrExit(options, `Delete artifact '${artifact.filename}'?`);
   }
 
   // Create activity entry before deletion
@@ -512,7 +513,7 @@ export async function runArtifact(
     }
     console.log("");
     
-    await confirmOrExit("Run this artifact?");
+    await confirmOrExit(options, "Run this artifact?");
   }
 
   // Create temp file

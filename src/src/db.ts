@@ -1071,6 +1071,11 @@ export type SearchDueFilter = "overdue" | "today" | "week" | "none";
 export interface CardSearchResult extends CardRow {
   column_title: string;
   labels: LabelRow[];
+  // Optional artifact match information
+  artifact_match?: {
+    filename: string;
+    match_context: string;
+  };
 }
 
 export interface CalendarCardResult extends CardRow {
@@ -1114,10 +1119,19 @@ export function searchCards(
           WHERE cl.card_id = c.id
             AND LOWER(l.name) LIKE LOWER(?) ESCAPE '\\'
         )
+        OR EXISTS (
+          SELECT 1
+          FROM artifacts a
+          WHERE a.card_id = c.id
+            AND (
+              LOWER(a.filename) LIKE LOWER(?) ESCAPE '\\'
+              OR LOWER(a.content) LIKE LOWER(?) ESCAPE '\\'
+            )
+        )
       )
     `;
     const searchPattern = `%${escapeLikePattern(query)}%`;
-    sqlParams.push(searchPattern, searchPattern, searchPattern);
+    sqlParams.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
   }
 
   // Label filter
@@ -1164,10 +1178,130 @@ export function searchCards(
   const labelsByCard = getLabelsByCardId(db, cardIds);
 
   // Combine cards with their labels
-  return cards.map(card => ({
+  const results: CardSearchResult[] = cards.map(card => ({
     ...card,
     labels: labelsByCard.get(card.id) ?? []
   }));
+
+  // If searching, check for artifact matches to add context
+  if (query && cardIds.length > 0) {
+    const searchPattern = `%${escapeLikePattern(query)}%`;
+    
+    // Get artifact matches for cards
+    const artifactMatches = db.query(`
+      SELECT a.card_id, a.filename, a.content
+      FROM artifacts a
+      WHERE a.card_id IN (${cardIds.map(() => '?').join(',')})
+        AND (
+          LOWER(a.filename) LIKE LOWER(?) ESCAPE '\\'
+          OR LOWER(a.content) LIKE LOWER(?) ESCAPE '\\'
+        )
+    `).all(...cardIds, searchPattern, searchPattern) as {
+      card_id: string;
+      filename: string;
+      content: string;
+    }[];
+
+    // Create a map of card ID to first artifact match
+    const artifactMatchByCard = new Map<string, { filename: string; match_context: string }>();
+    
+    for (const match of artifactMatches) {
+      if (!artifactMatchByCard.has(match.card_id)) {
+        // Extract context around the match
+        const lowerContent = match.content.toLowerCase();
+        const lowerQuery = query.toLowerCase();
+        const matchIndex = lowerContent.indexOf(lowerQuery);
+        
+        let context = '';
+        if (matchIndex >= 0) {
+          // Get up to 50 chars before and after the match
+          const contextStart = Math.max(0, matchIndex - 50);
+          const contextEnd = Math.min(match.content.length, matchIndex + lowerQuery.length + 50);
+          context = match.content.substring(contextStart, contextEnd);
+          if (contextStart > 0) context = '...' + context;
+          if (contextEnd < match.content.length) context = context + '...';
+        } else if (match.filename.toLowerCase().includes(lowerQuery)) {
+          context = `Filename: ${match.filename}`;
+        }
+        
+        artifactMatchByCard.set(match.card_id, {
+          filename: match.filename,
+          match_context: context
+        });
+      }
+    }
+
+    // Add artifact match info to results
+    for (const result of results) {
+      const artifactMatch = artifactMatchByCard.get(result.id);
+      if (artifactMatch) {
+        result.artifact_match = artifactMatch;
+      }
+    }
+  }
+
+  return results;
+}
+
+// Search for board-level artifacts
+export interface BoardArtifactSearchResult {
+  board_id: string;
+  filename: string;
+  filetype: string;
+  match_context: string;
+}
+
+export function searchBoardArtifacts(
+  db: Database,
+  boardId: string,
+  query: string
+): BoardArtifactSearchResult[] {
+  if (!query?.trim()) return [];
+  
+  const searchPattern = `%${escapeLikePattern(query.trim())}%`;
+  
+  const matches = db.query(`
+    SELECT board_id, filename, filetype, content
+    FROM artifacts
+    WHERE board_id = ? 
+      AND card_id IS NULL
+      AND (
+        LOWER(filename) LIKE LOWER(?) ESCAPE '\\'
+        OR LOWER(content) LIKE LOWER(?) ESCAPE '\\'
+      )
+    ORDER BY position
+  `).all(boardId, searchPattern, searchPattern) as {
+    board_id: string;
+    filename: string;
+    filetype: string;
+    content: string;
+  }[];
+  
+  return matches.map(match => {
+    // Extract context around the match
+    const lowerContent = match.content.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const matchIndex = lowerContent.indexOf(lowerQuery);
+    
+    let context = '';
+    if (matchIndex >= 0) {
+      // Get up to 50 chars before and after the match
+      const contextStart = Math.max(0, matchIndex - 50);
+      const contextEnd = Math.min(match.content.length, matchIndex + lowerQuery.length + 50);
+      context = match.content.substring(contextStart, contextEnd);
+      if (contextStart > 0) context = '...' + context;
+      if (contextEnd < match.content.length) context = context + '...';
+    } else if (match.filename.toLowerCase().includes(lowerQuery)) {
+      context = `Filename: ${match.filename}`;
+    }
+    
+    return {
+      board_id: match.board_id,
+      filename: match.filename,
+      filetype: match.filetype,
+      match_context: context
+    };
+  });
 }
 
 // --- Calendar view helpers ---
@@ -1633,7 +1767,7 @@ export function updateArtifact(
   }
 
   const fields: string[] = ["updated_at = ?"];
-  const values: unknown[] = [new Date().toISOString()];
+  const values: string[] = [new Date().toISOString()];
 
   if (updates.filename !== undefined) {
     fields.push("filename = ?");
@@ -1646,9 +1780,9 @@ export function updateArtifact(
 
   values.push(id);
 
-  db.query(
-    `UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`
-  ).run(...values);
+  // Use apply to spread the values array
+  const stmt = db.query(`UPDATE artifacts SET ${fields.join(", ")} WHERE id = ?`);
+  stmt.run.apply(stmt, values);
 
   return getArtifact(db, id);
 }

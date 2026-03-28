@@ -410,6 +410,7 @@ export function CardModal({
       is_watching: false,
       watcher_count: 0,
       board_members: [],
+      artifacts: [],
     });
 
     void Promise.all([
