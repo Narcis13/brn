@@ -1024,10 +1024,10 @@ export function createApp(db: Database): Hono<Env> {
         userId
       );
 
-      // Create activity entry
+      // Create activity entry (null card_id for board-level artifacts)
       createActivity(
         db,
-        board.id,
+        null,
         board.id,
         "artifact_added",
         JSON.stringify({ filename: body.filename, filetype: body.filetype }),
@@ -1091,10 +1091,10 @@ export function createApp(db: Database): Hono<Env> {
         return c.json({ error: "Failed to update artifact" }, 500);
       }
 
-      // Create activity entry
+      // Create activity entry (card_id is null for board-level artifacts)
       createActivity(
         db,
-        artifact.card_id || board.id,
+        artifact.card_id,
         board.id,
         "artifact_edited",
         JSON.stringify({ filename: artifact.filename }),
@@ -1123,10 +1123,10 @@ export function createApp(db: Database): Hono<Env> {
       return c.json({ error: "artifact not found" }, 404);
     }
 
-    // Create activity entry before deletion
+    // Create activity entry before deletion (card_id is null for board-level artifacts)
     createActivity(
       db,
-      artifact.card_id || board.id,
+      artifact.card_id,
       board.id,
       "artifact_deleted",
       JSON.stringify({ filename: artifact.filename, filetype: artifact.filetype }),

@@ -144,6 +144,26 @@ function migrate(db: Database): void {
     db.exec("ALTER TABLE activity ADD COLUMN user_id TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL");
   }
 
+  // Migrate activity table: make card_id nullable (needed for board-level artifact activity)
+  const activityCardCol = (db.prepare("PRAGMA table_info(activity)").all() as { name: string; notnull: number }[])
+    .find(c => c.name === "card_id");
+  if (activityCardCol && activityCardCol.notnull === 1) {
+    db.exec(`
+      CREATE TABLE activity_new (
+        id TEXT PRIMARY KEY,
+        card_id TEXT DEFAULT NULL REFERENCES cards(id) ON DELETE CASCADE,
+        board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        detail TEXT DEFAULT NULL,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        user_id TEXT DEFAULT NULL REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+    db.exec("INSERT INTO activity_new SELECT id, card_id, board_id, action, detail, timestamp, user_id FROM activity");
+    db.exec("DROP TABLE activity");
+    db.exec("ALTER TABLE activity_new RENAME TO activity");
+  }
+
   // Create board_members table
   db.exec(`
     CREATE TABLE IF NOT EXISTS board_members (
@@ -282,7 +302,7 @@ export interface CardLabelRow {
 
 export interface ActivityRow {
   id: string;
-  card_id: string;
+  card_id: string | null;
   board_id: string;
   action: string;
   detail: string | null;
@@ -741,7 +761,7 @@ export function removeLabelFromCard(db: Database, cardId: string, labelId: strin
 
 export function createActivity(
   db: Database,
-  cardId: string,
+  cardId: string | null,
   boardId: string,
   action: string,
   detail: unknown = null,
