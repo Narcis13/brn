@@ -3036,6 +3036,52 @@ body.modal-open {
   margin-top: 12px;
 }
 
+.artifact-run-output {
+  margin-top: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.artifact-run-output.run-success {
+  border: 1px solid #c3e6cb;
+}
+
+.artifact-run-output.run-error {
+  border: 1px solid #f5c6cb;
+}
+
+.run-output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.run-success .run-output-header {
+  background: #d4edda;
+  color: #155724;
+}
+
+.run-error .run-output-header {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.run-output-content {
+  padding: 12px;
+  margin: 0;
+  font-size: 12px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  background: #1e1e1e;
+  color: #d4d4d4;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .artifact-add-btn {
   width: 100%;
 }

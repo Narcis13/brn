@@ -1137,5 +1137,69 @@ export function createApp(db: Database): Hono<Env> {
     return c.json({ ok: true });
   });
 
+  // Run an executable artifact (sh/js/ts only)
+  app.post("/api/boards/:boardId/artifacts/:id/run", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const artifactId = c.req.param("id");
+    const artifact = getArtifact(db, artifactId);
+    if (!artifact || artifact.board_id !== board.id) {
+      return c.json({ error: "artifact not found" }, 404);
+    }
+
+    if (!["sh", "js", "ts"].includes(artifact.filetype)) {
+      return c.json({ error: `Cannot run artifact of type '${artifact.filetype}'. Only sh, js, and ts artifacts can be executed.` }, 400);
+    }
+
+    const tempFile = `/tmp/takt-artifact-run-${artifactId}.${artifact.filetype}`;
+    await Bun.write(tempFile, artifact.content);
+
+    let exitCode = 0;
+    let output = "";
+
+    try {
+      const cmd = artifact.filetype === "sh"
+        ? ["/bin/sh", tempFile]
+        : ["bun", "run", tempFile];
+
+      if (artifact.filetype === "sh") {
+        const proc = Bun.spawn(["chmod", "+x", tempFile]);
+        await proc.exited;
+      }
+
+      const proc = Bun.spawn(cmd, {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const [stdout, stderr] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+      ]);
+      await proc.exited;
+      exitCode = proc.exitCode || 0;
+      output = stdout + (stderr ? "\n" + stderr : "");
+    } catch (err) {
+      output = err instanceof Error ? err.message : "Execution failed";
+      exitCode = 1;
+    } finally {
+      try { await Bun.$`rm ${tempFile}`; } catch { /* ignore */ }
+    }
+
+    createActivity(
+      db,
+      artifact.card_id,
+      board.id,
+      "artifact_run",
+      JSON.stringify({ filename: artifact.filename, exit_code: exitCode }),
+      userId
+    );
+
+    return c.json({ output, exitCode });
+  });
+
   return app;
 }

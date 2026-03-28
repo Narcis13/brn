@@ -559,3 +559,12 @@ export function deleteArtifact(
     method: "DELETE",
   });
 }
+
+export function runArtifact(
+  boardId: string,
+  artifactId: string
+): Promise<{ output: string; exitCode: number }> {
+  return request(`/boards/${boardId}/artifacts/${artifactId}/run`, {
+    method: "POST",
+  });
+}
