@@ -52,6 +52,20 @@ import {
   runArtifact,
 } from "./cli-artifact";
 import {
+  listTriggers,
+  createTriggerCommand,
+  showTrigger,
+  updateTriggerCommand,
+  deleteTriggerCommand,
+  showTriggerLog,
+  testTrigger,
+} from "./cli-trigger";
+import {
+  listNotifications,
+  readNotification,
+  notificationCount,
+} from "./cli-notification";
+import {
   exitWithError,
   getCommandContext,
   getPositionals,
@@ -74,6 +88,8 @@ const COMMANDS = {
   label: ["list", "create", "update", "delete", "assign", "unassign"],
   comment: ["add", "edit", "delete"],
   artifact: ["list", "add", "show", "edit", "delete", "export", "run"],
+  trigger: ["list", "create", "show", "update", "delete", "log", "test"],
+  notification: ["list", "read", "count"],
   search: [],
   serve: [],
 } as const;
@@ -137,6 +153,20 @@ Commands:
     export <id> [--output <path>]
     run <id> [--yes] [-- args...]
 
+  trigger
+    list <boardId>
+    create <boardId> --name <name> --events <type1,type2> --action-type <type> --action-config <json> [--conditions <json>] [--disabled]
+    show <id>
+    update <id> [--name <name>] [--enabled <true|false>] [--event-types <type1,type2>]
+    delete <id> [--yes]
+    log <boardId> [--trigger <id>] [--limit <n>]
+    test <id>
+
+  notification
+    list [--board <id>] [--unread]
+    read [<id> | --all]
+    count
+
   search <boardId> <query>
   serve [--port <number>]
 
@@ -193,6 +223,12 @@ async function main(): Promise<void> {
       return;
     case "artifact":
       await handleArtifact(subcommand, rest);
+      return;
+    case "trigger":
+      await handleTrigger(subcommand, rest);
+      return;
+    case "notification":
+      await handleNotification(subcommand, rest);
       return;
     case "search":
       await handleSearch(rest);
@@ -737,6 +773,125 @@ async function handleArtifact(subcommand: string | undefined, commandArgs: strin
     }
     default:
       exitWithError("Unknown artifact subcommand");
+  }
+}
+
+async function handleTrigger(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "list": {
+      const [boardId] = getPositionals(commandArgs);
+      if (!boardId) {
+        exitWithError("Usage: takt trigger list <boardId>");
+      }
+      await listTriggers(db, session, boardId, options);
+      return;
+    }
+    case "create": {
+      const positionals = getPositionals(commandArgs, [
+        "--name", "--events", "--action-type", "--action-config", "--conditions",
+      ]);
+      const [boardId] = positionals;
+      const name = readOptionValue(commandArgs, "--name");
+      const events = readOptionValue(commandArgs, "--events");
+      const actionType = readOptionValue(commandArgs, "--action-type");
+      const actionConfig = readOptionValue(commandArgs, "--action-config");
+      const conditions = readOptionValue(commandArgs, "--conditions");
+      const disabled = commandArgs.includes("--disabled");
+
+      if (!boardId || !name || !events || !actionType || !actionConfig) {
+        exitWithError(
+          "Usage: takt trigger create <boardId> --name <name> --events <type1,type2> --action-type <type> --action-config <json>"
+        );
+      }
+
+      await createTriggerCommand(
+        db, session, boardId, name, events, actionType, actionConfig,
+        conditions, !disabled, options
+      );
+      return;
+    }
+    case "show": {
+      const [triggerId] = getPositionals(commandArgs);
+      if (!triggerId) {
+        exitWithError("Usage: takt trigger show <id>");
+      }
+      await showTrigger(db, session, triggerId, options);
+      return;
+    }
+    case "update": {
+      const positionals = getPositionals(commandArgs, [
+        "--name", "--enabled", "--event-types",
+      ]);
+      const [triggerId] = positionals;
+      if (!triggerId) {
+        exitWithError("Usage: takt trigger update <id> [--name <name>] [--enabled <true|false>] [--event-types <type1,type2>]");
+      }
+      await updateTriggerCommand(db, session, triggerId, {
+        name: readOptionValue(commandArgs, "--name"),
+        enabled: readOptionValue(commandArgs, "--enabled"),
+        eventTypes: readOptionValue(commandArgs, "--event-types"),
+      }, options);
+      return;
+    }
+    case "delete": {
+      const [triggerId] = getPositionals(commandArgs);
+      if (!triggerId) {
+        exitWithError("Usage: takt trigger delete <id>");
+      }
+      await deleteTriggerCommand(db, session, triggerId, options);
+      return;
+    }
+    case "log": {
+      const positionals = getPositionals(commandArgs, ["--trigger", "--limit"]);
+      const [boardId] = positionals;
+      if (!boardId) {
+        exitWithError("Usage: takt trigger log <boardId> [--trigger <id>] [--limit <n>]");
+      }
+      const triggerId = readOptionValue(commandArgs, "--trigger");
+      const limitValue = readOptionValue(commandArgs, "--limit");
+      const limit = limitValue ? parseInteger(limitValue, "limit") : 20;
+      await showTriggerLog(db, session, boardId, triggerId, limit, options);
+      return;
+    }
+    case "test": {
+      const [triggerId] = getPositionals(commandArgs);
+      if (!triggerId) {
+        exitWithError("Usage: takt trigger test <id>");
+      }
+      await testTrigger(db, session, triggerId, options);
+      return;
+    }
+    default:
+      exitWithError("Unknown trigger subcommand");
+  }
+}
+
+async function handleNotification(subcommand: string | undefined, commandArgs: string[]): Promise<void> {
+  const { db, session } = await getCommandContext();
+  const options = parseGlobalOptions(commandArgs);
+
+  switch (subcommand) {
+    case "list": {
+      const boardId = readOptionValue(commandArgs, "--board");
+      const unread = commandArgs.includes("--unread");
+      await listNotifications(db, session, boardId, unread, options);
+      return;
+    }
+    case "read": {
+      const readAll = commandArgs.includes("--all");
+      const [notificationId] = getPositionals(commandArgs);
+      await readNotification(db, session, notificationId, readAll, options);
+      return;
+    }
+    case "count": {
+      await notificationCount(db, session, options);
+      return;
+    }
+    default:
+      exitWithError("Unknown notification subcommand");
   }
 }
 

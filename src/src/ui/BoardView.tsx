@@ -22,6 +22,9 @@ import {
 import { CardModal } from "./CardModal.tsx";
 import { CalendarView } from "./CalendarView.tsx";
 import { BoardArtifacts } from "./BoardArtifacts.tsx";
+import { NotificationBell } from "./NotificationBell.tsx";
+import { TriggerManager } from "./TriggerManager.tsx";
+import type { Notification } from "./api.ts";
 
 export type ViewMode = "board" | "calendar";
 
@@ -166,6 +169,10 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
   const [isSearchPending, setIsSearchPending] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [showBoardArtifacts, setShowBoardArtifacts] = useState(false);
+  const [showTriggerManager, setShowTriggerManager] = useState(false);
+  const [sseConnected, setSseConnected] = useState(false);
+  const [latestNotification, setLatestNotification] = useState<Notification | null>(null);
+  const sseRef = useRef<EventSource | null>(null);
   const columnInputRef = useRef<HTMLInputElement>(null);
   const dragCard = useRef<{
     cardId: string;
@@ -188,6 +195,49 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+
+  // SSE connection for real-time updates
+  useEffect(() => {
+    const es = api.connectBoardSSE(
+      boardId,
+      (eventType, data) => {
+        if (eventType === "connected") {
+          setSseConnected(true);
+          return;
+        }
+
+        // Handle notification events
+        if (eventType === "notification.created") {
+          setLatestNotification(data as Notification);
+          return;
+        }
+
+        // Handle board data changes — reload board data
+        if (
+          eventType.startsWith("card.") ||
+          eventType.startsWith("column.") ||
+          eventType.startsWith("card.label")
+        ) {
+          // Check if event was from current user — skip reload for own actions
+          const eventData = data as { userId?: string };
+          if (eventData.userId !== currentUser.id) {
+            void loadBoard();
+          }
+        }
+      },
+      () => {
+        setSseConnected(false);
+      }
+    );
+
+    sseRef.current = es;
+
+    return () => {
+      es.close();
+      sseRef.current = null;
+      setSseConnected(false);
+    };
+  }, [boardId, currentUser.id, loadBoard]);
 
   useEffect(() => {
     if (editingColumnId && columnInputRef.current) {
@@ -744,9 +794,42 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
                 onClick={() => setShowBoardArtifacts(true)}
                 title="Board documents"
               >
-                <span className="board-docs-icon">📁</span>
+                <span className="board-docs-icon">{"\u{1F4C1}"}</span>
                 <span>Board Docs</span>
               </button>
+            )}
+
+            {isMember && (
+              <NotificationBell
+                boardId={boardId}
+                onNavigateToCard={(cardId) => {
+                  // Find the card in columns and open modal
+                  for (const col of columns) {
+                    const card = col.cards.find((c) => c.id === cardId);
+                    if (card) {
+                      setModal({ open: true, card, columnId: col.id });
+                      break;
+                    }
+                  }
+                }}
+                externalNotification={latestNotification}
+              />
+            )}
+
+            {isMember && (
+              <button
+                className="btn-board-settings"
+                onClick={() => setShowTriggerManager(true)}
+                title="Board settings & triggers"
+              >
+                {"\u2699\uFE0F"}
+              </button>
+            )}
+
+            {sseConnected && (
+              <span className="sse-live-badge" title="Live updates active">
+                Live
+              </span>
             )}
 
             <button
@@ -1144,6 +1227,12 @@ export function BoardView({ boardId, currentUser }: BoardViewProps): React.React
           isOwner={isOwner}
           isMember={isMember}
           onClose={() => setShowBoardArtifacts(false)}
+        />
+      )}
+      {showTriggerManager && (
+        <TriggerManager
+          boardId={boardId}
+          onClose={() => setShowTriggerManager(false)}
         />
       )}
     </>

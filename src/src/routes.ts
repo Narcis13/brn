@@ -59,10 +59,25 @@ import {
   getBoardArtifacts,
   updateArtifact,
   deleteArtifact,
+  // Trigger & notification imports
+  createTrigger,
+  getTriggerById,
+  getBoardTriggers,
+  updateTrigger,
+  deleteTrigger,
+  getTriggerLogs,
+  getBoardTriggerLogs,
+  getUserNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  deleteOldReadNotifications,
+  getNotificationById,
   type BoardRow,
   type SearchDueFilter,
   type ArtifactRow,
 } from "./db.ts";
+import type { SSEManager } from "./sse-manager.ts";
 
 type Env = { Variables: { userId: string; username: string } };
 
@@ -83,7 +98,7 @@ function isSearchDueFilter(value: string): value is SearchDueFilter {
   return value === "overdue" || value === "today" || value === "week" || value === "none";
 }
 
-export function createApp(db: Database): Hono<Env> {
+export function createApp(db: Database, sseManager?: SSEManager): Hono<Env> {
   const app = new Hono<Env>();
 
   // --- Auth middleware (protects all /api/* except register/login) ---
@@ -91,6 +106,21 @@ export function createApp(db: Database): Hono<Env> {
     const path = new URL(c.req.url).pathname;
     if (path === "/api/auth/register" || path === "/api/auth/login") {
       return next();
+    }
+
+    // SSE endpoints handle auth via query param — let them through
+    if (path.endsWith("/events")) {
+      const tokenParam = c.req.query("token");
+      if (tokenParam) {
+        try {
+          const payload = await verify(tokenParam, JWT_SECRET, "HS256");
+          c.set("userId", payload["userId"] as string);
+          c.set("username", payload["username"] as string);
+          return next();
+        } catch {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+      }
     }
 
     const authHeader = c.req.header("Authorization");
@@ -860,7 +890,11 @@ export function createApp(db: Database): Hono<Env> {
         color: body.color,
         position: body.position,
       });
-      
+
+      if (!label) {
+        return c.json({ error: "Failed to update label" }, 500);
+      }
+
       // Emit event
       await eventBus.emit({
         eventType: EventTypes.LABEL_UPDATED,
@@ -1698,6 +1732,302 @@ export function createApp(db: Database): Hono<Env> {
     });
 
     return c.json({ output, exitCode });
+  });
+
+  // --- Trigger routes ---
+
+  app.get("/api/boards/:boardId/triggers", (c) => {
+    const board = getVerifiedBoard(db, c.req.param("boardId"), c.get("userId"));
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggers = getBoardTriggers(db, board.id);
+    return c.json({ triggers });
+  });
+
+  app.post("/api/boards/:boardId/triggers", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const body = await c.req.json<{
+      name?: string;
+      event_types?: string[];
+      conditions?: { column?: string; label?: string } | null;
+      action_type?: string;
+      action_config?: Record<string, unknown>;
+      enabled?: boolean;
+    }>();
+
+    if (!body.name || body.name.trim() === "") {
+      return c.json({ error: "name is required" }, 400);
+    }
+    if (body.name.length > 100) {
+      return c.json({ error: "name must be 100 characters or less" }, 400);
+    }
+    if (!body.event_types || !Array.isArray(body.event_types) || body.event_types.length === 0) {
+      return c.json({ error: "event_types must be a non-empty array" }, 400);
+    }
+    if (!body.action_type) {
+      return c.json({ error: "action_type is required" }, 400);
+    }
+    const validActionTypes = ["webhook", "run_artifact", "notify", "auto_action"];
+    if (!validActionTypes.includes(body.action_type)) {
+      return c.json({ error: `action_type must be one of: ${validActionTypes.join(", ")}` }, 400);
+    }
+    if (!body.action_config || typeof body.action_config !== "object") {
+      return c.json({ error: "action_config is required" }, 400);
+    }
+
+    const trigger = createTrigger(
+      db,
+      board.id,
+      body.name.trim(),
+      body.event_types,
+      body.conditions ?? null,
+      body.action_type as "webhook" | "run_artifact" | "notify" | "auto_action",
+      body.action_config,
+      userId,
+      body.enabled ?? true
+    );
+
+    return c.json(trigger, 201);
+  });
+
+  app.patch("/api/boards/:boardId/triggers/:id", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const existing = getTriggerById(db, triggerId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const body = await c.req.json<{
+      name?: string;
+      event_types?: string[];
+      conditions?: { column?: string; label?: string } | null;
+      action_type?: string;
+      action_config?: Record<string, unknown>;
+      enabled?: boolean;
+    }>();
+
+    if (body.name !== undefined && body.name.length > 100) {
+      return c.json({ error: "name must be 100 characters or less" }, 400);
+    }
+
+    const updated = updateTrigger(db, triggerId, {
+      name: body.name,
+      event_types: body.event_types,
+      conditions: body.conditions,
+      action_type: body.action_type as "webhook" | "run_artifact" | "notify" | "auto_action" | undefined,
+      action_config: body.action_config,
+      enabled: body.enabled,
+    });
+
+    if (!updated) return c.json({ error: "trigger not found" }, 404);
+    return c.json(updated);
+  });
+
+  app.delete("/api/boards/:boardId/triggers/:id", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const existing = getTriggerById(db, triggerId);
+    if (!existing || existing.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    deleteTrigger(db, triggerId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/boards/:boardId/triggers/:id/test", async (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const trigger = getTriggerById(db, triggerId);
+    if (!trigger || trigger.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const eventTypes: string[] = JSON.parse(trigger.event_types);
+    const firstEvent = eventTypes[0] ?? "board.created";
+
+    // Fire a synthetic event
+    const syntheticEvent = {
+      eventType: firstEvent,
+      boardId: board.id,
+      cardId: null,
+      userId: userId,
+      timestamp: new Date().toISOString(),
+      payload: {
+        _test: true,
+        boardId: board.id,
+      },
+    };
+
+    await eventBus.emit(syntheticEvent);
+
+    return c.json({ ok: true, event: syntheticEvent });
+  });
+
+  app.get("/api/boards/:boardId/triggers/:id/log", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const triggerId = c.req.param("id");
+    const trigger = getTriggerById(db, triggerId);
+    if (!trigger || trigger.board_id !== board.id) {
+      return c.json({ error: "trigger not found" }, 404);
+    }
+
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const logs = getTriggerLogs(db, triggerId, limit, offset);
+    return c.json({ logs });
+  });
+
+  app.get("/api/boards/:boardId/triggers/log", (c) => {
+    const boardId = c.req.param("boardId");
+    const userId = c.get("userId");
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+    const logs = getBoardTriggerLogs(db, board.id, limit, offset);
+    return c.json({ logs });
+  });
+
+  // --- Notification routes ---
+
+  app.get("/api/notifications", (c) => {
+    const userId = c.get("userId");
+    const boardId = c.req.query("board_id");
+    const unread = c.req.query("unread") === "true";
+    const limit = Math.min(Number(c.req.query("limit") ?? 50), 100);
+    const offset = Number(c.req.query("offset") ?? 0);
+
+    const notifications = getUserNotifications(db, userId, {
+      boardId,
+      unread,
+      limit,
+      offset,
+    });
+
+    return c.json({ notifications });
+  });
+
+  app.get("/api/notifications/count", (c) => {
+    const userId = c.get("userId");
+    const unread = getUnreadNotificationCount(db, userId);
+    return c.json({ unread });
+  });
+
+  app.patch("/api/notifications/:id/read", (c) => {
+    const userId = c.get("userId");
+    const notificationId = c.req.param("id");
+
+    const notification = getNotificationById(db, notificationId);
+    if (!notification || notification.user_id !== userId) {
+      return c.json({ error: "not found" }, 404);
+    }
+
+    markNotificationRead(db, notificationId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/api/notifications/read-all", async (c) => {
+    const userId = c.get("userId");
+    const body = await c.req.json<{ boardId?: string }>().catch((): { boardId?: string } => ({}));
+    markAllNotificationsRead(db, userId, body.boardId);
+    return c.json({ ok: true });
+  });
+
+  app.delete("/api/notifications", (c) => {
+    const userId = c.get("userId");
+    const deleted = deleteOldReadNotifications(db, userId);
+    return c.json({ deleted });
+  });
+
+  // --- SSE route ---
+  // Note: EventSource doesn't support Authorization header, so also accept token via query param
+
+  app.get("/api/boards/:boardId/events", async (c) => {
+    const boardId = c.req.param("boardId");
+    let userId = c.get("userId");
+
+    // Fallback: check token query param (EventSource can't set headers)
+    if (!userId) {
+      const tokenParam = c.req.query("token");
+      if (tokenParam) {
+        try {
+          const payload = await verify(tokenParam, JWT_SECRET, "HS256");
+          userId = payload["userId"] as string;
+        } catch {
+          return c.json({ error: "Unauthorized" }, 401);
+        }
+      }
+    }
+
+    if (!userId) return c.json({ error: "Unauthorized" }, 401);
+
+    const board = getVerifiedBoard(db, boardId, userId);
+    if (!board) return c.json({ error: "not found" }, 404);
+
+    if (!sseManager) {
+      return c.json({ error: "SSE not available" }, 503);
+    }
+
+    let streamController: ReadableStreamDefaultController | null = null;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+        const added = sseManager.addConnection(boardId, userId, controller);
+        if (!added) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `event: error\ndata: ${JSON.stringify({ error: "Too many connections" })}\n\n`
+            )
+          );
+          controller.close();
+          return;
+        }
+
+        // Send initial connection event
+        controller.enqueue(
+          new TextEncoder().encode(
+            `event: connected\ndata: ${JSON.stringify({ boardId, userId })}\n\n`
+          )
+        );
+      },
+      cancel() {
+        if (streamController) {
+          sseManager.removeConnection(boardId, streamController);
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   });
 
   return app;

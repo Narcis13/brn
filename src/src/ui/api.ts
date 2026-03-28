@@ -568,3 +568,200 @@ export function runArtifact(
     method: "POST",
   });
 }
+
+// --- Triggers ---
+
+export interface Trigger {
+  id: string;
+  board_id: string;
+  name: string;
+  event_types: string; // JSON array
+  conditions: string | null;
+  action_type: "webhook" | "run_artifact" | "notify" | "auto_action";
+  action_config: string; // JSON
+  enabled: number;
+  created_at: string;
+  user_id: string;
+}
+
+export interface TriggerLog {
+  id: string;
+  trigger_id: string;
+  board_id: string;
+  event_type: string;
+  event_payload: string;
+  result: "success" | "error";
+  error_message: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+export function fetchTriggers(
+  boardId: string
+): Promise<{ triggers: Trigger[] }> {
+  return request(`/boards/${boardId}/triggers`);
+}
+
+export function createTrigger(
+  boardId: string,
+  data: {
+    name: string;
+    event_types: string[];
+    conditions?: { column?: string; label?: string } | null;
+    action_type: string;
+    action_config: Record<string, unknown>;
+    enabled?: boolean;
+  }
+): Promise<Trigger> {
+  return request(`/boards/${boardId}/triggers`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateTrigger(
+  boardId: string,
+  triggerId: string,
+  updates: {
+    name?: string;
+    event_types?: string[];
+    conditions?: { column?: string; label?: string } | null;
+    action_type?: string;
+    action_config?: Record<string, unknown>;
+    enabled?: boolean;
+  }
+): Promise<Trigger> {
+  return request(`/boards/${boardId}/triggers/${triggerId}`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+}
+
+export function deleteTrigger(
+  boardId: string,
+  triggerId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/triggers/${triggerId}`, {
+    method: "DELETE",
+  });
+}
+
+export function testTrigger(
+  boardId: string,
+  triggerId: string
+): Promise<{ ok: boolean }> {
+  return request(`/boards/${boardId}/triggers/${triggerId}/test`, {
+    method: "POST",
+  });
+}
+
+export function fetchTriggerLogs(
+  boardId: string,
+  triggerId: string,
+  limit: number = 50
+): Promise<{ logs: TriggerLog[] }> {
+  return request(`/boards/${boardId}/triggers/${triggerId}/log?limit=${limit}`);
+}
+
+export function fetchBoardTriggerLogs(
+  boardId: string,
+  limit: number = 50
+): Promise<{ logs: TriggerLog[] }> {
+  return request(`/boards/${boardId}/triggers/log?limit=${limit}`);
+}
+
+// --- Notifications ---
+
+export interface Notification {
+  id: string;
+  board_id: string;
+  user_id: string;
+  event_type: string;
+  card_id: string | null;
+  title: string;
+  body: string;
+  read: number;
+  created_at: string;
+}
+
+export function fetchNotifications(
+  options?: { boardId?: string; unread?: boolean; limit?: number }
+): Promise<{ notifications: Notification[] }> {
+  const params = new URLSearchParams();
+  if (options?.boardId) params.set("board_id", options.boardId);
+  if (options?.unread) params.set("unread", "true");
+  if (options?.limit) params.set("limit", String(options.limit));
+  const query = params.toString();
+  return request(`/notifications${query ? `?${query}` : ""}`);
+}
+
+export function fetchUnreadCount(): Promise<{ unread: number }> {
+  return request("/notifications/count");
+}
+
+export function markNotificationRead(
+  notificationId: string
+): Promise<{ ok: boolean }> {
+  return request(`/notifications/${notificationId}/read`, {
+    method: "PATCH",
+  });
+}
+
+export function markAllNotificationsRead(
+  boardId?: string
+): Promise<{ ok: boolean }> {
+  return request("/notifications/read-all", {
+    method: "POST",
+    body: JSON.stringify(boardId ? { boardId } : {}),
+  });
+}
+
+// --- SSE ---
+
+export function connectBoardSSE(
+  boardId: string,
+  onEvent: (eventType: string, data: unknown) => void,
+  onError?: () => void
+): EventSource {
+  const token = getToken();
+  // EventSource doesn't support custom headers, so we pass token as query param
+  // The server needs to check both Authorization header and query param
+  const url = `/api/boards/${boardId}/events${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  const es = new EventSource(url);
+
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      onEvent(event.type || "message", data);
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  // Listen for specific event types
+  const eventTypes = [
+    "connected",
+    "card.created", "card.updated", "card.moved", "card.deleted",
+    "column.created", "column.updated", "column.deleted", "column.reordered",
+    "notification.created", "trigger.executed",
+    "card.label_assigned", "card.label_removed",
+    "comment.created", "comment.updated", "comment.deleted",
+  ];
+
+  for (const type of eventTypes) {
+    es.addEventListener(type, (event) => {
+      try {
+        const data = JSON.parse((event as MessageEvent).data);
+        onEvent(type, data);
+      } catch {
+        // ignore
+      }
+    });
+  }
+
+  es.onerror = () => {
+    onError?.();
+  };
+
+  return es;
+}
