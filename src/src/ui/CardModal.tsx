@@ -1600,6 +1600,26 @@ export function CardModal({
                                 <button
                                   type="button"
                                   className="btn-icon btn-sm"
+                                  title="Export"
+                                  onClick={async (e) => {
+                                    e.stopPropagation();
+                                    const full = expandedArtifact === artifact.id
+                                      ? { content: expandedArtifactContent, filename: artifact.filename }
+                                      : await api.fetchArtifact(boardId, artifact.id);
+                                    const blob = new Blob([full.content], { type: "text/plain" });
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement("a");
+                                    a.href = url;
+                                    a.download = artifact.filename;
+                                    a.click();
+                                    URL.revokeObjectURL(url);
+                                  }}
+                                >
+                                  💾
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn-icon btn-sm"
                                   title="Delete"
                                   onClick={(e) => {
                                     e.stopPropagation();
