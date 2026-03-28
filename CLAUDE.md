@@ -51,6 +51,7 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
     anti-patterns/        # What to avoid
     decisions/            # Key choices and why
     codebase/             # Insights about this codebase
+    prompts/              # Meta-knowledge: what prompt strategies produce good Builder output
   history/                # Run history (reset per feature)
     runs/                 # One folder per /next run
       run-NNN/
@@ -79,10 +80,11 @@ No deterministic orchestrator. No framework code. Claude IS the orchestrator.
 | Command | Purpose |
 |---------|---------|
 | `/specify` | Transform a loose idea into a production-ready spec via adaptive interview |
-| `/next` | Advance the feature by one step (the core loop) |
+| `/next` | Advance the feature by one step (interactive — does work directly) |
+| `/step` | Advance the feature by one step (unattended — Thinker crafts prompt, Builder executes via `claude -p`) |
 | `/status` | Show progress dashboard |
 | `/steer <directive>` | Add a steering directive |
-| `/nightshift` | Start the autonomous loop |
+| `/nightshift` | Start the autonomous loop (calls `/step` repeatedly) |
 
 ## Git Convention
 - Branch per feature: `feat/<feature-name>`

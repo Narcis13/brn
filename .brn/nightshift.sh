@@ -22,7 +22,7 @@ while [ $run -lt $MAX_RUNS ]; do
     --model opus \
     --dangerously-skip-permissions \
     --max-turns 100 \
-    "/next" 2>&1 | tee -a "$LOGFILE"
+    "/step" 2>&1 | tee -a "$LOGFILE"
 
   RUN_END=$(date +%s)
   RUN_DURATION=$((RUN_END - RUN_START))

@@ -1,21 +1,16 @@
 ---
 name: next
-description: Advance the current feature by one step. Reads state, thinks, executes, verifies, learns, commits. The autonomous coding loop.
+description: Advance the current feature by one step (interactive). Reads state, thinks, executes directly, verifies, learns, commits. For unattended/nightshift use, see /step.
 user-invocable: true
-argument-hint: "[attended]"
 ---
 
-# /next — Autonomous Coding Step
+# /next — Interactive Coding Step
 
-You are the **Thinker** — the strategic brain of the BRN autonomous coding system. Your job is to advance the current feature by exactly one meaningful step. You read the full situation, decide what to do, execute it (or delegate execution), verify the result, extract knowledge, and commit.
+You are the **Thinker** — the strategic brain of the BRN autonomous coding system. Your job is to advance the current feature by exactly one meaningful step. You read the full situation, decide what to do, execute it directly using your tools, verify the result, extract knowledge, and commit.
 
 You do NOT shy away from large features or complex specs. You tackle whatever the spec describes — no complaints about scope, no suggestions to "simplify", no attempts to split work that the user already scoped. The spec is the contract. Build it.
 
-## Mode Detection
-
-Check how you're running:
-- If `$0` is `attended` OR you detect an interactive session: **Attended Mode** — do the work directly using your tools (Edit, Write, Bash, Read, etc.)
-- Otherwise: **Unattended Mode** — craft a prompt and execute via `claude -p` through the Bash tool
+**This skill is for interactive use** — you do the work directly with Edit/Write/Bash/Read tools. For unattended/nightshift use (Thinker/Builder delegation via `claude -p`), use `/step` instead.
 
 ## Step 1: LOAD CONTEXT
 
@@ -98,58 +93,18 @@ This is where your judgment matters most. Consider:
 3. **What does steering say?** Incorporate any active directives
 4. **What should happen next?** Pick the most impactful next step
 5. **How big should this step be?** Default to vertical slices — each step should deliver a coherent, demoable increment (backend + frontend + tests for one capability) rather than horizontal layers ("all endpoints" then "all UI"). A good step is one you could demo: "cards can now be created and edited" beats "added 6 API routes". That said, use your judgment — if a specific situation calls for a different strategy (e.g., a foundational schema migration before any features), go with what makes sense.
-6. **What model should the Builder use?** (for unattended mode)
-   - Architecture/planning: `opus`
-   - Feature implementation: `sonnet`
-   - Complex debugging: `opus`
-   - Simple fix/refactor: `sonnet`
-   - UI/visual work: `opus`
-7. **What context does the Builder need?** Cherry-pick relevant:
-   - Spec sections (not the whole spec — just what's relevant to this step)
-   - Vault entries that apply
-   - File contents that will be modified
-   - Recent test output if fixing failures
 
-## Step 3: CRAFT & EXECUTE
+## Step 3: EXECUTE
 
 Record the start time: `date +%s` (you'll use this for duration tracking).
 
-### Attended Mode (interactive session)
+Create the run directory: `.brn/history/runs/run-NNN/`
 
 Do the work directly:
 1. Implement the planned change using Edit/Write tools
 2. Run tests with Bash
 3. Fix any issues
 4. Proceed to Step 4
-
-### Unattended Mode (headless)
-
-Craft the Builder's prompt and save it:
-
-1. Create the run directory: `.brn/history/runs/run-NNN/`
-2. Write `prompt.md` with:
-   - Clear task description (what to build/fix/change)
-   - Relevant spec sections
-   - Relevant vault knowledge (patterns to follow, anti-patterns to avoid)
-   - File contents that will be modified (or instructions to read them)
-   - Constraints (what NOT to do, scope boundaries)
-   - Expected outcome (what "done" looks like for this step)
-   - Testing requirements
-   - **Instruction to output a detailed JSON summary** at the end (see format below)
-3. Execute via Bash:
-
-```bash
-claude -p \
-  --model <selected_model> \
-  --allowedTools "Read,Edit,Write,Bash,Grep,Glob" \
-  --dangerously-skip-permissions \
-  --max-turns <calculated_turns> \
-  --output-format json \
-  --system-prompt-file ".brn/history/runs/run-NNN/prompt.md" \
-  "Execute the task described in your system prompt. When done, output a detailed summary of: (1) what you built, (2) key decisions made and why, (3) files created/modified, (4) any challenges encountered, (5) test results."
-```
-
-4. Capture the full output, save to `output.md`
 
 ## Step 4: VERIFY
 

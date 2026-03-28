@@ -1,15 +1,15 @@
 ---
 name: nightshift
-description: Start the autonomous night shift loop. Prepares clean state (archives done features, initializes from ready specs), then runs /next repeatedly until the feature is complete or blocked.
+description: Start the autonomous night shift loop. Prepares clean state (archives done features, initializes from ready specs), then runs /step (Thinker/Builder) repeatedly until the feature is complete or blocked.
 user-invocable: true
 model: opus
 ---
 
 # /nightshift — Autonomous Loop
 
-Launch the night shift — prepare a clean state, then loop `/next` until the feature is done.
+Launch the night shift — prepare a clean state, then loop `/step` until the feature is done.
 
-**CRITICAL**: This skill is fully autonomous. Do NOT use AskUserQuestion at any point. Do NOT ask for confirmation before launching. Do NOT pause for user input. The flow is: PREPARE → LAUNCH → done. The bash loop handles everything from there via headless `claude -p` invocations. If something is wrong (no spec, blocked with no steering), report the issue and stop — don't ask what to do.
+**CRITICAL**: This skill is fully autonomous. Do NOT use AskUserQuestion at any point. Do NOT ask for confirmation before launching. Do NOT pause for user input. The flow is: PREPARE → LAUNCH → done. The bash loop handles everything from there via headless `claude -p` invocations of `/step` (the unattended Thinker skill — NOT `/next` which is for interactive use). If something is wrong (no spec, blocked with no steering), report the issue and stop — don't ask what to do.
 
 ## Instructions
 
@@ -112,7 +112,7 @@ while [ $run -lt $MAX_RUNS ]; do
     --model opus \
     --dangerously-skip-permissions \
     --max-turns 100 \
-    "/next" 2>&1 | tee -a "$LOGFILE"
+    "/step" 2>&1 | tee -a "$LOGFILE"
 
   RUN_END=$(date +%s)
   RUN_DURATION=$((RUN_END - RUN_START))
