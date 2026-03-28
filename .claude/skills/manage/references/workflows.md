@@ -10,6 +10,7 @@ Recipes for multi-step operations that combine several `takt` commands.
 - [Triage Incoming Work](#triage-incoming-work)
 - [End-of-Sprint Cleanup](#end-of-sprint-cleanup)
 - [Board Migration](#board-migration)
+- [Artifact Workflows](#artifact-workflows)
 - [BRN Integration](#brn-integration)
 
 ---
@@ -122,6 +123,60 @@ Copy structure from one board to another (e.g., for a new quarter).
 6. Optionally migrate open cards:
    For each card not in "Done":
      takt card create <newBoardId> --column <mappedColId> --title "..." --description "..."
+```
+
+---
+
+## Artifact Workflows
+
+### Add context documentation to a task
+
+When investigating a bug or planning a feature, attach your findings as a markdown artifact:
+
+```
+1. takt artifact add <cardId> --filename "investigation.md" --content "## Findings\n\n- Root cause: race condition in auth middleware\n- Affected: /api/login endpoint\n- Repro: send 2 concurrent requests with same session"
+2. takt artifact list <cardId>  # verify it's attached
+```
+
+### Attach a runnable diagnostic script
+
+Create a script that reproduces or diagnoses an issue:
+
+```
+1. takt artifact add <cardId> --filename "diagnose.sh" --content '#!/bin/bash\necho "Checking API health..."\ncurl -s localhost:3000/api/health | jq .\necho "Checking DB connections..."\nlsof -i :5432 | wc -l'
+2. takt artifact run <artifactId> --yes  # execute it
+```
+
+### Add a TypeScript migration script to a task
+
+```
+1. takt artifact add <cardId> --filename "migrate.ts" --content 'import { Database } from "bun:sqlite";\nconst db = new Database("app.db");\ndb.exec("ALTER TABLE users ADD COLUMN email TEXT");\nconsole.log("Migration complete");'
+2. takt artifact run <artifactId> --yes  # run the migration
+```
+
+### Board-level project documentation
+
+Attach shared docs that apply to the whole project, not individual cards:
+
+```
+1. takt artifact add <boardId> --board --filename "conventions.md" --content "# Project Conventions\n\n- TypeScript strict mode\n- Tests co-located\n- Bun runtime only"
+2. takt artifact add <boardId> --board --filename "deploy.sh" --content '#!/bin/bash\nbun run build && rsync -avz dist/ server:/app/'
+3. takt artifact list <boardId> --board  # see all board docs
+```
+
+### Export artifacts for external use
+
+```
+1. takt artifact export <artifactId>                    # writes to ./<filename>
+2. takt artifact export <artifactId> --output ./scripts/ # writes to specific path
+```
+
+### Search across artifact content
+
+Artifact content and filenames are included in search results:
+
+```
+takt search <boardId> "migration"  # finds cards AND artifacts matching "migration"
 ```
 
 ---

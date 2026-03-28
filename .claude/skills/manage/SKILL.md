@@ -3,15 +3,19 @@ name: manage
 description: >-
   Project and task management through the Takt CLI kanban system. Scaffold new projects with
   pre-built board templates (kanban, sprint, GTD, roadmap), create and organize tasks as cards,
-  track progress across columns, label and categorize work, manage team collaboration, and
-  search across boards. Use when: (1) user says "manage", "scaffold", "set up project",
-  "create board", "add task", "track work", "organize tasks", "project status", "move task",
-  "sprint planning", (2) user wants to create, list, update, move, or delete boards/cards/columns/labels,
+  track progress across columns, label and categorize work, manage team collaboration,
+  attach artifacts (docs, scripts, code) to cards and boards, and search across boards.
+  Use when: (1) user says "manage", "scaffold", "set up project", "create board", "add task",
+  "track work", "organize tasks", "project status", "move task", "sprint planning",
+  (2) user wants to create, list, update, move, or delete boards/cards/columns/labels/artifacts,
   (3) user asks about project progress or task tracking, (4) user wants to set up a kanban workflow,
-  (5) user says "what's on my board", "show tasks", "what's overdue", "search tasks".
+  (5) user says "what's on my board", "show tasks", "what's overdue", "search tasks",
+  (6) user wants to attach context, docs, scripts, or code snippets to a card or board,
+  (7) user says "add artifact", "attach a script", "add context to this task", "run artifact",
+  "export artifact", "board docs", "add a runnable script".
   Works with the Takt CLI (`takt` command) which talks directly to SQLite — no server needed.
 user-invocable: true
-argument-hint: "[setup|board|task|sprint|progress|search|activity|help] [args...]"
+argument-hint: "[setup|board|task|artifact|sprint|progress|search|activity|help] [args...]"
 ---
 
 # /manage — Project & Task Management
@@ -25,9 +29,10 @@ Manage projects, tasks, and workflows through the Takt kanban CLI. Route based o
 | `task` | Card/task operations (create, update, move, show, delete) |
 | `column` | Column operations (create, reorder, rename, delete) |
 | `label` | Label operations (create, assign, unassign, list) |
+| `artifact` | Attach files/scripts/docs to cards or boards (add, list, show, edit, delete, export, run) |
 | `sprint` | Sprint planning — batch-create tasks from a plan |
 | `progress` | Show board progress dashboard |
-| `search` | Search cards across a board |
+| `search` | Search cards across a board (includes artifact content) |
 | `activity` | Show recent board activity |
 | `comment` | Add/edit/delete comments on cards |
 | `help` | Show this command reference |
@@ -222,6 +227,107 @@ Colors must be hex format: `#RRGGBB`.
 
 ---
 
+## Artifact — Attach Files, Docs & Scripts
+
+Trigger: `/manage artifact [action] [args]`
+
+Artifacts are files (markdown, HTML, JavaScript, TypeScript, shell scripts) attached to cards or boards. They store content directly in the database — no filesystem storage. Supported filetypes: `md`, `html`, `js`, `ts`, `sh`. Max size: 100KB.
+
+**Card-level artifacts** attach context to a specific task. **Board-level artifacts** (`--board` flag) are shared docs/scripts for the whole board.
+
+### Commands
+
+| Action | Command |
+|--------|---------|
+| `list <cardId\|boardId>` | `takt artifact list <id> [--board] [--json]` |
+| `add <cardId\|boardId>` | `takt artifact add <id> --filename "<name>" --content "<text>" [--board]` |
+| `add from file` | `takt artifact add <id> --file <path> [--board]` |
+| `show <artifactId>` | `takt artifact show <artifactId>` |
+| `edit <artifactId>` | `takt artifact edit <artifactId> --content "<text>"` |
+| `delete <artifactId>` | `takt artifact delete <artifactId> --yes` |
+| `export <artifactId>` | `takt artifact export <artifactId> [--output <path>]` |
+| `run <artifactId>` | `takt artifact run <artifactId> --yes [-- <args...>]` |
+
+### Adding artifacts inline
+
+When the user provides content directly (code, docs, scripts), create the artifact with `--filename` and `--content`:
+
+```bash
+takt artifact add <cardId> --filename "setup.sh" --content '#!/bin/bash
+echo "Setting up..."
+npm install
+npm run build'
+```
+
+### Adding artifacts from filesystem
+
+When the user references an existing file, use `--file` to read from disk (filename and type auto-derived):
+
+```bash
+takt artifact add <cardId> --file ./scripts/deploy.sh
+```
+
+### Board-level artifacts
+
+Use `--board` flag to attach docs/scripts to the board itself (not a specific card):
+
+```bash
+takt artifact add <boardId> --board --filename "README.md" --content "# Project overview..."
+takt artifact list <boardId> --board
+```
+
+### Running executable artifacts
+
+Only `sh`, `js`, and `ts` artifacts can be run. The `--yes` flag skips confirmation:
+
+```bash
+takt artifact run <artifactId> --yes
+takt artifact run <artifactId> --yes -- --verbose --env production
+```
+
+Arguments after `--` are passed to the script. Output is streamed to stdout.
+
+### Typical use cases for Claude Code
+
+1. **Attach context to a task**: When working on a card, attach relevant notes, analysis, or investigation results:
+   ```bash
+   takt artifact add <cardId> --filename "analysis.md" --content "## Root cause\n\nThe bug is caused by..."
+   ```
+
+2. **Attach runnable scripts**: Add automation scripts that can be executed later:
+   ```bash
+   takt artifact add <cardId> --filename "reproduce.sh" --content '#!/bin/bash\ncurl -X POST localhost:3000/api/test'
+   ```
+
+3. **Store code snippets**: Attach TypeScript/JS code relevant to the task:
+   ```bash
+   takt artifact add <cardId> --filename "migration.ts" --content 'import { db } from "./db";\ndb.exec("ALTER TABLE...")'
+   ```
+
+4. **Board-level documentation**: Attach project-wide docs to the board:
+   ```bash
+   takt artifact add <boardId> --board --filename "conventions.md" --content "# Coding conventions\n\n- Use strict TypeScript..."
+   ```
+
+5. **Run a diagnostic script**: Execute an attached script and review output:
+   ```bash
+   takt artifact run <artifactId> --yes
+   ```
+
+### Filetype rules
+
+| Extension | Type | Runnable |
+|-----------|------|----------|
+| `.md` | Markdown | No |
+| `.html` | HTML | No |
+| `.js` | JavaScript | Yes (via `bun run`) |
+| `.ts` | TypeScript | Yes (via `bun run`) |
+| `.sh` | Shell | Yes (via `/bin/sh`) |
+
+Filenames must include the extension. Filenames must be unique per card (or per board for board-level).
+
+---
+
 ## Sprint — Batch Task Creation
 
 Trigger: `/manage sprint <boardId> [args]`
@@ -374,13 +480,15 @@ Display:
 /manage task [action]           — Create, update, move, delete cards
 /manage column [action]         — Column CRUD and reordering
 /manage label [action]          — Label CRUD and assignment
+/manage artifact [action]       — Attach docs/scripts/code to cards or boards
 /manage sprint <boardId>        — Batch-create tasks from a plan
 /manage progress [boardId]      — Progress dashboard
-/manage search <boardId> <q>    — Search cards
+/manage search <boardId> <q>    — Search cards and artifacts
 /manage activity [boardId]      — Recent activity feed
 /manage comment [action]        — Card comments
 
 Templates: kanban, sprint, gtd, roadmap, simple, bug-tracker, custom
+Artifact types: md, html, js, ts, sh (js/ts/sh are runnable)
 Global flags: --json, --quiet, --full-ids, --yes
 ```
 
@@ -403,6 +511,14 @@ When the user's input doesn't match a strict subcommand pattern, interpret inten
 | "add a review column" | `column create` |
 | "tag this as urgent" | `label assign` |
 | "what happened today" | `activity` |
+| "attach a script to this task" | `artifact add` (inline with --filename --content) |
+| "add context/notes to this card" | `artifact add` (markdown artifact) |
+| "add a runnable script" | `artifact add` (sh/js/ts artifact) |
+| "show the artifacts on this card" | `artifact list` |
+| "run the deploy script" | `artifact run` |
+| "export the artifact" | `artifact export` |
+| "add board docs" | `artifact add --board` |
+| "what scripts are on this board" | `artifact list --board` |
 
 ## ID Resolution
 
@@ -412,6 +528,7 @@ Takt IDs are UUIDs. Users will typically not know IDs. Resolve them contextually
 2. **Column by name**: Run `takt column list <boardId> --json`, match by title.
 3. **Card by title**: Run `takt card list <boardId> --json`, match by title. If ambiguous, show matches and ask.
 4. **Label by name**: Run `takt label list <boardId> --json`, match by name.
+5. **Artifact by filename**: Run `takt artifact list <cardId|boardId> --json`, match by filename. For board-level, add `--board`.
 
 Always resolve names to IDs before executing commands. Never ask the user for raw UUIDs.
 
