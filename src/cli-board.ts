@@ -4,6 +4,7 @@ import {
   createBoard,
   deleteBoard,
   getAllColumns,
+  getBoardArtifacts,
   getBoardById,
   getBoardMembers,
   getCardActivity,
@@ -12,6 +13,7 @@ import {
   isBoardOwner,
   removeBoardMember,
   type ActivityRow,
+  type ArtifactRow,
 } from "./src/db";
 import type { TaktConfig } from "./cli-auth";
 import {
@@ -32,6 +34,12 @@ type BoardMembershipRow = {
   created_at: string;
   role: "owner" | "member";
 };
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
 
 export async function listBoards(
   db: Database,
@@ -113,6 +121,7 @@ export async function showBoard(
   const members = getBoardMembers(db, boardId);
   const columns = getAllColumns(db, boardId);
   const totalCards = columns.reduce((sum, column) => sum + column.cards.length, 0);
+  const boardArtifacts: ArtifactRow[] = getBoardArtifacts(db, boardId);
 
   if (options.json) {
     console.log(
@@ -128,6 +137,7 @@ export async function showBoard(
             card_count: column.cards.length,
           })),
           members,
+          artifacts: boardArtifacts,
         },
         null,
         2
@@ -152,6 +162,20 @@ export async function showBoard(
   columns.forEach((column) => {
     console.log(`  ${column.title} (${column.cards.length} cards)`);
   });
+
+  if (boardArtifacts.length > 0) {
+    console.log("");
+    console.log("Board Artifacts:");
+    printTable(
+      ["ID", "Filename", "Type", "Size"],
+      boardArtifacts.map((artifact) => [
+        formatId(artifact.id, options),
+        artifact.filename,
+        artifact.filetype.toUpperCase(),
+        formatFileSize(artifact.content.length),
+      ])
+    );
+  }
 }
 
 export async function deleteBoardCommand(

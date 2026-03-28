@@ -5,5 +5,12 @@
     "summary": "Implemented AC12: BoardView UI for board-level artifacts",
     "acceptance_criteria_met": 13,
     "success": true
+  },
+  {
+    "run": 3,
+    "timestamp": "2026-03-28T00:00:00Z",
+    "summary": "Added artifact sections to CLI card/board show commands (AC13)",
+    "acceptance_criteria_met": 14,
+    "success": true
   }
 ]

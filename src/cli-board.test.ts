@@ -1,17 +1,17 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { mkdirSync, rmSync } from "node:fs";
-import { 
-  listBoards, 
-  createBoardCommand, 
-  showBoard, 
+import {
+  listBoards,
+  createBoardCommand,
+  showBoard,
   deleteBoardCommand,
   listBoardMembers,
   inviteToBoardCommand,
   kickFromBoardCommand,
-  showBoardActivity 
+  showBoardActivity
 } from "./cli-board";
-import { createTestDb, createUser, createBoard, addBoardMember, createCard, createActivity, getAllColumns } from "./src/db";
+import { createArtifact, createTestDb, createUser, createBoard, addBoardMember, createCard, createActivity, getAllColumns } from "./src/db";
 import type { TaktConfig } from "./cli-auth";
 
 describe("CLI Board Commands", () => {
@@ -357,20 +357,116 @@ describe("CLI Board Commands", () => {
   test("showBoardActivity - respects limit parameter", async () => {
     const board = createBoard(db, "Test Board", session.userId);
     const columns = getAllColumns(db, board.id);
-    
+
     // Create multiple cards
     for (let i = 0; i < 10; i++) {
       createCard(db, `Card ${i}`, columns[0]!.id, "", null, session.userId);
     }
-    
+
     const logs: string[] = [];
     const originalLog = console.log;
     console.log = (msg: string) => logs.push(msg);
-    
+
     await showBoardActivity(db, session, board.id, 5, {});
-    
+
     console.log = originalLog;
     const activityLines = logs.filter(line => line.includes("Card"));
     expect(activityLines).toHaveLength(5);
+  });
+
+  test("showBoard json includes empty artifacts array when no board artifacts exist", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, { json: true });
+
+    console.log = originalLog;
+    const parsed = JSON.parse(logs[0]!);
+    expect(parsed.artifacts).toEqual([]);
+  });
+
+  test("showBoard json includes board artifacts array with artifact data", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+    createArtifact(db, board.id, null, "readme.md", "md", "# Board Doc", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, { json: true });
+
+    console.log = originalLog;
+    const parsed = JSON.parse(logs[0]!);
+    expect(parsed.artifacts).toHaveLength(1);
+    expect(parsed.artifacts[0].filename).toBe("readme.md");
+    expect(parsed.artifacts[0].filetype).toBe("md");
+  });
+
+  test("showBoard omits Board Artifacts section when no board-level artifacts exist", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, {});
+
+    console.log = originalLog;
+    expect(logs.join("\n")).not.toContain("Board Artifacts:");
+  });
+
+  test("showBoard displays Board Artifacts section in table format when board artifacts exist", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+    createArtifact(db, board.id, null, "deploy.sh", "sh", "#!/bin/sh\necho deploy", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, {});
+
+    console.log = originalLog;
+    const output = logs.join("\n");
+    expect(output).toContain("Board Artifacts:");
+    expect(output).toContain("deploy.sh");
+    expect(output).toContain("SH");
+  });
+
+  test("showBoard Board Artifacts section appears after columns summary", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+    createArtifact(db, board.id, null, "notes.ts", "ts", "const x = 1;", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, {});
+
+    console.log = originalLog;
+    const output = logs.join("\n");
+    const columnsPos = output.indexOf("Columns:");
+    const artifactsPos = output.indexOf("Board Artifacts:");
+    expect(columnsPos).toBeGreaterThan(-1);
+    expect(artifactsPos).toBeGreaterThan(columnsPos);
+  });
+
+  test("showBoard does not show Board Artifacts section for card-level artifacts only", async () => {
+    const board = createBoard(db, "Test Board", session.userId);
+    const columns = getAllColumns(db, board.id);
+    const card = createCard(db, "Card With Artifact", columns[0]!.id, "", null, session.userId)!;
+    // This is a card artifact, not a board artifact
+    createArtifact(db, board.id, card.id, "card-notes.md", "md", "# Card", session.userId);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (msg: string) => logs.push(msg);
+
+    await showBoard(db, session, board.id, {});
+
+    console.log = originalLog;
+    expect(logs.join("\n")).not.toContain("Board Artifacts:");
   });
 });
