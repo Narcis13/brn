@@ -1558,9 +1558,11 @@ export function CardModal({
                                   onClick={async (e) => {
                                     e.stopPropagation();
                                     setEditingArtifact(artifact);
-                                    // Load content first if not already loaded
+                                    // Expand the artifact and load content
                                     if (expandedArtifact !== artifact.id) {
                                       const fullArtifact = await api.fetchArtifact(boardId, artifact.id);
+                                      setExpandedArtifact(artifact.id);
+                                      setExpandedArtifactContent(fullArtifact.content || "");
                                       setEditingArtifactContent(fullArtifact.content || "");
                                     } else {
                                       setEditingArtifactContent(expandedArtifactContent);
