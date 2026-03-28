@@ -3,6 +3,8 @@ import { Database } from "bun:sqlite";
 import { createApp } from "./routes.ts";
 import { createTestDb, getCardActivity, createActivity } from "./db.ts";
 import { mkdirSync, rmSync } from "node:fs";
+import { initializeActivitySubscriber } from "./activity-subscriber.ts";
+import { eventBus } from "./event-bus.ts";
 
 const TEST_DIR = "/tmp/brn-test-card-detail-" + Date.now();
 let db: Database;
@@ -120,6 +122,8 @@ async function createTestBoard(
 beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
   db = createTestDb(`${TEST_DIR}/test-${Date.now()}.db`);
+  eventBus.clear(); // Clear any existing subscriptions
+  initializeActivitySubscriber(db);
   app = createApp(db);
 });
 

@@ -1,10 +1,12 @@
 import { getDb } from "./db.ts";
 import { createApp } from "./routes.ts";
+import { initializeActivitySubscriber } from "./activity-subscriber.ts";
 
 const PORT = Number(process.env["PORT"] ?? 3001);
 const PUBLIC_DIR = import.meta.dir + "/../public";
 
 const db = getDb();
+initializeActivitySubscriber(db);
 const app = createApp(db);
 
 const server = Bun.serve({
